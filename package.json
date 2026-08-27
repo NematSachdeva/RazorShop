@@ -1,0 +1,24 @@
+{
+  "name": "razor",
+  "version": "1.0.0",
+  "description": "AI Revenue Recovery & Growth Manager",
+  "private": true,
+  "workspaces": [
+    "packages/backend",
+    "packages/frontend",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "db:migrate": "npm run db:migrate --workspace=packages/backend",
+    "db:seed": "npm run db:seed --workspace=packages/backend",
+    "db:reset": "npm run db:reset --workspace=packages/backend"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
