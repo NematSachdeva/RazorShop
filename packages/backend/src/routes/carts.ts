@@ -1,31 +1,32 @@
 import { Router, Request, Response } from 'express';
 import { cartService } from '../services/CartService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { authenticate, requireCustomer } from '../middleware/auth.js';
 
 const router = Router();
 
 // POST /api/carts
+// Create or get active cart for authenticated customer
 router.post(
   '/',
+  authenticate,
+  requireCustomer,
   asyncHandler(async (req: Request, res: Response) => {
-    const { customer_id } = req.body;
-
-    if (!customer_id) {
-      return res.status(400).json({ error: 'customer_id is required' });
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    if (!customer_id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-      return res.status(400).json({ error: 'Invalid customer ID format' });
-    }
-
-    const cart = await cartService.createCart(customer_id);
+    // Get or create active cart for authenticated customer
+    const cart = await cartService.getOrCreateCart(req.user.id);
     res.status(201).json(cart);
   })
 );
 
 // GET /api/carts/:id
+// Requires authentication to view cart
 router.get(
   '/:id',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
 
@@ -39,13 +40,20 @@ router.get(
       return res.status(404).json({ error: 'Cart not found' });
     }
 
+    // Verify ownership: cart must belong to authenticated customer
+    if (cart.customer_id !== req.user?.id) {
+      return res.status(403).json({ error: 'You do not have permission to view this cart' });
+    }
+
     res.json(cart);
   })
 );
 
 // POST /api/carts/:id/items
+// Requires authentication
 router.post(
   '/:id/items',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const { product_id, quantity } = req.body;
@@ -84,8 +92,10 @@ router.post(
 );
 
 // PATCH /api/carts/:id/items/:productId
+// Requires authentication
 router.patch(
   '/:id/items/:productId',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { id, productId } = req.params;
     const { quantity } = req.body;
@@ -120,8 +130,10 @@ router.patch(
 );
 
 // DELETE /api/carts/:id/items/:productId
+// Requires authentication
 router.delete(
   '/:id/items/:productId',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { id, productId } = req.params;
 
@@ -146,8 +158,10 @@ router.delete(
 );
 
 // DELETE /api/carts/:id
+// Requires authentication
 router.delete(
   '/:id',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
 

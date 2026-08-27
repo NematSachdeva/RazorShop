@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { PaymentService } from '../services/PaymentService.js';
+import { PaymentSimulator } from '../services/PaymentSimulator.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 // Regex for UUID validation
@@ -13,10 +14,12 @@ export function createPaymentsRouter(paymentService: PaymentService): Router {
 
   // POST /api/payments/create
   // Initiate a payment for an order
+  // Query params: ?demo=failure_network (optional, for testing failure scenarios)
   router.post(
     '/create',
     asyncHandler(async (req: Request, res: Response) => {
       const { order_id } = req.body;
+      const { demo } = req.query;
 
       // Validation
       if (!order_id) {
@@ -25,6 +28,19 @@ export function createPaymentsRouter(paymentService: PaymentService): Router {
 
       if (!UUID_REGEX.test(order_id)) {
         return res.status(400).json({ error: 'Invalid order_id format' });
+      }
+
+      // Check for demo mode failure injection
+      const demoFailure = demo ? PaymentSimulator.shouldInjectFailure(demo as string) : null;
+      if (demoFailure) {
+        // In demo mode, simulate a failure by returning error status
+        return res.status(400).json({
+          error: 'Payment failed (demo mode)',
+          scenario: demoFailure.scenario,
+          reason: demoFailure.failure.reason,
+          recoverable: demoFailure.failure.shouldRetry,
+          recoverableBy: demoFailure.failure.recoverableBy,
+        });
       }
 
       try {
@@ -81,7 +97,7 @@ export function createPaymentsRouter(paymentService: PaymentService): Router {
         res.status(200).json(payment);
       } catch (error) {
         if (error instanceof Error) {
-          if (error.message === 'Payment not found for order') {
+          if (error.message === 'Payment not found for order' || error.message === 'Payment attempt not found for order') {
             return res.status(404).json({ error: error.message });
           }
           if (error.message === 'Invalid payment signature') {

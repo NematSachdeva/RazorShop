@@ -1,5 +1,26 @@
+/**
+ * PaymentService tests.
+ *
+ * Concurrency approach:
+ *   Node.js is single-threaded, so truly interleaved CPU execution is impossible.
+ *   However, because every DB operation is an async await, PostgreSQL can begin
+ *   processing a second request's queries while the first is awaiting a network
+ *   round-trip.  Promise.all() exercises this interleaving at the I/O boundary.
+ *
+ *   The concurrency invariant we assert:
+ *     "Two concurrent createPaymentAttempt calls for the same order MUST produce
+ *      exactly ONE PaymentAttempt row and return the SAME razorpay_order_id."
+ *
+ *   The test FAILS if it ever sees two distinct razorpay_order_ids for attempt #1,
+ *   because that means Razorpay.createOrder() was called twice.
+ */
+
 import { PaymentService, RazorpayClient } from './PaymentService.js';
-import { TestDataSource, initializeTestDatabase, closeTestDatabase } from '../config/database.test.js';
+import {
+  TestDataSource,
+  initializeTestDatabase,
+  closeTestDatabase,
+} from '../config/database.test.js';
 import { Customer } from '../models/Customer.js';
 import { Product } from '../models/Product.js';
 import { Inventory } from '../models/Inventory.js';
@@ -11,22 +32,54 @@ import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { OrderService } from './OrderService.js';
 import crypto from 'crypto';
 
+// ─── Mock Razorpay client ────────────────────────────────────────────────────
+/**
+ * Each instance has its own counter so tests that share the module-level
+ * `paymentService` don't bleed counts across test cases.
+ * The counter is intentionally per-instance (not global) so sequential
+ * createOrder() calls within one test case produce distinct IDs, letting us
+ * assert whether one or two Razorpay orders were created.
+ */
+class MockRazorpayClient extends RazorpayClient {
+  public createOrderCallCount = 0;
+
+  constructor() {
+    // key matches 'test_secret_mock' used to compute signatures in tests
+    super('rzp_test_key', 'test_secret_mock');
+  }
+
+  override async createOrder(
+    _amountPaise: number,
+    _orderId: string
+  ): Promise<{ id: string }> {
+    this.createOrderCallCount += 1;
+    // Use a timestamp so IDs are distinct across sequential calls even when
+    // the counter is the same (shouldn't happen with per-instance counter, but
+    // belt-and-suspenders).
+    return { id: `rzp_mock_order_${this.createOrderCallCount}_${Date.now()}` };
+  }
+}
+
+// Helper to build a correct HMAC signature for a PaymentAttempt row.
+function buildSignature(razorpayOrderId: string, razorpayPaymentId: string): string {
+  return crypto
+    .createHmac('sha256', 'test_secret_mock')
+    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+    .digest('hex');
+}
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
 describe('PaymentService', () => {
   let paymentService: PaymentService;
-  let mockRazorpayClient: RazorpayClient;
+  let mockRazorpayClient: MockRazorpayClient;
+
   let testCustomerId: string;
   let testProductId: string;
-  let testCartId: string;
   let testOrderId: string;
 
   beforeAll(async () => {
     await initializeTestDatabase();
-
-    // Create a mock Razorpay client for testing
-    mockRazorpayClient = new RazorpayClient('rzp_test_mock', 'test_secret_mock');
-
-    // Create PaymentService with TestDataSource and mock client
-    paymentService = new PaymentService(TestDataSource, mockRazorpayClient);
   });
 
   afterAll(async () => {
@@ -34,383 +87,416 @@ describe('PaymentService', () => {
   });
 
   beforeEach(async () => {
-    // Create test customer
+    // Fresh mock per test so createOrderCallCount starts at 0.
+    mockRazorpayClient = new MockRazorpayClient();
+    paymentService = new PaymentService(TestDataSource, mockRazorpayClient);
+
+    // Customer
     const customerRepo = TestDataSource.getRepository(Customer);
     const customer = customerRepo.create({
-      email: `payment-test-${Date.now()}@test.com`,
-      name: 'Payment Test User',
+      email: `pay-test-${Date.now()}-${Math.random()}@example.com`,
+      name: 'Pay Test User',
     });
-    const savedCustomer = await customerRepo.save(customer);
-    testCustomerId = savedCustomer.id;
+    testCustomerId = (await customerRepo.save(customer)).id;
 
-    // Create test product
+    // Product + inventory
     const productRepo = TestDataSource.getRepository(Product);
     const product = productRepo.create({
-      name: 'Test Product',
-      description: 'Test product for payment',
+      name: 'Test Widget',
+      description: 'Widget for payment tests',
       price_cents: 50000, // ₹500
       category: 'test',
     });
     const savedProduct = await productRepo.save(product);
     testProductId = savedProduct.id;
 
-    // Create inventory
     const inventoryRepo = TestDataSource.getRepository(Inventory);
-    const inventory = inventoryRepo.create({
-      product_id: testProductId,
-      quantity_on_hand: 100,
-      reserved: 0,
-    });
-    await inventoryRepo.save(inventory);
+    await inventoryRepo.save(
+      inventoryRepo.create({
+        product_id: testProductId,
+        quantity_on_hand: 100,
+        reserved: 0,
+      })
+    );
 
-    // Create cart
+    // Cart + item
     const cartRepo = TestDataSource.getRepository(Cart);
-    const cart = cartRepo.create({
-      customer_id: testCustomerId,
-      status: 'active',
-    });
+    const cart = cartRepo.create({ customer_id: testCustomerId, status: 'active' });
     const savedCart = await cartRepo.save(cart);
-    testCartId = savedCart.id;
 
-    // Add item to cart
     const cartItemRepo = TestDataSource.getRepository(CartItem);
-    const cartItem = cartItemRepo.create({
-      cart_id: testCartId,
-      product_id: testProductId,
-      quantity: 2,
-      price_cents: 50000,
-    });
-    await cartItemRepo.save(cartItem);
+    await cartItemRepo.save(
+      cartItemRepo.create({
+        cart_id: savedCart.id,
+        product_id: testProductId,
+        quantity: 2,
+        price_cents: 50000,
+      })
+    );
 
-    // Create order using OrderService
+    // Order (total_cents = 2 × 50000 = 100 000)
     const orderService = new OrderService(TestDataSource);
-    const order = await orderService.createOrderFromCart(testCartId, testCustomerId);
+    const order = await orderService.createOrderFromCart(savedCart.id, testCustomerId);
     testOrderId = order.id;
   });
 
+  // ── createPaymentAttempt ──────────────────────────────────────────────────
+
   describe('createPaymentAttempt', () => {
-    it('should create a payment attempt successfully', async () => {
+    it('creates a payment and attempt on first call', async () => {
       const result = await paymentService.createPaymentAttempt(testOrderId);
 
-      expect(result.razorpay_order_id).toBeDefined();
-      expect(result.razorpay_key_id).toBeDefined();
-      expect(Number(result.amount_cents)).toBe(100000); // 2 * 50000
+      expect(result.razorpay_order_id).toMatch(/^rzp_mock_order_/);
       expect(result.currency).toBe('INR');
+      expect(Number(result.amount_cents)).toBe(100_000);
 
-      // Verify payment record was created
+      // Exactly one Razorpay order was created.
+      expect(mockRazorpayClient.createOrderCallCount).toBe(1);
+
+      // Payment row is 'pending'.
       const payment = await paymentService.getPaymentByOrderId(testOrderId);
-      expect(payment).toBeDefined();
       expect(payment?.status).toBe('pending');
+
+      // Exactly one PaymentAttempt row exists.
+      const attempts = await TestDataSource.getRepository(PaymentAttempt).find({
+        where: { order_id: testOrderId },
+      });
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0].attempt_number).toBe(1);
+      expect(attempts[0].razorpay_order_id).toBe(result.razorpay_order_id);
     });
 
-    it('should reject nonexistent order', async () => {
-      try {
-        await paymentService.createPaymentAttempt('00000000-0000-0000-0000-000000000000');
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toBe('Order not found');
-      }
+    it('rejects a non-existent order', async () => {
+      await expect(
+        paymentService.createPaymentAttempt('00000000-0000-0000-0000-000000000000')
+      ).rejects.toThrow('Order not found');
     });
 
-    it('should reject if order not in pending state', async () => {
-      // Mark order as confirmed
+    it('rejects an order that is not pending', async () => {
       const orderRepo = TestDataSource.getRepository(Order);
-      const order = await orderRepo.findOne({ where: { id: testOrderId } });
-      if (order) {
-        order.status = 'confirmed';
-        await orderRepo.save(order);
-      }
+      const order = await orderRepo.findOneOrFail({ where: { id: testOrderId } });
+      order.status = 'confirmed';
+      await orderRepo.save(order);
 
-      try {
-        await paymentService.createPaymentAttempt(testOrderId);
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toBe('Order is not in pending state');
-      }
+      await expect(
+        paymentService.createPaymentAttempt(testOrderId)
+      ).rejects.toThrow('Order is not in pending state');
     });
 
-    it('should prevent duplicate pending payment attempts', async () => {
-      // Create first payment attempt
+    it('rejects when payment is already captured', async () => {
       await paymentService.createPaymentAttempt(testOrderId);
 
-      // Try to create another - should fail
-      try {
-        await paymentService.createPaymentAttempt(testOrderId);
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toContain('Cannot create new payment attempt');
-      }
+      const paymentRepo = TestDataSource.getRepository(Payment);
+      const payment = await paymentRepo.findOneOrFail({ where: { order_id: testOrderId } });
+      payment.status = 'captured';
+      await paymentRepo.save(payment);
+
+      await expect(
+        paymentService.createPaymentAttempt(testOrderId)
+      ).rejects.toThrow('Order payment already captured');
     });
 
-    it('should allow retry after failed payment', async () => {
-      // Create first payment attempt
-      const result1 = await paymentService.createPaymentAttempt(testOrderId);
+    // ── idempotency (sequential re-call while still pending) ───────────────
+    it('returns the SAME razorpay_order_id on a sequential second call while payment is pending', async () => {
+      const r1 = await paymentService.createPaymentAttempt(testOrderId);
+      const r2 = await paymentService.createPaymentAttempt(testOrderId);
 
-      // Mark as failed
+      // Both callers must get the same Razorpay order.
+      expect(r2.razorpay_order_id).toBe(r1.razorpay_order_id);
+
+      // Razorpay was called exactly once.
+      expect(mockRazorpayClient.createOrderCallCount).toBe(1);
+
+      // Database has exactly one attempt row.
+      const attempts = await TestDataSource.getRepository(PaymentAttempt).find({
+        where: { order_id: testOrderId },
+      });
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0].attempt_number).toBe(1);
+    });
+
+    // ── legitimate retry after failure ────────────────────────────────────
+    it('creates a NEW attempt (with a new Razorpay order) after explicit payment failure', async () => {
+      const r1 = await paymentService.createPaymentAttempt(testOrderId);
+
+      // Simulate explicit failure (webhook / admin action sets status = 'failed').
       const paymentRepo = TestDataSource.getRepository(Payment);
-      const payment = await paymentRepo.findOne({ where: { order_id: testOrderId } });
-      if (payment) {
-        payment.status = 'failed';
-        await paymentRepo.save(payment);
-      }
+      const payment = await paymentRepo.findOneOrFail({ where: { order_id: testOrderId } });
+      payment.status = 'failed';
+      await paymentRepo.save(payment);
 
-      // Create second attempt
-      const result2 = await paymentService.createPaymentAttempt(testOrderId);
+      const r2 = await paymentService.createPaymentAttempt(testOrderId);
 
-      expect(result2.razorpay_order_id).toBeDefined();
-      expect(result1.razorpay_order_id).not.toBe(result2.razorpay_order_id);
+      // A new Razorpay order must have been created.
+      expect(r2.razorpay_order_id).not.toBe(r1.razorpay_order_id);
+      expect(mockRazorpayClient.createOrderCallCount).toBe(2);
 
-      // Verify attempt numbers
+      // Two attempt rows with sequential numbers.
       const attempts = await TestDataSource.getRepository(PaymentAttempt).find({
         where: { order_id: testOrderId },
         order: { attempt_number: 'ASC' },
       });
-      expect(attempts.length).toBe(2);
+      expect(attempts).toHaveLength(2);
       expect(attempts[0].attempt_number).toBe(1);
       expect(attempts[1].attempt_number).toBe(2);
+      expect(attempts[0].razorpay_order_id).toBe(r1.razorpay_order_id);
+      expect(attempts[1].razorpay_order_id).toBe(r2.razorpay_order_id);
     });
 
-    it('should reject if payment already captured', async () => {
-      // Create payment attempt
-      await paymentService.createPaymentAttempt(testOrderId);
+    // ── CONCURRENCY TEST ─────────────────────────────────────────────────
+    /**
+     * Two concurrent requests must produce exactly ONE PaymentAttempt row and
+     * ONE Razorpay order, and both callers must receive the same rzp order ID.
+     *
+     * How it works:
+     *   Both promises are started before either is awaited.  Because every DB
+     *   operation yields to the event loop, PostgreSQL sees interleaved queries
+     *   from the two async call stacks.  The UNIQUE(order_id, attempt_number)
+     *   constraint + INSERT ON CONFLICT DO NOTHING ensures only one request
+     *   wins the reservation.  The other becomes a waiter and polls until the
+     *   owner fills in the razorpay_order_id.
+     *
+     * What this test proves:
+     *   - Exactly 1 PaymentAttempt in DB  →  only 1 Razorpay order created.
+     *   - Both results carry the same razorpay_order_id.
+     *   - mockRazorpayClient.createOrderCallCount === 1.
+     */
+    it('concurrent duplicate requests produce exactly ONE PaymentAttempt and ONE Razorpay order', async () => {
+      // Launch both without awaiting individually — they interleave at I/O points.
+      const [r1, r2] = await Promise.all([
+        paymentService.createPaymentAttempt(testOrderId),
+        paymentService.createPaymentAttempt(testOrderId),
+      ]);
 
-      // Mark as captured
-      const paymentRepo = TestDataSource.getRepository(Payment);
-      const payment = await paymentRepo.findOne({ where: { order_id: testOrderId } });
-      if (payment) {
-        payment.status = 'captured';
-        await paymentRepo.save(payment);
-      }
+      // ── core invariants ─────────────────────────────────────────────────
+      // Both callers must see the same Razorpay order ID.
+      expect(r1.razorpay_order_id).toBe(r2.razorpay_order_id);
 
-      try {
-        await paymentService.createPaymentAttempt(testOrderId);
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toBe('Order payment already captured');
-      }
+      // Razorpay was called exactly once — no wasted order created.
+      expect(mockRazorpayClient.createOrderCallCount).toBe(1);
+
+      // Exactly one PaymentAttempt row in the database.
+      const attempts = await TestDataSource.getRepository(PaymentAttempt).find({
+        where: { order_id: testOrderId },
+        order: { attempt_number: 'ASC' },
+      });
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0].attempt_number).toBe(1);
+      expect(attempts[0].razorpay_order_id).toBe(r1.razorpay_order_id);
+    });
+
+    it('triple-concurrent requests still produce exactly one attempt', async () => {
+      const [r1, r2, r3] = await Promise.all([
+        paymentService.createPaymentAttempt(testOrderId),
+        paymentService.createPaymentAttempt(testOrderId),
+        paymentService.createPaymentAttempt(testOrderId),
+      ]);
+
+      expect(r1.razorpay_order_id).toBe(r2.razorpay_order_id);
+      expect(r2.razorpay_order_id).toBe(r3.razorpay_order_id);
+      expect(mockRazorpayClient.createOrderCallCount).toBe(1);
+
+      const attempts = await TestDataSource.getRepository(PaymentAttempt).find({
+        where: { order_id: testOrderId },
+      });
+      expect(attempts).toHaveLength(1);
     });
   });
 
+  // ── verifyPayment ─────────────────────────────────────────────────────────
+
   describe('verifyPayment', () => {
+    let rzpOrderId: string;
+
     beforeEach(async () => {
-      // Create payment attempt first
-      await paymentService.createPaymentAttempt(testOrderId);
+      const r = await paymentService.createPaymentAttempt(testOrderId);
+      rzpOrderId = r.razorpay_order_id;
     });
 
-    it('should verify payment successfully', async () => {
-      const orderId = testOrderId;
-      const paymentId = 'pay_test_123';
-      const signature = crypto
-        .createHmac('sha256', 'test_secret_mock')
-        .update(`${orderId}|${paymentId}`)
-        .digest('hex');
+    it('captures the payment and confirms the order', async () => {
+      const paymentId = 'pay_capture_test_1';
+      const sig = buildSignature(rzpOrderId, paymentId);
 
       const result = await paymentService.verifyPayment({
-        order_id: orderId,
+        order_id: testOrderId,
         razorpay_payment_id: paymentId,
-        razorpay_signature: signature,
+        razorpay_signature: sig,
       });
 
       expect(result.status).toBe('captured');
       expect(result.razorpay_payment_id).toBe(paymentId);
-      expect(result.razorpay_signature).toBe(signature);
 
-      // Verify order status is updated
-      const order = await TestDataSource.getRepository(Order).findOne({ where: { id: orderId } });
-      expect(order?.status).toBe('confirmed');
+      const order = await TestDataSource.getRepository(Order).findOneOrFail({
+        where: { id: testOrderId },
+      });
+      expect(order.status).toBe('confirmed');
     });
 
-    it('should reject invalid signature', async () => {
-      const orderId = testOrderId;
-      const paymentId = 'pay_test_123';
-      const invalidSignature = 'invalid_signature';
-
-      try {
-        await paymentService.verifyPayment({
-          order_id: orderId,
-          razorpay_payment_id: paymentId,
-          razorpay_signature: invalidSignature,
-        });
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toBe('Invalid payment signature');
-      }
+    it('rejects an invalid signature', async () => {
+      await expect(
+        paymentService.verifyPayment({
+          order_id: testOrderId,
+          razorpay_payment_id: 'pay_bad',
+          razorpay_signature: 'not_a_real_sig',
+        })
+      ).rejects.toThrow('Invalid payment signature');
     });
 
-    it('should be idempotent for successful payments', async () => {
-      const orderId = testOrderId;
-      const paymentId = 'pay_test_123';
-      const signature = crypto
-        .createHmac('sha256', 'test_secret_mock')
-        .update(`${orderId}|${paymentId}`)
-        .digest('hex');
+    it('is idempotent — calling verify twice with the same IDs is safe', async () => {
+      const paymentId = 'pay_idem_test_1';
+      const sig = buildSignature(rzpOrderId, paymentId);
 
-      // First verification
-      const result1 = await paymentService.verifyPayment({
-        order_id: orderId,
+      const r1 = await paymentService.verifyPayment({
+        order_id: testOrderId,
         razorpay_payment_id: paymentId,
-        razorpay_signature: signature,
+        razorpay_signature: sig,
+      });
+      const r2 = await paymentService.verifyPayment({
+        order_id: testOrderId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: sig,
       });
 
-      // Second verification with same data
-      const result2 = await paymentService.verifyPayment({
-        order_id: orderId,
-        razorpay_payment_id: paymentId,
-        razorpay_signature: signature,
-      });
+      expect(r2.id).toBe(r1.id);
+      expect(r2.razorpay_payment_id).toBe(paymentId);
+      expect(r2.status).toBe('captured');
 
-      expect(result1.id).toBe(result2.id);
-      expect(result1.razorpay_payment_id).toBe(result2.razorpay_payment_id);
-
-      // Verify only one payment exists
       const payments = await TestDataSource.getRepository(Payment).find({
-        where: { order_id: orderId },
+        where: { order_id: testOrderId },
       });
-      expect(payments.length).toBe(1);
+      expect(payments).toHaveLength(1);
     });
 
-    it('should reject double-capture with different payment IDs', async () => {
-      const orderId = testOrderId;
-      const paymentId1 = 'pay_test_123';
-      const signature1 = crypto
-        .createHmac('sha256', 'test_secret_mock')
-        .update(`${orderId}|${paymentId1}`)
-        .digest('hex');
-
-      // First verification
+    it('rejects double-capture with a DIFFERENT payment ID', async () => {
+      const paymentId1 = 'pay_dcap_1';
       await paymentService.verifyPayment({
-        order_id: orderId,
+        order_id: testOrderId,
         razorpay_payment_id: paymentId1,
-        razorpay_signature: signature1,
+        razorpay_signature: buildSignature(rzpOrderId, paymentId1),
       });
 
-      // Try to verify with different payment ID
-      const paymentId2 = 'pay_test_456';
-      const signature2 = crypto
-        .createHmac('sha256', 'test_secret_mock')
-        .update(`${orderId}|${paymentId2}`)
-        .digest('hex');
-
-      try {
-        await paymentService.verifyPayment({
-          order_id: orderId,
+      const paymentId2 = 'pay_dcap_2';
+      await expect(
+        paymentService.verifyPayment({
+          order_id: testOrderId,
           razorpay_payment_id: paymentId2,
-          razorpay_signature: signature2,
-        });
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toContain('already captured');
-      }
+          razorpay_signature: buildSignature(rzpOrderId, paymentId2),
+        })
+      ).rejects.toThrow('already captured');
     });
 
-    it('should reject missing fields', async () => {
-      try {
-        await paymentService.verifyPayment({
+    it('rejects missing required fields', async () => {
+      await expect(
+        paymentService.verifyPayment({
           order_id: testOrderId,
           razorpay_payment_id: '',
           razorpay_signature: '',
-        });
-        fail('Should have thrown error');
-      } catch (error) {
-        expect((error as Error).message).toContain('Missing required');
-      }
+        })
+      ).rejects.toThrow('Missing required');
     });
 
-    it('should reject nonexistent payment', async () => {
-      // For a nonexistent order, the signature will be invalid first
-      // This is correct behavior - we verify signature before checking payment existence
-      // to avoid leaking information about payment state
-      try {
-        await paymentService.verifyPayment({
+    it('returns 404-equivalent error for an order with no attempt', async () => {
+      await expect(
+        paymentService.verifyPayment({
           order_id: '00000000-0000-0000-0000-000000000000',
-          razorpay_payment_id: 'pay_123',
-          razorpay_signature: 'invalid_sig',
-        });
-        fail('Should have thrown error');
-      } catch (error) {
-        // Either invalid signature or payment not found is acceptable
-        expect((error as Error).message).toMatch(/Invalid payment signature|Payment not found for order/);
-      }
+          razorpay_payment_id: 'pay_x',
+          razorpay_signature: 'sig_x',
+        })
+      ).rejects.toThrow('Payment attempt not found for order');
+    });
+
+    it('concurrent verify calls for the same payment are idempotent', async () => {
+      const paymentId = 'pay_concurrent_verify';
+      const sig = buildSignature(rzpOrderId, paymentId);
+
+      const [r1, r2] = await Promise.all([
+        paymentService.verifyPayment({
+          order_id: testOrderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: sig,
+        }),
+        paymentService.verifyPayment({
+          order_id: testOrderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: sig,
+        }),
+      ]);
+
+      // Both must resolve to the same captured state.
+      expect(r1.status).toBe('captured');
+      expect(r2.status).toBe('captured');
+      expect(r1.razorpay_payment_id).toBe(paymentId);
+      expect(r2.razorpay_payment_id).toBe(paymentId);
+
+      // Only one Payment row.
+      const payments = await TestDataSource.getRepository(Payment).find({
+        where: { order_id: testOrderId },
+      });
+      expect(payments).toHaveLength(1);
     });
   });
+
+  // ── getPaymentByOrderId ───────────────────────────────────────────────────
 
   describe('getPaymentByOrderId', () => {
-    it('should return payment for order', async () => {
-      // Create payment attempt
+    it('returns the payment after an attempt is created', async () => {
       await paymentService.createPaymentAttempt(testOrderId);
 
-      const payment = await paymentService.getPaymentByOrderId(testOrderId);
-
-      expect(payment).toBeDefined();
-      expect(payment?.order_id).toBe(testOrderId);
-      expect(payment?.status).toBe('pending');
-      expect(Number(payment!.amount_cents)).toBe(100000);
+      const p = await paymentService.getPaymentByOrderId(testOrderId);
+      expect(p).not.toBeNull();
+      expect(p?.order_id).toBe(testOrderId);
+      expect(p?.status).toBe('pending');
+      expect(Number(p?.amount_cents)).toBe(100_000);
     });
 
-    it('should return null for nonexistent order', async () => {
-      const payment = await paymentService.getPaymentByOrderId(
-        '00000000-0000-0000-0000-000000000000'
-      );
-
-      expect(payment).toBeNull();
+    it('returns null for an unknown order', async () => {
+      const p = await paymentService.getPaymentByOrderId('00000000-0000-0000-0000-000000000000');
+      expect(p).toBeNull();
     });
   });
 
+  // ── getLatestPaymentAttempt ───────────────────────────────────────────────
+
   describe('getLatestPaymentAttempt', () => {
-    it('should return latest attempt', async () => {
-      // Create first attempt
+    it('returns the highest attempt_number after a retry', async () => {
       await paymentService.createPaymentAttempt(testOrderId);
 
-      // Mark as failed and retry
       const paymentRepo = TestDataSource.getRepository(Payment);
-      const payment = await paymentRepo.findOne({ where: { order_id: testOrderId } });
-      if (payment) {
-        payment.status = 'failed';
-        await paymentRepo.save(payment);
-      }
+      const payment = await paymentRepo.findOneOrFail({ where: { order_id: testOrderId } });
+      payment.status = 'failed';
+      await paymentRepo.save(payment);
 
-      // Create second attempt
       await paymentService.createPaymentAttempt(testOrderId);
 
       const latest = await paymentService.getLatestPaymentAttempt(testOrderId);
-
-      expect(latest).toBeDefined();
       expect(latest?.attempt_number).toBe(2);
     });
 
-    it('should return null for nonexistent order', async () => {
-      const attempt = await paymentService.getLatestPaymentAttempt(
-        '00000000-0000-0000-0000-000000000000'
-      );
-
-      expect(attempt).toBeNull();
+    it('returns null for an unknown order', async () => {
+      const a = await paymentService.getLatestPaymentAttempt('00000000-0000-0000-0000-000000000000');
+      expect(a).toBeNull();
     });
   });
 
-  describe('RazorpayClient', () => {
-    it('should verify valid signature', () => {
-      const client = new RazorpayClient('key', 'secret');
-      const orderId = 'order_123';
-      const paymentId = 'pay_456';
-      const signature = crypto
-        .createHmac('sha256', 'secret')
-        .update(`${orderId}|${paymentId}`)
-        .digest('hex');
+  // ── RazorpayClient unit tests ─────────────────────────────────────────────
 
-      const isValid = client.verifySignature(orderId, paymentId, signature);
-
-      expect(isValid).toBe(true);
+  describe('RazorpayClient.verifySignature', () => {
+    it('accepts a correctly computed HMAC signature', () => {
+      const client = new RazorpayClient('key', 'my_secret');
+      const msg = 'order_ABC|pay_XYZ';
+      const sig = crypto.createHmac('sha256', 'my_secret').update(msg).digest('hex');
+      expect(client.verifySignature(msg, sig)).toBe(true);
     });
 
-    it('should reject invalid signature', () => {
-      const client = new RazorpayClient('key', 'secret');
-      const orderId = 'order_123';
-      const paymentId = 'pay_456';
-      const invalidSignature = 'invalid';
+    it('rejects a tampered signature', () => {
+      const client = new RazorpayClient('key', 'my_secret');
+      expect(client.verifySignature('order_ABC|pay_XYZ', 'bad_sig')).toBe(false);
+    });
 
-      const isValid = client.verifySignature(orderId, paymentId, invalidSignature);
-
-      expect(isValid).toBe(false);
+    it('rejects a signature computed with the wrong secret', () => {
+      const client = new RazorpayClient('key', 'my_secret');
+      const badSig = crypto.createHmac('sha256', 'wrong_secret').update('order_ABC|pay_XYZ').digest('hex');
+      expect(client.verifySignature('order_ABC|pay_XYZ', badSig)).toBe(false);
     });
   });
 });

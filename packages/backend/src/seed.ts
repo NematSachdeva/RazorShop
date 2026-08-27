@@ -1,18 +1,50 @@
 import { AppDataSource } from './config/database.js';
 import { Customer } from './models/Customer.js';
+import { Merchant } from './models/Merchant.js';
 import { Product } from './models/Product.js';
 import { Inventory } from './models/Inventory.js';
+import bcrypt from 'bcryptjs';
 
 async function seedDatabase() {
   try {
     await AppDataSource.initialize();
     console.log('Seeding database...');
 
-    // Seed customers
+    // Seed demo customers with authentication
+    // IMPORTANT: These are demo credentials for development only
+    // Development password: "password123" (hashed with bcrypt)
+    const demoCustomerPassword = await bcrypt.hash('password123', 10);
+    const demoMerchantPassword = await bcrypt.hash('password123', 10);
+
     const customers = [
-      { email: 'alice@example.com', phone: '+919876543210', name: 'Alice Kumar' },
-      { email: 'bob@example.com', phone: '+919876543211', name: 'Bob Singh' },
-      { email: 'charlie@example.com', phone: '+919876543212', name: 'Charlie Patel' },
+      {
+        email: 'customer@example.com',
+        phone: '+919876543210',
+        name: 'Demo Customer',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'alice@example.com',
+        phone: '+919876543211',
+        name: 'Alice Kumar',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'bob@example.com',
+        phone: '+919876543212',
+        name: 'Bob Singh',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'charlie@example.com',
+        phone: '+919876543213',
+        name: 'Charlie Patel',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
     ];
 
     for (const customerData of customers) {
@@ -23,7 +55,27 @@ async function seedDatabase() {
         await AppDataSource.getRepository(Customer).insert(customerData);
       }
     }
-    console.log('✓ Seeded customers');
+    console.log('✓ Seeded customers with authentication');
+
+    // Seed demo merchant
+    const merchants = [
+      {
+        email: 'merchant@example.com',
+        name: 'Demo Merchant',
+        contact_phone: '+919876543200',
+        status: 'active' as const,
+      },
+    ];
+
+    for (const merchantData of merchants) {
+      const existing = await AppDataSource.getRepository(Merchant).findOne({
+        where: { email: merchantData.email },
+      });
+      if (!existing) {
+        await AppDataSource.getRepository(Merchant).insert(merchantData);
+      }
+    }
+    console.log('✓ Seeded merchants');
 
     // Seed 120+ diverse products with realistic Indian prices
     const products = [

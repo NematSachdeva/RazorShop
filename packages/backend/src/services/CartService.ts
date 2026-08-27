@@ -57,6 +57,31 @@ export class CartService {
     return this.getCartRepository().save(cart);
   }
 
+  /**
+   * Get or create active cart for a customer
+   * If an active cart exists, return it; otherwise create a new one
+   * Returns CartResponse with items loaded
+   */
+  async getOrCreateCart(customerId: string): Promise<CartResponse> {
+    // Try to find existing active cart
+    let cart = await this.getCartRepository().findOne({
+      where: { customer_id: customerId, status: 'active' },
+      relations: ['items', 'items.product'],
+    });
+
+    if (!cart) {
+      // Create new cart
+      const newCart = this.getCartRepository().create({
+        customer_id: customerId,
+        status: 'active',
+        items: [],
+      });
+      cart = await this.getCartRepository().save(newCart);
+    }
+
+    return this.cartToResponse(cart);
+  }
+
   async getCartById(cartId: string): Promise<CartResponse | null> {
     const cart = await this.getCartRepository().findOne({
       where: { id: cartId },

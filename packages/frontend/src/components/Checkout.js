@@ -4,12 +4,18 @@ import { getApiUrl } from '../config/api';
 export default function Checkout({ cart, customerId, onOrderCreated, onCancel }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [orderCreationAttempted, setOrderCreationAttempted] = useState(false);
     const handleCreateOrder = async () => {
+        // Prevent double-submission
+        if (loading || orderCreationAttempted) {
+            return;
+        }
         if (!cart.id) {
             setError('Cart is invalid');
             return;
         }
         setLoading(true);
+        setOrderCreationAttempted(true);
         setError(null);
         try {
             const response = await fetch(getApiUrl('/orders'), {
@@ -29,6 +35,7 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel })
         }
         catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
+            setOrderCreationAttempted(false);
             setLoading(false);
         }
     };

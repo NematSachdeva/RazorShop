@@ -28,7 +28,7 @@ export class AddPaymentTables1703000000003 implements MigrationInterface {
         "created_at" TIMESTAMP DEFAULT now(),
         "updated_at" TIMESTAMP DEFAULT now(),
         CONSTRAINT "fk_payments_order" FOREIGN KEY ("order_id") REFERENCES "orders"("id"),
-        UNIQUE("order_id")
+        CONSTRAINT "uk_payments_order_id" UNIQUE ("order_id")
       )
     `);
 

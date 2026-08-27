@@ -18,14 +18,21 @@ interface Order {
 export default function Checkout({ cart, customerId, onOrderCreated, onCancel }: CheckoutProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderCreationAttempted, setOrderCreationAttempted] = useState(false);
 
   const handleCreateOrder = async () => {
+    // Prevent double-submission
+    if (loading || orderCreationAttempted) {
+      return;
+    }
+
     if (!cart.id) {
       setError('Cart is invalid');
       return;
     }
 
     setLoading(true);
+    setOrderCreationAttempted(true);
     setError(null);
 
     try {
@@ -47,6 +54,7 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
       onOrderCreated(order.id, order.total_cents);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
+      setOrderCreationAttempted(false);
       setLoading(false);
     }
   };

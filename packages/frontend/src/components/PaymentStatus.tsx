@@ -57,10 +57,10 @@ export default function PaymentStatus({ status }: PaymentStatusProps) {
 
   return (
     <div className={`p-4 rounded-lg border mb-6 text-center ${getStatusColor()} border-current border-opacity-20`}>
-      <p className={`${getStatusColor()} font-medium`}>
+      <div className={`${getStatusColor()} font-medium flex items-center justify-center gap-2`}>
         {getSpinner()}
-        {getStatusMessage()}
-      </p>
+        <span>{getStatusMessage()}</span>
+      </div>
     </div>
   );
 }

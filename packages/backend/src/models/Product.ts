@@ -4,7 +4,10 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { Merchant } from './Merchant.js';
 
 @Entity('products')
 export class Product {
@@ -22,6 +25,13 @@ export class Product {
 
   @Column({ type: 'varchar', nullable: true })
   category?: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  merchant_id?: string;
+
+  @ManyToOne(() => Merchant, { nullable: true })
+  @JoinColumn({ name: 'merchant_id' })
+  merchant?: Merchant;
 
   @CreateDateColumn()
   created_at!: Date;

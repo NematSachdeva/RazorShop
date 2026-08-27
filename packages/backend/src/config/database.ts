@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { env } from './env.js';
 import { Customer } from '../models/Customer.js';
+import { Merchant } from '../models/Merchant.js';
 import { Product } from '../models/Product.js';
 import { Inventory } from '../models/Inventory.js';
 import { Cart } from '../models/Cart.js';
@@ -10,13 +11,21 @@ import { OrderItem } from '../models/OrderItem.js';
 import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { Payment } from '../models/Payment.js';
 import { WebhookEvent } from '../models/WebhookEvent.js';
+import { Recommendation } from '../models/Recommendation.js';
+import { RecommendationEvent } from '../models/RecommendationEvent.js';
+import { PaymentFailure } from '../models/PaymentFailure.js';
+import { RecoveryCase } from '../models/RecoveryCase.js';
+import { RecoveryAction } from '../models/RecoveryAction.js';
+import { MerchantConfig } from '../models/MerchantConfig.js';
+import { AgentDecision } from '../models/AgentDecision.js';
+import { AuditLog } from '../models/AuditLog.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: env.DATABASE_URL,
   synchronize: false, // Use migrations instead
   logging: env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
-  entities: [Customer, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent],
+  entities: [Customer, Merchant, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent, Recommendation, RecommendationEvent, PaymentFailure, RecoveryCase, RecoveryAction, MerchantConfig, AgentDecision, AuditLog],
   migrations: ['src/migrations/*.ts'],
   subscribers: [],
   ssl: env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,

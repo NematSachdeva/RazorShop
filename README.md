@@ -8,7 +8,7 @@ A full-stack application for Razorpay-focused AI hackathon demonstrating AI-driv
 - **Backend:** Node.js + Express + TypeScript
 - **Database:** PostgreSQL
 - **ORM:** TypeORM
-- **AI/LLM:** Claude API (Anthropic)
+- **AI/LLM:** Groq API (llama3-70b-8192)
 - **Payment:** Razorpay Test Mode
 
 ## Prerequisites
@@ -286,8 +286,9 @@ RAZORPAY_KEY_ID=rzp_test_TUg86oRiFKtxoD
 RAZORPAY_KEY_SECRET=<test_secret>
 RAZORPAY_WEBHOOK_SECRET=<test_webhook_secret>
 
-# AI (optional for M4+)
-ANTHROPIC_API_KEY=sk-ant-...
+# Groq AI (optional for M4+)
+# Used for product recommendations, cart cross-sell, and bundle detection
+GROQ_API_KEY=gsk_...
 ```
 
 ### M1 Models in Database
@@ -352,13 +353,177 @@ ANTHROPIC_API_KEY=sk-ant-...
 ## Test Results
 
 **Backend Test Suites:** 10/10 passing  
-**Backend Tests:** 119/119 passing  
+**Backend Tests:** 123/123 passing  
 **Backend TypeCheck:** ✓ Passing  
 **Backend Build:** ✓ Passing  
 **Frontend Build:** ✓ Passing  
 **Database Migrations:** 0 pending  
 
-## Troubleshooting
+## M4 — AI Recommendations
+
+### Overview
+
+M4 implements AI-powered product recommendations using Groq API (llama3-70b-8192). The system provides:
+- **Product Recommendations:** Similar products based on category, price, and customer behavior
+- **Cart Cross-Sell:** Complementary products for current cart
+- **Bundle Detection:** Products that naturally belong together
+- **Event Tracking:** Track shown, clicked, added_to_cart, purchased events
+
+### Architecture
+
+```
+RecommendationService
+├── getProductRecommendations(productId) → Similar products
+├── getCartRecommendations(cartId) → Cross-sell suggestions
+├── detectBundles(productId) → Bundle suggestions
+├── trackRecommendationEvent(recId, eventType, metadata) → Track events
+└── getRecommendationMetrics(recId) → Analytics metrics
+```
+
+### API Endpoints
+
+#### GET /api/products/:id/recommendations
+Get product recommendations (similar products).
+
+**Query Parameters:**
+- `limit` (optional, default: 5, max: 20)
+
+**Response:**
+```json
+{
+  "product_id": "...",
+  "recommendations": [
+    {
+      "id": "...",
+      "recommendation_type": "product_to_product",
+      "reason": "similar_category",
+      "products": [
+        {"product_id": "...", "score": 0.95, "reason": "similar category"}
+      ],
+      "reasoning": {
+        "explanation": "Based on category similarity",
+        "confidence": 0.92,
+        "sources": ["category_similarity"]
+      },
+      "metrics": {
+        "shown_count": 10,
+        "clicked_count": 3,
+        "added_to_cart_count": 1
+      }
+    }
+  ],
+  "products": [
+    {"id": "...", "name": "...", "description": "...", "price_cents": 50000, "category": "..."}
+  ]
+}
+```
+
+#### GET /api/carts/:id/recommendations
+Get cart recommendations (cross-sell/bundle suggestions).
+
+**Response:**
+```json
+{
+  "cart_id": "...",
+  "recommendations": [...],
+  "products": [...]
+}
+```
+
+#### POST /api/recommendations/:id/events
+Track a recommendation event.
+
+**Request Body:**
+```json
+{
+  "event_type": "shown|clicked|added_to_cart|purchased|ignored",
+  "metadata": {"position": 1, "device_type": "desktop"}
+}
+```
+
+**Response:**
+```json
+{
+  "id": "...",
+  "recommendation_id": "...",
+  "event_type": "shown",
+  "created_at": "2024-01-15T10:30:00.000Z"
+}
+```
+
+### Event Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `shown` | Recommendation displayed | Track impression rate |
+| `clicked` | Recommendation clicked | Calculate click-through rate |
+| `added_to_cart` | Product added to cart | Measure conversion |
+| `purchased` | Product purchased | Full attribution |
+| `ignored` | User dismissed | Improve ranking |
+
+### Metrics
+
+The system tracks and calculates:
+
+- **shown_count** — Number of times recommendation was displayed
+- **clicked_count** — Number of clicks
+- **added_to_cart_count** — Add-to-cart events
+- **purchased_count** — Purchased events
+- **click_rate** — clicked / shown
+- **conversion_rate** — purchased / shown
+
+### Groq AI Integration
+
+**API Endpoint:** `https://api.groq.com/openai/v1/chat/completions`  
+**Model:** `llama3-70b-8192`
+
+The service:
+- Uses `GROQ_API_KEY` from environment
+- Returns deterministic fallback when Groq is unavailable
+- Caches recommendations for 24 hours
+- Validates AI responses against product database
+
+### Frontend Components
+
+#### ProductRecommendations
+- Shows on product detail page
+- Displays similar products with AI reasoning
+- Tracks: shown, clicked, added_to_cart
+
+#### CartRecommendations
+- Shows in cart sidebar
+- Displays complementary products and bundles
+- Tracks: shown, clicked, added_to_cart
+
+### Environment Configuration
+
+Add to `.env`:
+```bash
+GROQ_API_KEY=gsk_YourGroqAPIKeyHere
+```
+
+### Database Entities
+
+**recommendations**
+- id (UUID)
+- product_id / cart_id
+- recommendation_type (product_to_product, cart_cross_sell, home_page, etc.)
+- reason (similar_category, frequently_bought_together, etc.)
+- recommended_products (JSONB array)
+- reasoning (JSONB object with explanation, confidence, sources)
+- metadata (JSONB with cache_until, source, etc.)
+- shown_count, clicked_count, added_to_cart_count
+- created_at, updated_at
+
+**recommendation_events**
+- id (UUID)
+- recommendation_id (FK)
+- customer_id (optional)
+- product_id (optional)
+- order_id (optional)
+- event_type
+- metadata (JSONB)
+- created_at
 
 ### Database Connection Error
 

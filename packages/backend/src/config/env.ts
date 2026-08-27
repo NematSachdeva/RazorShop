@@ -34,7 +34,8 @@ interface Environment {
   RAZORPAY_KEY_ID: string;
   RAZORPAY_KEY_SECRET: string;
   RAZORPAY_WEBHOOK_SECRET: string;
-  ANTHROPIC_API_KEY: string;
+  GROQ_API_KEY: string;
+  JWT_SECRET: string;
 }
 
 let cachedEnv: Environment | null = null;
@@ -51,7 +52,8 @@ function validateEnv(): Environment {
     'RAZORPAY_KEY_ID',
     'RAZORPAY_KEY_SECRET',
     'RAZORPAY_WEBHOOK_SECRET',
-    'ANTHROPIC_API_KEY',
+    'GROQ_API_KEY',
+    'JWT_SECRET',
   ];
 
   const missing = requiredVars.filter((v) => !process.env[v]);
@@ -72,7 +74,8 @@ function validateEnv(): Environment {
     RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
     RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
     RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || '',
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+    GROQ_API_KEY: process.env.GROQ_API_KEY || '',
+    JWT_SECRET: process.env.JWT_SECRET || '',
   };
 }
 

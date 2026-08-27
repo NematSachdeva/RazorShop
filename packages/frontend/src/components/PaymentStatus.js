@@ -42,5 +42,5 @@ export default function PaymentStatus({ status }) {
         }
         return null;
     };
-    return (_jsx("div", { className: `p-4 rounded-lg border mb-6 text-center ${getStatusColor()} border-current border-opacity-20`, children: _jsxs("p", { className: `${getStatusColor()} font-medium`, children: [getSpinner(), getStatusMessage()] }) }));
+    return (_jsx("div", { className: `p-4 rounded-lg border mb-6 text-center ${getStatusColor()} border-current border-opacity-20`, children: _jsxs("div", { className: `${getStatusColor()} font-medium flex items-center justify-center gap-2`, children: [getSpinner(), _jsx("span", { children: getStatusMessage() })] }) }));
 }
