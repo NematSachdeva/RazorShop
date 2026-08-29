@@ -10,6 +10,7 @@ export interface ProductListQuery {
   minPrice?: number;
   maxPrice?: number;
   sort?: 'price_asc' | 'price_desc' | 'name_asc' | 'name_desc' | 'newest';
+  includeTestFixtures?: boolean;
 }
 
 export interface ProductListResponse {
@@ -34,9 +35,19 @@ export class ProductService {
 
     let q = this.getRepository().createQueryBuilder('product');
 
+    // Exclude test fixture products & archived products from customer catalog by default
+    if (!query.includeTestFixtures) {
+      q = q.where(
+        "product.name NOT ILIKE :testPattern AND (product.category IS NULL OR (product.category != 'test' AND product.category != 'archived'))",
+        { testPattern: 'Test Product%' }
+      );
+    } else {
+      q = q.where("(product.category IS NULL OR product.category != 'archived')");
+    }
+
     // Apply category filter
     if (query.category) {
-      q = q.where('product.category = :category', { category: query.category });
+      q = q.andWhere('product.category = :category', { category: query.category });
     }
 
     // Apply search filter
@@ -79,10 +90,27 @@ export class ProductService {
     const total = await q.getCount();
 
     // Get paginated results
-    const data = await q.skip(skip).take(limit).getMany();
+    const products = await q.skip(skip).take(limit).getMany();
+
+    const inventoryRepo = this.dataSource.getRepository('Inventory');
+    const data = [];
+    for (const p of products) {
+      const inv: any = await inventoryRepo.findOne({ where: { product_id: p.id } });
+      const qOnHand = inv?.quantity_on_hand || 0;
+      const qReserved = inv?.reserved || 0;
+      data.push({
+        ...p,
+        price_cents: Number(p.price_cents),
+        inventory: {
+          quantity_on_hand: qOnHand,
+          reserved: qReserved,
+          available: Math.max(0, qOnHand - qReserved),
+        },
+      });
+    }
 
     return {
-      data,
+      data: data as any,
       total,
       page,
       limit,
@@ -91,7 +119,21 @@ export class ProductService {
   }
 
   async getProductById(id: string): Promise<Product | null> {
-    return this.getRepository().findOne({ where: { id } });
+    const p = await this.getRepository().findOne({ where: { id } });
+    if (!p) return null;
+    const inventoryRepo = this.dataSource.getRepository('Inventory');
+    const inv: any = await inventoryRepo.findOne({ where: { product_id: p.id } });
+    const qOnHand = inv?.quantity_on_hand || 0;
+    const qReserved = inv?.reserved || 0;
+    return {
+      ...p,
+      price_cents: Number(p.price_cents),
+      inventory: {
+        quantity_on_hand: qOnHand,
+        reserved: qReserved,
+        available: Math.max(0, qOnHand - qReserved),
+      },
+    } as any;
   }
 
   async getProductsByIds(ids: string[]): Promise<Product[]> {
@@ -101,13 +143,17 @@ export class ProductService {
     });
   }
 
-  async getCategories(): Promise<string[]> {
-    const results = await this.getRepository()
+  async getCategories(includeTestFixtures: boolean = false): Promise<string[]> {
+    let q = this.getRepository()
       .createQueryBuilder('product')
       .select('DISTINCT product.category', 'category')
-      .where('product.category IS NOT NULL')
-      .orderBy('product.category', 'ASC')
-      .getRawMany();
+      .where('product.category IS NOT NULL');
+
+    if (!includeTestFixtures) {
+      q = q.andWhere("product.category != 'test' AND product.name NOT ILIKE :testPattern", { testPattern: 'Test Product%' });
+    }
+
+    const results = await q.orderBy('product.category', 'ASC').getRawMany();
 
     return results.map((r) => r.category).filter((c) => c !== null);
   }

@@ -7,6 +7,7 @@ import { MerchantConfig } from '../models/MerchantConfig.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { Order } from '../models/Order.js';
 import { PaymentFailure } from '../models/PaymentFailure.js';
+import { PaymentFailureService } from './PaymentFailureService.js';
 
 interface GroqResponse {
   id: string;
@@ -30,10 +31,12 @@ interface AIAnalysis {
 
 export class RecoveryAgentService {
   private dataSource: DataSource;
+  private paymentFailureService: PaymentFailureService;
   private static readonly MODEL = 'llama3-70b-8192';
 
   constructor(dataSource: DataSource = AppDataSource) {
     this.dataSource = dataSource;
+    this.paymentFailureService = new PaymentFailureService(dataSource);
   }
 
   private getRecoveryCaseRepository() {
@@ -89,7 +92,32 @@ export class RecoveryAgentService {
       merchantConfig = await this.getMerchantConfigRepository().save(merchantConfig);
     }
 
-    // Build context for AI analysis
+    // Check if customer has opted out
+    const isOptedOut = await this.paymentFailureService.isCustomerOptedOut(
+      defaultMerchantId,
+      recoveryCase.customer_id
+    );
+
+    if (isOptedOut) {
+      // Customer opted out - must abandon or escalate
+      const agentDecision = this.getAgentDecisionRepository().create({
+        recovery_case_id: recoveryCaseId,
+        decision: 'abandon',
+        explanation: 'Customer has opted out of recovery',
+        confidence_score: 100,
+        context: {
+          failure_reason: recoveryCase.payment_failure.reason,
+          failure_count: recoveryCase.payment_failure.failure_count,
+          recovery_attempts: recoveryCase.recovery_attempts,
+          order_amount: recoveryCase.order.total_cents / 100,
+        },
+        guard_rails_enforced: true,
+        guard_rail_violations: 'customer_opted_out',
+      });
+
+      const savedDecision = await this.getAgentDecisionRepository().save(agentDecision);
+      return savedDecision;
+    }
     const context = {
       failure_reason: recoveryCase.payment_failure.reason,
       order_amount: recoveryCase.order.total_cents / 100,

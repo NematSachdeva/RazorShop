@@ -338,7 +338,7 @@ export class PaymentService {
       //    (to work around PostgreSQL constraint visibility issues in some test environments)
       let attemptId: string = '';
       let isOwner: boolean = false;
-      
+
       try {
         const insertResult: any[] = await qr.query(
           `INSERT INTO "payment_attempts"
@@ -510,6 +510,11 @@ export class PaymentService {
         `razorpay_payment_id=${request.razorpay_payment_id}, attempt_number=${attempt.attempt_number}`
       );
 
+      // Trigger payment confirmation email asynchronously (does not block or roll back payment)
+      this.sendPaymentConfirmationEmail(request.order_id).catch((emailErr) => {
+        console.error('[PaymentService] Error sending confirmation email:', emailErr);
+      });
+
       return this.paymentToDTO(payment);
     } catch (err) {
       await qr.rollbackTransaction();
@@ -536,6 +541,165 @@ export class PaymentService {
       where: { order_id: orderId },
       order: { attempt_number: 'DESC' },
     });
+  }
+
+  /**
+   * Explicitly mark a payment as failed and trigger M5 recovery pipeline.
+   */
+  async markPaymentFailed(
+    orderId: string,
+    reason: string,
+    errorContext?: any
+  ): Promise<PaymentDTO> {
+    const paymentRepo = this.getPaymentRepository();
+    let payment = await paymentRepo.findOne({
+      where: { order_id: orderId },
+      relations: ['order', 'order.customer'],
+    });
+
+    if (!payment) {
+      // If no payment record exists, create one
+      const orderRepo = this.getOrderRepository();
+      const order = await orderRepo.findOne({ where: { id: orderId } });
+      if (!order) {
+        throw new Error('Order not found');
+      }
+
+      payment = paymentRepo.create({
+        order_id: orderId,
+        amount_cents: order.total_cents,
+        status: 'failed',
+        failure_reason: reason,
+      });
+      payment = await paymentRepo.save(payment);
+    } else {
+      payment.status = 'failed';
+      payment.failure_reason = reason;
+      payment = await paymentRepo.save(payment);
+    }
+
+    // Trigger PaymentFailureService recovery pipeline
+    const { PaymentFailureService } = await import('./PaymentFailureService.js');
+    const failureService = new PaymentFailureService(this.dataSource);
+    try {
+      await failureService.handlePaymentFailure(payment.id, reason, errorContext);
+    } catch (recoveryErr) {
+      console.error('[PaymentService] Error triggering payment failure recovery:', recoveryErr);
+    }
+
+    return this.paymentToDTO(payment);
+  }
+
+  /**
+   * Send payment confirmation email for a confirmed order (Idempotent).
+   */
+  async sendPaymentConfirmationEmail(orderId: string): Promise<void> {
+    const { AuditLog } = await import('../models/AuditLog.js');
+    const auditRepo = this.dataSource.getRepository(AuditLog);
+
+    // 1. Idempotency Check: check if payment_confirmation_email_sent already exists for order
+    const existingSent = await auditRepo.findOne({
+      where: {
+        entity_type: 'order',
+        entity_id: orderId,
+        event_type: 'payment_confirmation_email_sent',
+      },
+    });
+
+    if (existingSent) {
+      console.log(`[PaymentService] Confirmation email already sent for order ${orderId}. Skipping.`);
+      return;
+    }
+
+    // 2. Fetch Order with customer, items, product, and payment
+    const orderRepo = this.getOrderRepository();
+    const order = await orderRepo.findOne({
+      where: { id: orderId },
+      relations: ['customer', 'items', 'items.product'],
+    });
+
+    if (!order) {
+      console.warn(`[PaymentService] Order ${orderId} not found for confirmation email.`);
+      return;
+    }
+
+    const paymentRepo = this.getPaymentRepository();
+    const payment = await paymentRepo.findOne({ where: { order_id: orderId } });
+
+    const customerEmail = order.customer?.email;
+    const customerName = order.customer?.name || 'Valued Customer';
+
+    if (!customerEmail || !customerEmail.includes('@')) {
+      console.warn(`[PaymentService] Missing or invalid customer email for order ${orderId}`);
+      await auditRepo.save(
+        auditRepo.create({
+          entity_type: 'order',
+          entity_id: orderId,
+          event_type: 'payment_confirmation_email_failed',
+          description: 'Missing or invalid customer email',
+          details: { reason: 'missing_email' },
+        })
+      );
+      return;
+    }
+
+    const { env } = await import('../config/env.js');
+    const { emailService } = await import('./EmailService.js');
+
+    const items = (order.items || []).map((item) => ({
+      name: item.product?.name || 'Product',
+      quantity: item.quantity,
+      unitPriceCents: Number(item.price_cents),
+      lineTotalCents: Number(item.line_total_cents),
+    }));
+
+    const result = await emailService.sendPaymentConfirmationNotification(
+      customerEmail,
+      customerName,
+      order.order_number || `ORD-${order.id.slice(0, 8)}`,
+      {
+        orderId: order.id,
+        razorpayPaymentId: payment?.razorpay_payment_id || 'N/A',
+        orderDate: new Date(order.created_at).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }),
+        items,
+        subtotalCents: Number(order.subtotal_cents),
+        discountCents: Number(order.discount_cents || 0),
+        totalCents: Number(order.total_cents),
+        orderLink: `${env.FRONTEND_URL}/orders?highlight=${order.id}`,
+      }
+    );
+
+    if (result.success) {
+      await auditRepo.save(
+        auditRepo.create({
+          entity_type: 'order',
+          entity_id: orderId,
+          event_type: 'payment_confirmation_email_sent',
+          description: `Confirmation email sent via Resend (Message ID: ${result.messageId})`,
+          details: {
+            messageId: result.messageId,
+            customer_email: customerEmail,
+          },
+        })
+      );
+    } else {
+      await auditRepo.save(
+        auditRepo.create({
+          entity_type: 'order',
+          entity_id: orderId,
+          event_type: 'payment_confirmation_email_failed',
+          description: `Failed to send confirmation email: ${result.error}`,
+          details: {
+            error: result.error,
+            customer_email: customerEmail,
+          },
+        })
+      );
+    }
   }
 
   // ── private ───────────────────────────────────────────────────────────────

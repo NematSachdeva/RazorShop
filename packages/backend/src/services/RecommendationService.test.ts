@@ -120,7 +120,9 @@ describe('RecommendationService', () => {
       // Mock fetch to throw an error (simulating network failure)
       (global as any).fetch.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(service.getProductRecommendations(testProductId1)).rejects.toThrow('AI recommendation service temporarily unavailable');
+      const result = await service.getProductRecommendations(testProductId1);
+      expect(result.recommendations.length).toBeGreaterThan(0);
+      expect(result.recommendations[0].reasoning?.sources).toContain('catalog_fallback');
     });
   });
 

@@ -30,21 +30,29 @@ export function createPaymentsRouter(paymentService: PaymentService): Router {
         return res.status(400).json({ error: 'Invalid order_id format' });
       }
 
-      // Check for demo mode failure injection
-      const demoFailure = demo ? PaymentSimulator.shouldInjectFailure(demo as string) : null;
-      if (demoFailure) {
-        // In demo mode, simulate a failure by returning error status
-        return res.status(400).json({
-          error: 'Payment failed (demo mode)',
-          scenario: demoFailure.scenario,
-          reason: demoFailure.failure.reason,
-          recoverable: demoFailure.failure.shouldRetry,
-          recoverableBy: demoFailure.failure.recoverableBy,
-        });
-      }
-
       try {
+        // Create payment attempt row in PostgreSQL
         const paymentInfo = await paymentService.createPaymentAttempt(order_id);
+
+        // Check for demo mode failure injection
+        const demoFailure = demo ? PaymentSimulator.shouldInjectFailure(demo as string) : null;
+        if (demoFailure) {
+          // Trigger deterministic failure recovery pipeline in DB
+          await paymentService.markPaymentFailed(order_id, demoFailure.failure.reason, {
+            scenario: demoFailure.scenario,
+            demo: true,
+          });
+
+          return res.status(400).json({
+            error: 'Payment failed (demo mode)',
+            scenario: demoFailure.scenario,
+            reason: demoFailure.failure.reason,
+            recoverable: demoFailure.failure.shouldRetry,
+            recoverableBy: demoFailure.failure.recoverableBy,
+            razorpay_order_id: paymentInfo.razorpay_order_id,
+          });
+        }
+
         res.status(200).json(paymentInfo);
       } catch (error) {
         if (error instanceof Error) {
@@ -58,6 +66,37 @@ export function createPaymentsRouter(paymentService: PaymentService): Router {
           ) {
             return res.status(409).json({ error: error.message });
           }
+        }
+        throw error;
+      }
+    })
+  );
+
+  // POST /api/payments/fail
+  // Explicitly mark payment as failed and trigger M5/M6 recovery pipeline
+  router.post(
+    '/fail',
+    asyncHandler(async (req: Request, res: Response) => {
+      const { order_id, reason, error_context } = req.body;
+
+      if (!order_id) {
+        return res.status(400).json({ error: 'order_id is required' });
+      }
+
+      if (!UUID_REGEX.test(order_id)) {
+        return res.status(400).json({ error: 'Invalid order_id format' });
+      }
+
+      try {
+        const payment = await paymentService.markPaymentFailed(
+          order_id,
+          reason || 'Payment failed or cancelled by user',
+          error_context
+        );
+        res.status(200).json(payment);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Order not found') {
+          return res.status(404).json({ error: error.message });
         }
         throw error;
       }

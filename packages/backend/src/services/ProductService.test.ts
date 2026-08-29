@@ -14,7 +14,7 @@ describe('ProductService', () => {
   });
 
   it('should list products with default pagination', async () => {
-    const result = await service.listProducts({});
+    const result = await service.listProducts({ includeTestFixtures: true });
     expect(result.data).toBeDefined();
     expect(result.total).toBeGreaterThan(0);
     expect(result.page).toBe(1);
@@ -22,8 +22,8 @@ describe('ProductService', () => {
   });
 
   it('should support pagination', async () => {
-    const result1 = await service.listProducts({ page: 1, limit: 10 });
-    const result2 = await service.listProducts({ page: 2, limit: 10 });
+    const result1 = await service.listProducts({ page: 1, limit: 10, includeTestFixtures: true });
+    const result2 = await service.listProducts({ page: 2, limit: 10, includeTestFixtures: true });
 
     expect(result1.data.length).toBeLessThanOrEqual(10);
     expect(result2.data.length).toBeLessThanOrEqual(10);
@@ -31,7 +31,7 @@ describe('ProductService', () => {
   });
 
   it('should filter by category', async () => {
-    const result = await service.listProducts({ category: 'Electronics' });
+    const result = await service.listProducts({ category: 'Electronics', includeTestFixtures: true });
     
     if (result.data.length > 0) {
       result.data.forEach((product) => {
@@ -41,7 +41,7 @@ describe('ProductService', () => {
   });
 
   it('should search by name and description', async () => {
-    const result = await service.listProducts({ search: 'keyboard' });
+    const result = await service.listProducts({ search: 'keyboard', includeTestFixtures: true });
     
     if (result.data.length > 0) {
       result.data.forEach((product) => {
@@ -52,7 +52,7 @@ describe('ProductService', () => {
   });
 
   it('should sort by price ascending', async () => {
-    const result = await service.listProducts({ sort: 'price_asc', limit: 50 });
+    const result = await service.listProducts({ sort: 'price_asc', limit: 50, includeTestFixtures: true });
     
     if (result.data.length > 1) {
       for (let i = 1; i < result.data.length; i++) {
@@ -64,7 +64,7 @@ describe('ProductService', () => {
   });
 
   it('should sort by price descending', async () => {
-    const result = await service.listProducts({ sort: 'price_desc', limit: 50 });
+    const result = await service.listProducts({ sort: 'price_desc', limit: 50, includeTestFixtures: true });
     
     if (result.data.length > 1) {
       for (let i = 1; i < result.data.length; i++) {
@@ -76,7 +76,7 @@ describe('ProductService', () => {
   });
 
   it('should filter by price range', async () => {
-    const result = await service.listProducts({ minPrice: 100, maxPrice: 500 });
+    const result = await service.listProducts({ minPrice: 100, maxPrice: 500, includeTestFixtures: true });
     
     if (result.data.length > 0) {
       result.data.forEach((product) => {
@@ -88,7 +88,7 @@ describe('ProductService', () => {
   });
 
   it('should get product by ID', async () => {
-    const list = await service.listProducts({ limit: 1 });
+    const list = await service.listProducts({ limit: 1, includeTestFixtures: true });
     if (list.data.length > 0) {
       const product = await service.getProductById(list.data[0].id);
       expect(product).toBeDefined();
@@ -102,7 +102,7 @@ describe('ProductService', () => {
   });
 
   it('should get categories', async () => {
-    const categories = await service.getCategories();
+    const categories = await service.getCategories(true);
     expect(Array.isArray(categories)).toBe(true);
     expect(categories.length).toBeGreaterThan(0);
   });

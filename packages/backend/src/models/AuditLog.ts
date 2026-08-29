@@ -14,7 +14,19 @@ export type AuditEventType =
   | 'guard_rail_triggered'
   | 'customer_opted_out'
   | 'recovery_case_resolved'
-  | 'recovery_case_abandoned';
+  | 'recovery_case_abandoned'
+  | 'customer_responded'
+  | 'customer_response_processed'
+  | 'promise_to_pay_created'
+  | 'promise_deadline_missed'
+  | 'promise_fulfilled'
+  | 'email_sent'
+  | 'email_failed'
+  | 'email_skipped_opt_out'
+  | 'payment_confirmation_email_sent'
+  | 'payment_confirmation_email_failed'
+  | 'insights_generated'
+  | 'insights_generation_failed';
 
 @Entity('audit_logs')
 @Index(['entity_type', 'entity_id'])

@@ -22,11 +22,11 @@ class AuthService {
   /**
    * Register a new user
    */
-  async register(email: string, password: string, name?: string): Promise<AuthResponse> {
+  async register(email: string, password: string, name?: string, role: 'customer' | 'merchant' = 'customer'): Promise<AuthResponse> {
     const response = await fetch(getApiUrl('/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name, role: 'customer' }),
+      body: JSON.stringify({ email, password, name, role }),
     });
 
     if (!response.ok) {

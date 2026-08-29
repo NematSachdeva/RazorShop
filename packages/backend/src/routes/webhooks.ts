@@ -188,6 +188,12 @@ export function createWebhooksRouter(dataSource: DataSource = AppDataSource) {
               if (order) {
                 order.status = 'confirmed';
                 await orderRepo.save(order);
+
+                // Trigger payment confirmation email (idempotency prevents duplicates)
+                const { paymentService } = await import('../services/PaymentService.js');
+                paymentService.sendPaymentConfirmationEmail(order.id).catch((emailErr) => {
+                  console.error('[Webhook] Error sending confirmation email:', emailErr);
+                });
               }
             } else if (!payment && razorpayOrderId) {
               // Webhook arrived before verify endpoint - log for investigation

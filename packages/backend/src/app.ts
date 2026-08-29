@@ -12,6 +12,7 @@ import { createPaymentsRouter } from './routes/payments.js';
 import { createWebhooksRouter } from './routes/webhooks.js';
 import { createRecommendationsRouter } from './routes/recommendations.js';
 import recoveryRoutes from './routes/recovery.js';
+import { createMerchantRouter } from './routes/merchant.js';
 import { OrderService } from './services/OrderService.js';
 import { PaymentService } from './services/PaymentService.js';
 import { RecommendationService } from './services/RecommendationService.js';
@@ -59,6 +60,7 @@ export function createApp(): Express {
   app.use('/api/orders', createOrdersRouter(orderService));
   app.use('/api/payments', createPaymentsRouter(paymentService));
   app.use('/api/recovery', recoveryRoutes);
+  app.use('/api/merchant', createMerchantRouter(AppDataSource));
   app.use('/api/webhooks', createWebhooksRouter(AppDataSource));
 
   // Health check at root for backwards compatibility

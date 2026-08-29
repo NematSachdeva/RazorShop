@@ -34,25 +34,29 @@ interface Product {
 interface ProductRecommendationsProps {
   productId: string;
   className?: string;
+  onAddToCart?: (productId: string) => void;
+  onAddBundleToCart?: (recommendationId: string) => void;
 }
 
 export default function ProductRecommendations({
   productId,
   className = '',
+  onAddToCart,
+  onAddBundleToCart,
 }: ProductRecommendationsProps) {
   const [recommendations, setRecommendations] = useState<ProductRecommendation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [bundle, setBundle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        const response = await fetch(getApiUrl(`/recommendations/products/${productId}?limit=5`));
+        const response = await fetch(getApiUrl(`/recommendations/products/${productId}/recommendations?limit=5`));
         const data = await response.json();
 
         if (!response.ok) {
-          // Non-critical failure - don't break the page
           if (response.status === 404 || response.status === 503) {
             setLoading(false);
             return;
@@ -60,8 +64,19 @@ export default function ProductRecommendations({
           throw new Error(data.error || 'Failed to load recommendations');
         }
 
-        setRecommendations(data.recommendations || []);
+        const fetchedRecs = data.recommendations || [];
+        setRecommendations(fetchedRecs);
         setProducts(data.products || []);
+        setBundle(data.bundle || fetchedRecs[0]?.metadata?.bundle || null);
+
+        // Track shown event
+        if (fetchedRecs.length > 0 && fetchedRecs[0].id) {
+          fetch(getApiUrl(`/recommendations/${fetchedRecs[0].id}/events`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_type: 'shown' }),
+          }).catch((err) => console.warn('Failed to track shown event:', err));
+        }
       } catch (err) {
         console.warn('Failed to fetch recommendations:', err);
         setError(err instanceof Error ? err.message : 'Failed to load recommendations');
@@ -81,7 +96,7 @@ export default function ProductRecommendations({
 
   const handleTrackClick = async (recommendationId: string) => {
     try {
-      // Track the click event
+      if (!recommendationId) return;
       await fetch(getApiUrl(`/recommendations/${recommendationId}/events`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,24 +107,18 @@ export default function ProductRecommendations({
     }
   };
 
-  const handleAddToCart = async (productId: string, recommendationId: string) => {
+  const handleAddToCart = async (targetProductId: string, recommendationId: string) => {
     try {
-      const response = await fetch(getApiUrl('/carts'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: productId, quantity: 1 }),
-      });
-
-      if (response.ok) {
-        // Track added_to_cart event
+      if (recommendationId) {
         await fetch(getApiUrl(`/recommendations/${recommendationId}/events`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event_type: 'added_to_cart' }),
         });
       }
+      onAddToCart?.(targetProductId);
     } catch (err) {
-      console.warn('Failed to add to cart:', err);
+      console.warn('Failed to handle add to cart:', err);
     }
   };
 
@@ -123,7 +132,7 @@ export default function ProductRecommendations({
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           </div>
-          <span className="text-gray-600">Finding similar products...</span>
+          <span className="text-gray-600">Finding recommendations & deals...</span>
         </div>
       </div>
     );
@@ -133,17 +142,7 @@ export default function ProductRecommendations({
     return (
       <div className={`bg-gray-50 p-4 rounded-lg ${className}`}>
         <p className="text-sm text-gray-600">
-          Recommendations temporarily unavailable. Try again later.
-        </p>
-      </div>
-    );
-  }
-
-  if (products.length === 0) {
-    return (
-      <div className={`bg-gray-50 p-4 rounded-lg ${className}`}>
-        <p className="text-sm text-gray-500">
-          No similar products found at this time.
+          Recommendations temporarily unavailable.
         </p>
       </div>
     );
@@ -151,43 +150,93 @@ export default function ProductRecommendations({
 
   return (
     <div className={`bg-gray-50 p-4 rounded-lg ${className}`}>
-      <h3 className="text-lg font-bold mb-4 text-gray-900">
-        Similar Products
-      </h3>
-
-      <div className="space-y-3">
-        {products.map((product) => (
-          <div
-            key={product.id}
-            className="flex items-start p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
-          >
-            <div className="flex-1">
-              <h4 className="font-medium text-gray-900">{product.name}</h4>
-              <p className="text-sm text-gray-600 mt-1">{product.description?.substring(0, 100)}...</p>
-              <p className="text-lg font-semibold text-blue-600 mt-2">{formatPrice(product.price_cents)}</p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleTrackClick(recommendations[0]?.id || '')}
-                className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
-              >
-                View
-              </button>
-              <button
-                onClick={() => handleAddToCart(product.id, recommendations[0]?.id || '')}
-                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-              >
-                Add
-              </button>
-            </div>
+      {/* Bundle Deal Card */}
+      {bundle && bundle.products && bundle.products.length > 1 && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+          <div className="flex justify-between items-center mb-3">
+            <h4 className="font-bold text-blue-900 text-base flex items-center gap-2">
+              <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-semibold">COMBO DEAL</span>
+              ⚡ {bundle.title || 'Frequently Bought Together'}
+            </h4>
+            <span className="text-xs bg-green-100 text-green-800 font-bold px-2 py-1 rounded-md">
+              SAVE {formatPrice(bundle.savings_cents)} ({bundle.discount_percent}% OFF)
+            </span>
           </div>
-        ))}
-      </div>
+
+          <div className="space-y-2 mb-4">
+            {bundle.products.map((item: any, idx: number) => (
+              <div key={item.id || idx} className="flex justify-between items-center text-sm bg-white p-2.5 rounded border border-gray-100">
+                <span className="font-medium text-gray-800">
+                  {idx === 0 ? '🔹 ' + item.name + ' (This item)' : '➕ ' + item.name}
+                </span>
+                <span className="text-gray-600 font-semibold">{formatPrice(item.price_cents)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-blue-200">
+            <div>
+              <span className="text-xs text-gray-500 block">Original combined price:</span>
+              <span className="line-through text-gray-400 text-sm font-semibold mr-2">{formatPrice(bundle.original_total_cents)}</span>
+              <span className="text-xl font-extrabold text-green-700">{formatPrice(bundle.final_total_cents)}</span>
+            </div>
+            <button
+              onClick={() => {
+                if (recommendations[0]?.id && onAddBundleToCart) {
+                  onAddBundleToCart(recommendations[0].id);
+                } else {
+                  bundle.products.forEach((p: any) => onAddToCart?.(p.id));
+                }
+              }}
+              className="px-5 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md transition"
+            >
+              Add Bundle to Cart
+            </button>
+          </div>
+        </div>
+      )}
+
+      {products.length > 0 && (
+        <>
+          <h3 className="text-lg font-bold mb-4 text-gray-900">
+            Frequently Bought Together / Complementary
+          </h3>
+
+          <div className="space-y-3">
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className="flex items-start p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+              >
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900">{product.name}</h4>
+                  <p className="text-sm text-gray-600 mt-1">{product.description?.substring(0, 100)}...</p>
+                  <p className="text-lg font-semibold text-blue-600 mt-2">{formatPrice(product.price_cents)}</p>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTrackClick(recommendations[0]?.id || '')}
+                    className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                  >
+                    View
+                  </button>
+                  <button
+                    onClick={() => handleAddToCart(product.id, recommendations[0]?.id || '')}
+                    className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {recommendations[0]?.reasoning && (
         <div className="mt-4 text-xs text-gray-500">
-          <p className="font-medium mb-1">AI Reasoning:</p>
+          <p className="font-medium mb-1">AI Recommendation Reasoning:</p>
           <p>{recommendations[0].reasoning.explanation}</p>
           <p className="mt-1">Confidence: {(recommendations[0].reasoning.confidence * 100).toFixed(0)}%</p>
         </div>

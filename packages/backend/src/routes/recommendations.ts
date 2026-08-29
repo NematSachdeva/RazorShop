@@ -11,10 +11,10 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export function createRecommendationsRouter(recommendationService: RecommendationService): Router {
   const router = Router();
 
-  // GET /api/products/:id/recommendations
+  // GET /api/recommendations/products/:id and /api/recommendations/products/:id/recommendations
   // Get product recommendations
   router.get(
-    '/products/:id/recommendations',
+    ['/products/:id/recommendations', '/products/:id'],
     asyncHandler(async (req: Request, res: Response) => {
       const { id } = req.params;
       const limit = parseInt(req.query.limit as string) || 5;
@@ -38,6 +38,7 @@ export function createRecommendationsRouter(recommendationService: Recommendatio
 
         res.status(200).json({
           product_id: id,
+          bundle: result.bundle || result.recommendations[0]?.metadata?.bundle || null,
           recommendations: result.recommendations.map((rec) => ({
             id: rec.id,
             recommendation_type: rec.recommendation_type,
@@ -81,10 +82,10 @@ export function createRecommendationsRouter(recommendationService: Recommendatio
     })
   );
 
-  // GET /api/carts/:id/recommendations
+  // GET /api/recommendations/carts/:id and /api/recommendations/carts/:id/recommendations
   // Get cart recommendations (cross-sell/bundle)
   router.get(
-    '/carts/:id/recommendations',
+    ['/carts/:id/recommendations', '/carts/:id'],
     asyncHandler(async (req: Request, res: Response) => {
       const { id } = req.params;
 
@@ -102,6 +103,7 @@ export function createRecommendationsRouter(recommendationService: Recommendatio
 
         res.status(200).json({
           cart_id: id,
+          bundle: result.bundle || result.recommendations[0]?.metadata?.bundle || null,
           recommendations: result.recommendations.map((rec) => ({
             id: rec.id,
             recommendation_type: rec.recommendation_type,

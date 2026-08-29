@@ -16,28 +16,38 @@ const authService = new AuthService();
  * Middleware to authenticate JWT token from Authorization header
  * Expected format: Authorization: Bearer <token>
  */
-export function authenticate(req: Request, res: Response, next: NextFunction) {
-  try {
-    const authHeader = req.headers.authorization;
+export function createAuthenticate(service: AuthService = authService) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+      }
+
+      const token = authHeader.substring(7); // Remove "Bearer " prefix
+      const decoded = service.verifyToken(token);
+
+      if (!decoded || !decoded.id) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+
+      // Verify customer exists in database before proceeding to downstream handlers
+      const customer = await service.getCustomerById(decoded.id);
+      if (!customer) {
+        return res.status(401).json({ error: 'User account no longer exists or session is invalid' });
+      }
+
+      // Attach user info to request
+      req.user = decoded;
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: 'Authentication failed' });
     }
-
-    const token = authHeader.substring(7); // Remove "Bearer " prefix
-    const decoded = authService.verifyToken(token);
-
-    if (!decoded) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-
-    // Attach user info to request
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Authentication failed' });
-  }
+  };
 }
+
+export const authenticate = createAuthenticate();
 
 /**
  * Middleware to check if user has a specific role

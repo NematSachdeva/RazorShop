@@ -29,6 +29,11 @@ export interface ProductDTO {
   description?: string;
   price_cents: number;
   category?: string;
+  inventory?: {
+    quantity_on_hand: number;
+    reserved: number;
+    available: number;
+  };
   created_at: Date;
   updated_at: Date;
 }
@@ -56,7 +61,10 @@ export interface CartDTO {
   customer_id: string;
   items: CartItemDTO[];
   subtotal_cents: number;
+  discount_percent?: number;
+  discount_cents?: number;
   total_cents: number;
+  bundle?: any;
   created_at: Date;
   updated_at: Date;
 }
@@ -90,6 +98,7 @@ export interface OrderDTO {
   items: OrderItemDTO[];
   subtotal_cents: number;
   tax_cents: number;
+  discount_cents?: number;
   total_cents: number;
   created_at: Date;
   updated_at: Date;
