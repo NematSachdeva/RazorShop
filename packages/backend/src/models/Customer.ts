@@ -6,6 +6,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export type CustomerRole = 'customer' | 'merchant';
+
 @Entity('customers')
 export class Customer {
   @PrimaryGeneratedColumn('uuid')
@@ -19,6 +21,12 @@ export class Customer {
 
   @Column({ type: 'varchar', nullable: true })
   name?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  password_hash?: string;
+
+  @Column({ type: 'varchar', default: 'customer' })
+  role!: CustomerRole;
 
   @CreateDateColumn()
   created_at!: Date;

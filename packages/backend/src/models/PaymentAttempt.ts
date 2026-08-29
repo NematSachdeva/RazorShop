@@ -6,9 +6,11 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 
 @Entity('payment_attempts')
+@Unique('uk_payment_attempts_order_attempt', ['order_id', 'attempt_number'])
 export class PaymentAttempt {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

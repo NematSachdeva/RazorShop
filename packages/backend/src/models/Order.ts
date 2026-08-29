@@ -38,6 +38,9 @@ export class Order {
   @Column({ type: 'bigint', default: 0 })
   tax_cents!: number;
 
+  @Column({ type: 'bigint', default: 0 })
+  discount_cents!: number;
+
   @Column({ type: 'bigint' })
   total_cents!: number;
 

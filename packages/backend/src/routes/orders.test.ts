@@ -9,6 +9,7 @@ import { Cart } from '../models/Cart.js';
 import { CartItem } from '../models/CartItem.js';
 import { Order } from '../models/Order.js';
 import { OrderService } from '../services/OrderService.js';
+import { AuthService } from '../services/AuthService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { errorHandler } from '../middleware/errorHandler.js';
 
@@ -25,11 +26,12 @@ describe('Order Routes', () => {
     
     // Create OrderService with TestDataSource
     testOrderService = new OrderService(TestDataSource);
+    const authService = new AuthService(TestDataSource);
     
     // Create a test Express app with the orders router
     testApp = express();
     testApp.use(express.json());
-    testApp.use('/api/orders', createOrdersRouter(testOrderService));
+    testApp.use('/api/orders', createOrdersRouter(testOrderService, authService));
     testApp.use(errorHandler);
   });
 

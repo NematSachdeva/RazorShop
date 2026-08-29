@@ -1,10 +1,13 @@
 import { CartService } from './CartService.js';
 import { TestDataSource, initializeTestDatabase, closeTestDatabase } from '../config/database.test.js';
 import { Customer } from '../models/Customer.js';
+import { Product } from '../models/Product.js';
+import { Inventory } from '../models/Inventory.js';
 
 describe('CartService', () => {
   let service: CartService;
   let testCustomerId: string;
+  let testProductId: string;
 
   beforeAll(async () => {
     await initializeTestDatabase();
@@ -18,6 +21,26 @@ describe('CartService', () => {
     });
     const savedCustomer = await customerRepo.save(customer);
     testCustomerId = savedCustomer.id;
+
+    // Create a test product
+    const productRepo = TestDataSource.getRepository(Product);
+    const product = productRepo.create({
+      name: 'Test Product',
+      description: 'Test product for cart',
+      price_cents: 50000, // ₹500
+      category: 'test',
+    });
+    const savedProduct = await productRepo.save(product);
+    testProductId = savedProduct.id;
+
+    // Create inventory for the product
+    const inventoryRepo = TestDataSource.getRepository(Inventory);
+    const inventory = inventoryRepo.create({
+      product_id: testProductId,
+      quantity_on_hand: 100,
+      reserved: 0,
+    });
+    await inventoryRepo.save(inventory);
   });
 
   afterAll(async () => {
@@ -46,17 +69,10 @@ describe('CartService', () => {
 
   it('should add product to cart', async () => {
     const newCart = await service.createCart(testCustomerId);
-    
-    // Get a product to add
-    const productRepo = TestDataSource.getRepository('Product');
-    const product = await productRepo.findOne({ where: {} });
-    
-    if (product) {
-      const updatedCart = await service.addToCart(newCart.id, product.id, 2);
-      expect(updatedCart.items.length).toBe(1);
-      expect(updatedCart.items[0].quantity).toBe(2);
-      expect(updatedCart.subtotal_cents).toBeGreaterThan(0);
-    }
+    const updatedCart = await service.addToCart(newCart.id, testProductId, 2);
+    expect(updatedCart.items.length).toBe(1);
+    expect(updatedCart.items[0].quantity).toBe(2);
+    expect(updatedCart.subtotal_cents).toBeGreaterThan(0);
   });
 
   it('should reject adding product that does not exist', async () => {
@@ -72,51 +88,32 @@ describe('CartService', () => {
 
   it('should reject invalid quantity', async () => {
     const newCart = await service.createCart(testCustomerId);
-    const productRepo = TestDataSource.getRepository('Product');
-    const product = await productRepo.findOne({ where: {} });
     
-    if (product) {
-      try {
-        await service.addToCart(newCart.id, product.id, 0);
+    try {
+      await service.addToCart(newCart.id, testProductId, 0);
         fail('Should have thrown error');
       } catch (error) {
         expect((error as Error).message).toBe('Quantity must be greater than 0');
       }
-    }
   });
 
   it('should update cart item quantity', async () => {
     const newCart = await service.createCart(testCustomerId);
-    const productRepo = TestDataSource.getRepository('Product');
-    const product = await productRepo.findOne({ where: {} });
-    
-    if (product) {
-      await service.addToCart(newCart.id, product.id, 2);
-      const updated = await service.updateCartItemQuantity(newCart.id, product.id, 5);
-      expect(updated.items[0].quantity).toBe(5);
-    }
+    await service.addToCart(newCart.id, testProductId, 2);
+    const updated = await service.updateCartItemQuantity(newCart.id, testProductId, 5);
+    expect(updated.items[0].quantity).toBe(5);
   });
 
   it('should remove product from cart by setting quantity to 0', async () => {
     const newCart = await service.createCart(testCustomerId);
-    const productRepo = TestDataSource.getRepository('Product');
-    const product = await productRepo.findOne({ where: {} });
-    
-    if (product) {
-      await service.addToCart(newCart.id, product.id, 1);
-      const updated = await service.updateCartItemQuantity(newCart.id, product.id, 0);
-      expect(updated.items.length).toBe(0);
-    }
+    await service.addToCart(newCart.id, testProductId, 1);
+    const updated = await service.updateCartItemQuantity(newCart.id, testProductId, 0);
+    expect(updated.items.length).toBe(0);
   });
 
   it('should clear cart', async () => {
     const newCart = await service.createCart(testCustomerId);
-    const productRepo = TestDataSource.getRepository('Product');
-    const products = await productRepo.find({ skip: 0, take: 2 });
-    
-    for (const product of products) {
-      await service.addToCart(newCart.id, product.id, 1);
-    }
+    await service.addToCart(newCart.id, testProductId, 1);
     
     const cleared = await service.clearCart(newCart.id);
     expect(cleared.items.length).toBe(0);
@@ -124,12 +121,11 @@ describe('CartService', () => {
 
   it('should calculate totals correctly', async () => {
     const newCart = await service.createCart(testCustomerId);
-    const productRepo = TestDataSource.getRepository('Product');
-    const product = await productRepo.findOne({ where: {} });
+    const product = await TestDataSource.getRepository(Product).findOne({ where: { id: testProductId } });
     
     if (product) {
       const qty = 3;
-      const updated = await service.addToCart(newCart.id, product.id, qty);
+      const updated = await service.addToCart(newCart.id, testProductId, qty);
       const expectedTotal = product.price_cents * qty;
       expect(updated.total_cents).toBe(expectedTotal);
     }

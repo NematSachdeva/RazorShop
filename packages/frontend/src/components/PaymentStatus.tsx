@@ -1,12 +1,12 @@
 interface PaymentStatusProps {
-  status: 'loading' | 'ready' | 'processing' | 'verifying' | 'complete' | 'failed';
+  status: 'loading' | 'ready' | 'processing' | 'verifying' | 'complete' | 'failed' | 'cancelled';
 }
 
 export default function PaymentStatus({ status }: PaymentStatusProps) {
   const getStatusMessage = () => {
     switch (status) {
       case 'loading':
-        return 'Initializing payment...';
+        return 'Preparing secure payment...';
       case 'ready':
         return 'Ready for payment';
       case 'processing':
@@ -15,6 +15,8 @@ export default function PaymentStatus({ status }: PaymentStatusProps) {
         return 'Verifying payment...';
       case 'complete':
         return 'Payment complete!';
+      case 'cancelled':
+        return 'Payment cancelled. Your order remains saved.';
       case 'failed':
         return 'Payment failed';
       default:
@@ -34,6 +36,8 @@ export default function PaymentStatus({ status }: PaymentStatusProps) {
         return 'text-yellow-600';
       case 'complete':
         return 'text-green-600';
+      case 'cancelled':
+        return 'text-amber-600';
       case 'failed':
         return 'text-red-600';
       default:
@@ -57,10 +61,10 @@ export default function PaymentStatus({ status }: PaymentStatusProps) {
 
   return (
     <div className={`p-4 rounded-lg border mb-6 text-center ${getStatusColor()} border-current border-opacity-20`}>
-      <p className={`${getStatusColor()} font-medium`}>
+      <div className={`${getStatusColor()} font-medium flex items-center justify-center gap-2`}>
         {getSpinner()}
-        {getStatusMessage()}
-      </p>
+        <span>{getStatusMessage()}</span>
+      </div>
     </div>
   );
 }

@@ -18,14 +18,21 @@ interface Order {
 export default function Checkout({ cart, customerId, onOrderCreated, onCancel }: CheckoutProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderCreationAttempted, setOrderCreationAttempted] = useState(false);
 
   const handleCreateOrder = async () => {
+    // Prevent double-submission
+    if (loading || orderCreationAttempted) {
+      return;
+    }
+
     if (!cart.id) {
       setError('Cart is invalid');
       return;
     }
 
     setLoading(true);
+    setOrderCreationAttempted(true);
     setError(null);
 
     try {
@@ -47,6 +54,7 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
       onOrderCreated(order.id, order.total_cents);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
+      setOrderCreationAttempted(false);
       setLoading(false);
     }
   };
@@ -74,10 +82,22 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
         </div>
 
         {/* Totals */}
-        <div className="border-t pt-4 mb-6">
-          <div className="flex justify-between text-lg">
-            <p className="font-bold">Total:</p>
-            <p className="font-bold text-blue-600">{formatPrice(cart.total_cents)}</p>
+        <div className="border-t pt-4 mb-6 space-y-2">
+          <div className="flex justify-between text-sm text-gray-600">
+            <p>Subtotal:</p>
+            <p className="font-semibold">{formatPrice(cart.subtotal_cents || cart.total_cents)}</p>
+          </div>
+
+          {((cart.discount_cents && cart.discount_cents > 0) || (cart.discount_percent && cart.discount_percent > 0)) && (
+            <div className="flex justify-between text-sm text-green-700 bg-green-50 p-2 rounded border border-green-200">
+              <p className="font-medium">🎁 Combo Discount ({cart.discount_percent}% OFF):</p>
+              <p className="font-bold">-{formatPrice(cart.discount_cents || 0)}</p>
+            </div>
+          )}
+
+          <div className="flex justify-between text-lg pt-2 border-t font-bold">
+            <p>Total Amount:</p>
+            <p className="text-blue-600">{formatPrice(cart.total_cents)}</p>
           </div>
         </div>
 

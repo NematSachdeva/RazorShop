@@ -1,6 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { OrderService } from '../services/OrderService.js';
+import { AuthService, authService as defaultAuthService } from '../services/AuthService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { createAuthenticate } from '../middleware/auth.js';
 
 // Regex for UUID validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -9,13 +11,25 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Create an orders router with dependency-injected OrderService
  * This allows testing with TestDataSource and production with AppDataSource
  */
-export function createOrdersRouter(orderService: OrderService): Router {
+export function createOrdersRouter(
+  orderService: OrderService,
+  authService: AuthService = defaultAuthService
+): Router {
   const router = Router();
+  const authenticate = createAuthenticate(authService);
+
+  const optionalAuthenticate = (req: Request, res: Response, next: NextFunction) => {
+    if (req.headers.authorization) {
+      return authenticate(req, res, next);
+    }
+    next();
+  };
 
   // POST /api/orders
   // Create an order from a cart
   router.post(
     '/',
+    optionalAuthenticate,
     asyncHandler(async (req: Request, res: Response) => {
       const { cart_id, customer_id } = req.body;
 
@@ -34,6 +48,11 @@ export function createOrdersRouter(orderService: OrderService): Router {
 
       if (!UUID_REGEX.test(customer_id)) {
         return res.status(400).json({ error: 'Invalid customer_id format' });
+      }
+
+      // Ownership check if authenticated
+      if (req.user && req.user.role === 'customer' && req.user.id !== customer_id) {
+        return res.status(403).json({ error: 'Cart does not belong to this customer' });
       }
 
       try {
@@ -79,6 +98,7 @@ export function createOrdersRouter(orderService: OrderService): Router {
   // Get a specific order by ID
   router.get(
     '/:id',
+    optionalAuthenticate,
     asyncHandler(async (req: Request, res: Response) => {
       const { id } = req.params;
 
@@ -93,6 +113,11 @@ export function createOrdersRouter(orderService: OrderService): Router {
         return res.status(404).json({ error: 'Order not found' });
       }
 
+      // Ownership check for customer
+      if (req.user && req.user.role === 'customer' && order.customer_id !== req.user.id) {
+        return res.status(403).json({ error: 'You do not have permission to view this order' });
+      }
+
       res.json(order);
     })
   );
@@ -101,8 +126,17 @@ export function createOrdersRouter(orderService: OrderService): Router {
   // List orders for a customer with pagination
   router.get(
     '/',
+    optionalAuthenticate,
     asyncHandler(async (req: Request, res: Response) => {
-      const { customer_id, page, limit } = req.query;
+      let { customer_id, page, limit } = req.query;
+
+      // If customer is authenticated, default or enforce customer_id
+      if (req.user && req.user.role === 'customer') {
+        if (customer_id && customer_id !== req.user.id) {
+          return res.status(403).json({ error: 'You do not have permission to view another customer\'s orders' });
+        }
+        customer_id = req.user.id;
+      }
 
       // Validation
       if (!customer_id) {

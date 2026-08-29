@@ -31,6 +31,15 @@ export class Cart {
   @Column({ type: 'uuid', nullable: true })
   converted_to_order_id?: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  bundle_recommendation_id?: string;
+
+  @Column({ type: 'integer', default: 0 })
+  discount_percent!: number;
+
+  @Column({ type: 'bigint', default: 0 })
+  discount_cents!: number;
+
   @CreateDateColumn()
   created_at!: Date;
 

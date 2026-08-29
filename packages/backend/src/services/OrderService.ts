@@ -27,6 +27,7 @@ export interface OrderDTO {
   items: OrderItemDTO[];
   subtotal_cents: number;
   tax_cents: number;
+  discount_cents?: number;
   total_cents: number;
   created_at: Date;
   updated_at: Date;
@@ -183,8 +184,16 @@ export class OrderService {
         });
       }
 
+      let discount_cents = 0;
+      if (cart.discount_cents) {
+        discount_cents = Number(cart.discount_cents);
+      } else if (cart.discount_percent && cart.discount_percent > 0) {
+        discount_cents = Math.round(subtotal_cents * (Number(cart.discount_percent) / 100));
+      }
+      discount_cents = Math.min(discount_cents, subtotal_cents);
+
       const tax_cents = 0; // M3: no tax calculation
-      const total_cents = subtotal_cents + tax_cents;
+      const total_cents = Math.max(0, subtotal_cents - discount_cents + tax_cents);
 
       // 8. Generate unique order number
       const orderNumber = await this.generateUniqueOrderNumber(queryRunner.manager);
@@ -196,6 +205,7 @@ export class OrderService {
         status: 'pending',
         subtotal_cents,
         tax_cents,
+        discount_cents,
         total_cents,
       });
 
@@ -360,9 +370,10 @@ export class OrderService {
       order_number: order.order_number,
       status: order.status,
       items: itemDTOs,
-      subtotal_cents: order.subtotal_cents,
-      tax_cents: order.tax_cents,
-      total_cents: order.total_cents,
+      subtotal_cents: Number(order.subtotal_cents),
+      tax_cents: Number(order.tax_cents),
+      discount_cents: Number(order.discount_cents || 0),
+      total_cents: Number(order.total_cents),
       created_at: order.created_at,
       updated_at: order.updated_at,
     };

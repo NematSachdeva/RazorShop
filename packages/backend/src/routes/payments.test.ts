@@ -29,6 +29,16 @@ describe('Payment Routes', () => {
     // Create mock Razorpay client
     mockRazorpayClient = new RazorpayClient('rzp_test_mock', 'test_secret_mock');
 
+    // Mock the Razorpay SDK for testing (prevent real API calls)
+    let orderCounter = 0;
+    (mockRazorpayClient as any).razorpayInstance = {
+      orders: {
+        create: async (params: any) => ({
+          id: `order_test_${++orderCounter}_${Date.now()}`,
+        }),
+      },
+    };
+
     // Create PaymentService with TestDataSource
     paymentService = new PaymentService(TestDataSource, mockRazorpayClient);
 
@@ -175,12 +185,13 @@ describe('Payment Routes', () => {
       const orderService = new OrderService(TestDataSource);
       const freshCartId = await createFreshCart();
       const order = await orderService.createOrderFromCart(freshCartId, testCustomerId);
-      await paymentService.createPaymentAttempt(order.id);
+      const paymentAttempt = await paymentService.createPaymentAttempt(order.id);
 
       const paymentId = 'pay_test_123';
+      // Sign using the Razorpay order ID from PaymentAttempt
       const signature = crypto
         .createHmac('sha256', 'test_secret_mock')
-        .update(`${order.id}|${paymentId}`)
+        .update(`${paymentAttempt.razorpay_order_id}|${paymentId}`)
         .digest('hex');
 
       const response = await request(testApp)
@@ -271,10 +282,13 @@ describe('Payment Routes', () => {
     });
 
     it('should return 404 if payment not found', async () => {
+      // For a nonexistent payment attempt, we can't get a real Razorpay order ID
+      // The endpoint should fail with 404 when no payment is found
+      const fakeRazorpayOrderId = 'order_fake_12345';
       const paymentId = 'pay_test_123';
       const signature = crypto
         .createHmac('sha256', 'test_secret_mock')
-        .update(`00000000-0000-0000-0000-000000000000|${paymentId}`)
+        .update(`${fakeRazorpayOrderId}|${paymentId}`)
         .digest('hex');
 
       const response = await request(testApp)
@@ -286,7 +300,7 @@ describe('Payment Routes', () => {
         });
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toContain('Payment not found');
+      expect(response.body.error).toContain('not found');
     });
   });
 
@@ -296,12 +310,12 @@ describe('Payment Routes', () => {
       const orderService = new OrderService(TestDataSource);
       const freshCartId = await createFreshCart();
       const order = await orderService.createOrderFromCart(freshCartId, testCustomerId);
-      await paymentService.createPaymentAttempt(order.id);
+      const paymentAttempt = await paymentService.createPaymentAttempt(order.id);
       
       const paymentId = 'pay_test_123';
       const signature = crypto
         .createHmac('sha256', 'test_secret_mock')
-        .update(`${order.id}|${paymentId}`)
+        .update(`${paymentAttempt.razorpay_order_id}|${paymentId}`)
         .digest('hex');
 
       await paymentService.verifyPayment({

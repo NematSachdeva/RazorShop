@@ -1,32 +1,11 @@
 import { AppDataSource } from './config/database.js';
 import { Customer } from './models/Customer.js';
+import { Merchant } from './models/Merchant.js';
 import { Product } from './models/Product.js';
 import { Inventory } from './models/Inventory.js';
+import bcrypt from 'bcryptjs';
 
-async function seedDatabase() {
-  try {
-    await AppDataSource.initialize();
-    console.log('Seeding database...');
-
-    // Seed customers
-    const customers = [
-      { email: 'alice@example.com', phone: '+919876543210', name: 'Alice Kumar' },
-      { email: 'bob@example.com', phone: '+919876543211', name: 'Bob Singh' },
-      { email: 'charlie@example.com', phone: '+919876543212', name: 'Charlie Patel' },
-    ];
-
-    for (const customerData of customers) {
-      const existing = await AppDataSource.getRepository(Customer).findOne({
-        where: { email: customerData.email },
-      });
-      if (!existing) {
-        await AppDataSource.getRepository(Customer).insert(customerData);
-      }
-    }
-    console.log('✓ Seeded customers');
-
-    // Seed 120+ diverse products with realistic Indian prices
-    const products = [
+const products = [
       // Technology (15 products)
       { name: 'Laptop Stand', description: 'Adjustable aluminum laptop stand', price_cents: 299900, category: 'Technology' },
       { name: 'Wireless Mouse', description: 'Ergonomic wireless mouse with USB receiver', price_cents: 99900, category: 'Technology' },
@@ -317,38 +296,125 @@ async function seedDatabase() {
       { name: 'Multimeter', description: 'Digital multimeter', price_cents: 49900, category: 'Electrical & Gadgets' },
     ];
 
+export async function seedDatabase(ds: any = AppDataSource) {
+  try {
+    if (!ds.isInitialized) {
+      await ds.initialize();
+    }
+    console.log('Seeding database...');
+
+    // Seed demo customers with authentication
+    const demoCustomerPassword = await bcrypt.hash('password123', 10);
+
+    const customers = [
+      {
+        email: 'customer@example.com',
+        phone: '+919876543210',
+        name: 'Demo Customer',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'alice@example.com',
+        phone: '+919876543211',
+        name: 'Alice Kumar',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'bob@example.com',
+        phone: '+919876543212',
+        name: 'Bob Singh',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'charlie@example.com',
+        phone: '+919876543213',
+        name: 'Charlie Patel',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+      {
+        email: 'merchant@example.com',
+        phone: '+919876543200',
+        name: 'Demo Merchant',
+        password_hash: demoCustomerPassword,
+        role: 'merchant' as const,
+      },
+      {
+        email: 'xanematsachdevabis@gmail.com',
+        phone: '+919876543299',
+        name: 'Nemat Sachdeva',
+        password_hash: demoCustomerPassword,
+        role: 'customer' as const,
+      },
+    ];
+
+    for (const customerData of customers) {
+      const existing = await ds.getRepository(Customer).findOne({
+        where: { email: customerData.email },
+      });
+      if (!existing) {
+        await ds.getRepository(Customer).insert(customerData);
+      }
+    }
+
+    // Seed demo merchant
+    const merchants = [
+      {
+        email: 'merchant@example.com',
+        name: 'Demo Merchant',
+        contact_phone: '+919876543200',
+        status: 'active' as const,
+      },
+    ];
+
+    for (const merchantData of merchants) {
+      const existing = await ds.getRepository(Merchant).findOne({
+        where: { email: merchantData.email },
+      });
+      if (!existing) {
+        await ds.getRepository(Merchant).insert(merchantData);
+      }
+    }
+
+    // Seed 180+ products
     for (const productData of products) {
-      const existing = await AppDataSource.getRepository(Product).findOne({
+      const existing = await ds.getRepository(Product).findOne({
         where: { name: productData.name },
       });
       if (!existing) {
-        await AppDataSource.getRepository(Product).insert(productData);
+        await ds.getRepository(Product).insert(productData);
       }
     }
-    console.log(`✓ Seeded ${products.length} products`);
+    console.log(`✓ Seeded products`);
 
     // Seed inventory
-    const allProducts = await AppDataSource.getRepository(Product).find();
+    const allProducts = await ds.getRepository(Product).find();
     for (const product of allProducts) {
-      const existing = await AppDataSource.getRepository(Inventory).findOne({
+      const existing = await ds.getRepository(Inventory).findOne({
         where: { product_id: product.id },
       });
       if (!existing) {
-        await AppDataSource.getRepository(Inventory).insert({
+        await ds.getRepository(Inventory).insert({
           product_id: product.id,
-          quantity_on_hand: Math.floor(Math.random() * 100) + 10, // 10-110 units
+          quantity_on_hand: Math.floor(Math.random() * 100) + 10,
           reserved: 0,
         });
       }
     }
     console.log('✓ Seeded inventory');
-
-    await AppDataSource.destroy();
-    console.log('✓ Database seeding completed');
   } catch (error) {
     console.error('Seeding failed:', error);
-    process.exit(1);
   }
 }
 
-seedDatabase();
+// If run directly from CLI
+if (process.argv[1]?.includes('seed.ts') || process.argv[1]?.includes('seed.js')) {
+  seedDatabase().then(() => {
+    if (AppDataSource.isInitialized) {
+      AppDataSource.destroy();
+    }
+  });
+}

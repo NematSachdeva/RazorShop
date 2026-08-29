@@ -31,6 +31,17 @@ describe('Razorpay Webhooks', () => {
     await initializeTestDatabase();
 
     mockRazorpayClient = new RazorpayClient('rzp_test_mock', 'test_secret_mock');
+    
+    // Mock the Razorpay SDK for testing (prevent real API calls)
+    let orderCounter = 0;
+    (mockRazorpayClient as any).razorpayInstance = {
+      orders: {
+        create: async (params: any) => ({
+          id: `order_test_${++orderCounter}_${Date.now()}`,
+        }),
+      },
+    };
+
     orderService = new OrderService(TestDataSource);
     paymentService = new PaymentService(TestDataSource, mockRazorpayClient);
 
@@ -48,6 +59,9 @@ describe('Razorpay Webhooks', () => {
     const queryRunner = TestDataSource.createQueryRunner();
     await queryRunner.connect();
     try {
+      // Delete in correct order respecting foreign keys
+      await queryRunner.query('DELETE FROM "recommendation_events"');
+      await queryRunner.query('DELETE FROM "recommendations"');
       await queryRunner.query('DELETE FROM "webhook_events"');
       await queryRunner.query('DELETE FROM "payment_attempts"');
       await queryRunner.query('DELETE FROM "payments"');

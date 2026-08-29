@@ -3,12 +3,7 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
 // Resolve .env from monorepo root
-// This works in both production (ESM) and Jest (CommonJS transpilation)
-// Strategy: try multiple common paths in order:
-// 1. Assume monorepo root is 4 levels up from src/ or dist/
-// 2. Fall back to process.cwd()
-// 3. Prioritize explicit .env files
-
+// Strategy: try multiple common paths in order
 let envPath: string;
 
 const possiblePaths = [
@@ -26,7 +21,7 @@ if (existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
 
-interface Environment {
+export interface Environment {
   NODE_ENV: 'development' | 'production' | 'test';
   PORT: number;
   DATABASE_URL: string;
@@ -34,12 +29,17 @@ interface Environment {
   RAZORPAY_KEY_ID: string;
   RAZORPAY_KEY_SECRET: string;
   RAZORPAY_WEBHOOK_SECRET: string;
-  ANTHROPIC_API_KEY: string;
+  GROQ_API_KEY: string;
+  JWT_SECRET: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
+  EMAIL_DEMO_MODE: boolean;
+  EMAIL_TEST_RECIPIENT: string;
 }
 
 let cachedEnv: Environment | null = null;
 
-function validateEnv(): Environment {
+export function validateEnv(): Environment {
   // Allow missing variables in test environment
   const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
   
@@ -51,7 +51,8 @@ function validateEnv(): Environment {
     'RAZORPAY_KEY_ID',
     'RAZORPAY_KEY_SECRET',
     'RAZORPAY_WEBHOOK_SECRET',
-    'ANTHROPIC_API_KEY',
+    'GROQ_API_KEY',
+    'JWT_SECRET',
   ];
 
   const missing = requiredVars.filter((v) => !process.env[v]);
@@ -64,6 +65,16 @@ function validateEnv(): Environment {
     );
   }
 
+  const emailDemoModeStr = process.env.EMAIL_DEMO_MODE;
+  const EMAIL_DEMO_MODE = emailDemoModeStr === 'false' ? false : true;
+
+  const EMAIL_TEST_RECIPIENT = process.env.EMAIL_TEST_RECIPIENT || 't74209185@gmail.com';
+
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_REGEX.test(EMAIL_TEST_RECIPIENT)) {
+    throw new Error(`Invalid EMAIL_TEST_RECIPIENT syntax: ${EMAIL_TEST_RECIPIENT}`);
+  }
+
   return {
     NODE_ENV: (process.env.NODE_ENV || 'development') as any,
     PORT: parseInt(process.env.PORT || '3000', 10),
@@ -72,7 +83,12 @@ function validateEnv(): Environment {
     RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
     RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
     RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || '',
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+    GROQ_API_KEY: process.env.GROQ_API_KEY || '',
+    JWT_SECRET: process.env.JWT_SECRET || '',
+    RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+    RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM || 'nemat@razorshop.app',
+    EMAIL_DEMO_MODE,
+    EMAIL_TEST_RECIPIENT,
   };
 }
 
@@ -81,6 +97,10 @@ export function getEnv(): Environment {
     cachedEnv = validateEnv();
   }
   return cachedEnv;
+}
+
+export function resetEnvCache(): void {
+  cachedEnv = null;
 }
 
 // For backward compatibility, export lazy getter

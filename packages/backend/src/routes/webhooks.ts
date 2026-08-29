@@ -4,24 +4,36 @@ import crypto from 'crypto';
 import { AppDataSource } from '../config/database.js';
 import { WebhookEvent } from '../models/WebhookEvent.js';
 import { Payment } from '../models/Payment.js';
+import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { Order } from '../models/Order.js';
 import { env } from '../config/env.js';
+import { PaymentFailureService } from '../services/PaymentFailureService.js';
 
 /**
  * Razorpay webhook signature verification
  * Verify that the webhook came from Razorpay and hasn't been tampered with
+ * Uses timing-safe comparison to prevent timing attacks
  */
 function verifyWebhookSignature(
   payload: string,
   signature: string,
   webhookSecret: string
 ): boolean {
-  const expectedSignature = crypto
-    .createHmac('sha256', webhookSecret)
-    .update(payload)
-    .digest('hex');
+  try {
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(payload)
+      .digest('hex');
 
-  return expectedSignature === signature;
+    // Use timing-safe comparison to prevent timing attacks
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch (error) {
+    // Timing-safe comparison or signature format error
+    return false;
+  }
 }
 
 /**
@@ -129,73 +141,151 @@ export function createWebhooksRouter(dataSource: DataSource = AppDataSource) {
       // 6. Process the webhook based on event type
       try {
         const paymentRepo = dataSource.getRepository(Payment);
+        const paymentAttemptRepo = dataSource.getRepository(PaymentAttempt);
         const orderRepo = dataSource.getRepository(Order);
 
         const razorpayPaymentId = paymentEntity.id;
+        const razorpayOrderId = paymentEntity.order_id; // Razorpay order ID from webhook
 
         switch (eventType) {
           case 'payment.captured': {
-            // Find payment by razorpay_payment_id
-            // If not found yet, it will be matched when the client calls verifyPayment
-            let payment = await paymentRepo.findOne({
-              where: { razorpay_payment_id: razorpayPaymentId },
-            });
+            // Improved lookup: Use Razorpay order ID to find PaymentAttempt, then Payment
+            let payment: Payment | null = null;
+            let orderId: string | null = null;
 
-            if (payment) {
+            // Strategy 1: Look up by razorpay_order_id through PaymentAttempt
+            if (razorpayOrderId) {
+              const paymentAttempt = await paymentAttemptRepo.findOne({
+                where: { razorpay_order_id: razorpayOrderId },
+              });
+
+              if (paymentAttempt) {
+                orderId = paymentAttempt.order_id;
+                payment = await paymentRepo.findOne({
+                  where: { order_id: orderId },
+                });
+              }
+            }
+
+            // Strategy 2: Fallback to razorpay_payment_id lookup (if already set by verify endpoint)
+            if (!payment && razorpayPaymentId) {
+              payment = await paymentRepo.findOne({
+                where: { razorpay_payment_id: razorpayPaymentId },
+              });
+            }
+
+            if (payment && orderId) {
               // Update payment status
               payment.status = 'captured';
+              payment.razorpay_payment_id = razorpayPaymentId;
               await paymentRepo.save(payment);
 
               // Update order status
               const order = await orderRepo.findOne({
-                where: { id: payment.order_id },
+                where: { id: orderId },
               });
 
               if (order) {
                 order.status = 'confirmed';
                 await orderRepo.save(order);
+
+                // Trigger payment confirmation email (idempotency prevents duplicates)
+                const { paymentService } = await import('../services/PaymentService.js');
+                paymentService.sendPaymentConfirmationEmail(order.id).catch((emailErr) => {
+                  console.error('[Webhook] Error sending confirmation email:', emailErr);
+                });
               }
+            } else if (!payment && razorpayOrderId) {
+              // Webhook arrived before verify endpoint - log for investigation
+              console.log(`Payment attempt found but Payment record not found for Razorpay order ${razorpayOrderId}`);
             } else {
-              // Payment not found yet - this is normal in test/async scenarios
-              // In production, the client would have already called /verify
-              console.log(`Payment with ID ${razorpayPaymentId} not found in webhook`);
+              console.log(`Payment with Razorpay ID ${razorpayPaymentId} not found in webhook`);
             }
             break;
           }
 
           case 'payment.failed': {
-            // Find payment by razorpay_payment_id
-            let payment = await paymentRepo.findOne({
-              where: { razorpay_payment_id: razorpayPaymentId },
-            });
+            // Improved lookup similar to capture
+            let payment: Payment | null = null;
+            let orderId: string | null = null;
+
+            if (razorpayOrderId) {
+              const paymentAttempt = await paymentAttemptRepo.findOne({
+                where: { razorpay_order_id: razorpayOrderId },
+              });
+
+              if (paymentAttempt) {
+                orderId = paymentAttempt.order_id;
+                payment = await paymentRepo.findOne({
+                  where: { order_id: orderId },
+                });
+              }
+            }
+
+            if (!payment && razorpayPaymentId) {
+              payment = await paymentRepo.findOne({
+                where: { razorpay_payment_id: razorpayPaymentId },
+              });
+            }
 
             if (payment) {
-              // Update payment status
               payment.status = 'failed';
-              payment.failure_reason = paymentEntity.failure_reason || 'Unknown';
+              payment.failure_reason = paymentEntity.failure_reason || paymentEntity.vpa_failure_reason || 'Unknown';
               await paymentRepo.save(payment);
-
-              // Order stays in pending state (payment failed)
-              // Frontend can retry payment with a new PaymentAttempt
+              // Order stays in pending state - user can retry
+              
+              // M5: Detect failure and initiate recovery
+              const failureService = new PaymentFailureService(dataSource);
+              try {
+                await failureService.handlePaymentFailure(
+                  payment.id,
+                  payment.failure_reason || 'Unknown',
+                  {
+                    razorpay_error: paymentEntity.error_reason,
+                    description: paymentEntity.error_description,
+                    gateway_response: paymentEntity,
+                  }
+                );
+              } catch (recoveryError) {
+                console.error('Failed to create recovery case:', recoveryError);
+              }
             } else {
-              console.log(`Payment with ID ${razorpayPaymentId} not found in webhook`);
+              console.log(`Payment with Razorpay ID ${razorpayPaymentId} not found in webhook`);
             }
             break;
           }
 
           case 'payment.authorized': {
-            // Razorpay authorized payment, but not yet captured
-            // For now, treat similar to captured (in test mode)
-            let payment = await paymentRepo.findOne({
-              where: { razorpay_payment_id: razorpayPaymentId },
-            });
+            // Payment authorized but not yet captured - treat as capture in our flow
+            let payment: Payment | null = null;
+            let orderId: string | null = null;
 
-            if (payment) {
+            if (razorpayOrderId) {
+              const paymentAttempt = await paymentAttemptRepo.findOne({
+                where: { razorpay_order_id: razorpayOrderId },
+              });
+
+              if (paymentAttempt) {
+                orderId = paymentAttempt.order_id;
+                payment = await paymentRepo.findOne({
+                  where: { order_id: orderId },
+                });
+              }
+            }
+
+            if (!payment && razorpayPaymentId) {
+              payment = await paymentRepo.findOne({
+                where: { razorpay_payment_id: razorpayPaymentId },
+              });
+            }
+
+            if (payment && orderId) {
               payment.status = 'captured';
+              payment.razorpay_payment_id = razorpayPaymentId;
               await paymentRepo.save(payment);
 
               const order = await orderRepo.findOne({
-                where: { id: payment.order_id },
+                where: { id: orderId },
               });
 
               if (order) {
@@ -203,7 +293,7 @@ export function createWebhooksRouter(dataSource: DataSource = AppDataSource) {
                 await orderRepo.save(order);
               }
             } else {
-              console.log(`Payment with ID ${razorpayPaymentId} not found in webhook`);
+              console.log(`Payment with Razorpay ID ${razorpayPaymentId} not found in webhook`);
             }
             break;
           }

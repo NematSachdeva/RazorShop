@@ -16,6 +16,7 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "baseUrl": ".",
+    "noEmit": true,
     "paths": {
       "@/*": ["./src/*"],
       "@razor/shared": ["../shared/src/index.ts"],

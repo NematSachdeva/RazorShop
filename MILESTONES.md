@@ -26,7 +26,7 @@
 ## M2 — Product Catalog & Cart
 **Objective:** Implement product browsing and shopping cart with abandonment tracking.
 
-**Deliverables:**
+**Deliverables:**cha
 - Cart model + migrations
 - CartItem model + migrations
 - Product listing API (`GET /api/products` with pagination)
