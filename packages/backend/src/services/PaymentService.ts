@@ -93,6 +93,10 @@ export interface PaymentDTO {
 }
 
 export interface CreatePaymentResponse {
+  payment_id?: string;
+  attempt_id?: string;
+  attempt_number?: number;
+  order_id?: string;
   razorpay_order_id: string;
   razorpay_key_id: string;
   amount_cents: number;
@@ -216,6 +220,10 @@ export class PaymentService {
     );
 
     return {
+      payment_id: paymentId,
+      attempt_id: attemptId,
+      attempt_number: attemptNumber,
+      order_id: orderId,
       razorpay_order_id: razorpayOrderId,
       razorpay_key_id: process.env.RAZORPAY_KEY_ID || '',
       amount_cents: amountCents,

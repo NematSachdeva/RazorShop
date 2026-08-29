@@ -226,7 +226,7 @@ export class RecommendationService {
     savings_cents: number;
     reason: string;
   } | null {
-    if (products.length < 2) return null;
+    if (products.length === 0) return null;
 
     const original_total_cents = products.reduce((sum, p) => sum + Number(p.price_cents), 0);
     const discount_percent = Math.min(10, Math.max(0, maxDiscountPercent));

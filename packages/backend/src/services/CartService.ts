@@ -288,7 +288,11 @@ export class CartService {
 
     // Validate and add each product to cart
     for (const item of bundle.products) {
-      await this.addToCart(cartId, item.id, 1);
+      const targetProductId = typeof item === 'string' ? item : (item.id || item.product_id);
+      if (!targetProductId) {
+        throw new Error('Invalid product ID in bundle metadata');
+      }
+      await this.addToCart(cartId, targetProductId, 1);
     }
 
     // Refresh cart after adding items
