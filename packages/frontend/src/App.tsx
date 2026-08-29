@@ -56,9 +56,11 @@ export default function App() {
     const authenticated = authService.isAuthenticated();
     setIsAuthenticated(authenticated);
     if (authenticated) {
-      const user = authService.getUser();
-      setUser(user);
-      loadCart();
+      const currentUser = authService.getUser();
+      setUser(currentUser);
+      if (currentUser?.role === 'customer') {
+        loadCart();
+      }
     }
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') || params.get('order')) {
@@ -91,7 +93,7 @@ export default function App() {
         setError(null);
         const query = new URLSearchParams({
           page: currentPage.toString(),
-          limit: '20',
+          limit: '100',
           ...(selectedCategory && { category: selectedCategory }),
           ...(searchTerm && { search: searchTerm }),
         });
@@ -131,6 +133,10 @@ export default function App() {
    * Load active cart for authenticated user
    */
   const loadCart = async () => {
+    const currentUser = authService.getUser();
+    if (!currentUser || currentUser.role !== 'customer') {
+      return;
+    }
     try {
       const response = await fetch(getApiUrl('/carts'), {
         method: 'POST',
@@ -346,9 +352,12 @@ export default function App() {
       {!isAuthenticated && (
         <LoginPage
           onLoginSuccess={() => {
+            const currentUser = authService.getUser();
             setIsAuthenticated(true);
-            setUser(authService.getUser());
-            loadCart();
+            setUser(currentUser);
+            if (currentUser?.role === 'customer') {
+              loadCart();
+            }
           }}
         />
       )}

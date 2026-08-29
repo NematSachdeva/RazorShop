@@ -7,6 +7,7 @@ import { CartItem } from '../models/CartItem.js';
 import { Product } from '../models/Product.js';
 import { Inventory } from '../models/Inventory.js';
 import { Customer } from '../models/Customer.js';
+import { Recommendation } from '../models/Recommendation.js';
 
 // Local DTO types (re-exported to maintain compatibility)
 export interface OrderItemDTO {
@@ -187,6 +188,27 @@ export class OrderService {
       let discount_cents = 0;
       if (cart.discount_cents) {
         discount_cents = Number(cart.discount_cents);
+      } else if (cart.bundle_recommendation_id && cart.discount_percent && cart.discount_percent > 0) {
+        try {
+          const recRepo = queryRunner.manager.getRepository(Recommendation);
+          const recommendation: any = await recRepo.findOne({ where: { id: cart.bundle_recommendation_id } });
+          const bundle = recommendation?.metadata?.bundle;
+          if (bundle && Array.isArray(bundle.products) && bundle.products.length > 0) {
+            const bundleProductIds = new Set(bundle.products.map((p: any) => p.id || p.product_id));
+            let bundleSubtotal = 0;
+            for (const item of cartItems) {
+              if (bundleProductIds.has(item.product_id)) {
+                const p = productMap.get(item.product_id)!;
+                bundleSubtotal += p.price_cents * item.quantity;
+              }
+            }
+            discount_cents = Math.round(bundleSubtotal * (Number(cart.discount_percent) / 100));
+          } else {
+            discount_cents = Math.round(subtotal_cents * (Number(cart.discount_percent) / 100));
+          }
+        } catch {
+          discount_cents = Math.round(subtotal_cents * (Number(cart.discount_percent) / 100));
+        }
       } else if (cart.discount_percent && cart.discount_percent > 0) {
         discount_cents = Math.round(subtotal_cents * (Number(cart.discount_percent) / 100));
       }

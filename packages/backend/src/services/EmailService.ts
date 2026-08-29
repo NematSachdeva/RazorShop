@@ -1,10 +1,8 @@
 import { Resend } from 'resend';
 import { env } from '../config/env.js';
 
-export type EmailSource = 'customer' | 'test' | 'demo';
-
 export interface EmailOptions {
-  source?: EmailSource;
+  source?: 'customer' | 'system' | 'merchant';
 }
 
 export interface EmailTemplate {
@@ -21,23 +19,30 @@ export interface EmailResult {
 
 /**
  * Email Service using Resend API
- * Handles all email communication for recovery and payment confirmation workflows.
+ * Handles all email communication for payment recovery and confirmation workflows.
  * 
- * DUAL DELIVERY MODES:
- * 1. REAL CUSTOMER MODE (source: 'customer'):
- *    - Used during normal website usage (npm run dev / production).
- *    - Real customer email is preserved as the Resend recipient (e.g. alice@gmail.com -> alice@gmail.com).
- * 2. TEST / DEMO MODE (source: 'test' | 'demo'):
- *    - Used during automated tests (Jest) or test/demo script executions.
- *    - Overrides recipient to EMAIL_TEST_RECIPIENT (t74209185@gmail.com) to prevent spamming fake domains.
- *    - ALWAYS calls Resend SDK without skipping delivery.
+ * TWO-MODE DELIVERY ARCHITECTURE:
+ * 1. TEST MODE (EMAIL_DELIVERY_MODE=mock):
+ *    - Active during automated tests or when EMAIL_DELIVERY_MODE=mock.
+ *    - Suppresses Resend network calls, returns deterministic mock message ID (msg_mock_<timestamp>).
+ *    - Zero external API requests or quota consumption.
+ * 
+ * 2. LIVE MODE (EMAIL_DELIVERY_MODE=live):
+ *    - Active when running application with EMAIL_DELIVERY_MODE=live.
+ *    - Sends real email via Resend API directly to the customer's email address stored in PostgreSQL.
+ *    - No redirection or recipient override.
  */
 export class EmailService {
   private resend: Resend | null = null;
   private fromEmail: string;
 
   constructor(fromEmailOverride?: string) {
-    this.fromEmail = fromEmailOverride || env.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM || 'nemat@razorshop.app';
+    this.fromEmail =
+      fromEmailOverride ||
+      env.RESEND_FROM_EMAIL ||
+      process.env.RESEND_FROM_EMAIL ||
+      process.env.EMAIL_FROM ||
+      'nemat@razorshop.app';
 
     if (env.RESEND_API_KEY) {
       this.resend = new Resend(env.RESEND_API_KEY);
@@ -57,37 +62,77 @@ export class EmailService {
   }
 
   /**
-   * Check if email service is available
+   * Check if email service is available (API key configured)
    */
   isAvailable(): boolean {
     return this.resend !== null && !!env.RESEND_API_KEY;
   }
 
   /**
-   * Resolves recipient email address based on execution context (Customer vs Test/Demo).
+   * Dispatches email in either MOCK or LIVE mode based strictly on EMAIL_DELIVERY_MODE and test environment.
    */
-  public resolveRecipient(
-    originalEmail: string,
-    options?: EmailOptions
-  ): { recipient: string; source: EmailSource } {
-    const isTestEnv =
-      process.env.NODE_ENV === 'test' ||
-      process.env.JEST_WORKER_ID !== undefined ||
-      process.env.EMAIL_DELIVERY_MODE === 'test';
-
-    const source: EmailSource = options?.source || (isTestEnv ? 'test' : 'customer');
-    const demoRecipient = env.EMAIL_TEST_RECIPIENT || 't74209185@gmail.com';
-
-    if (source === 'test' || source === 'demo') {
-      if (originalEmail !== demoRecipient) {
-        console.log(`[EmailSafety] Overriding test/demo recipient (${originalEmail || 'none'}) -> ${demoRecipient}`);
-      }
-      return { recipient: demoRecipient, source };
+  private async dispatchEmail(
+    toRecipient: string,
+    template: EmailTemplate,
+    source: string = 'customer'
+  ): Promise<EmailResult> {
+    if (!toRecipient || !toRecipient.includes('@')) {
+      console.warn(`[EmailService] Customer email missing or invalid: ${toRecipient}`);
+      return {
+        success: false,
+        error: 'Customer email missing or invalid',
+      };
     }
 
-    // Real customer mode: deliver directly to customer email
-    const recipient = originalEmail || demoRecipient;
-    return { recipient, source };
+    const isTest =
+      process.env.NODE_ENV === 'test' ||
+      process.env.JEST_WORKER_ID !== undefined;
+
+    // Test environment always forces mock mode regardless of .env configuration
+    const effectiveMode = isTest ? 'mock' : env.EMAIL_DELIVERY_MODE;
+
+    if (effectiveMode === 'mock') {
+      console.log(`[Email] mode=test transport=mock source=${source} recipient=${toRecipient}`);
+      console.log('[Email] MOCK: Resend request suppressed');
+      return {
+        success: true,
+        messageId: `msg_mock_${Date.now()}`,
+      };
+    }
+
+    // LIVE APPLICATION MODE — Call Resend API directly with the customer's email from PostgreSQL
+    console.log(`[Email] mode=application transport=resend source=${source} recipient=${toRecipient}`);
+
+    if (!this.resend) {
+      console.error('[Email] Cannot send email via Resend: client uninitialized or RESEND_API_KEY missing');
+      return {
+        success: false,
+        error: 'Email service uninitialized (RESEND_API_KEY missing)',
+      };
+    }
+
+    try {
+      const response = await this.resend.emails.send({
+        from: this.fromEmail,
+        to: toRecipient,
+        subject: template.subject,
+        html: template.html,
+        text: template.text,
+      });
+
+      if (response.error || !response.data?.id) {
+        const errorMsg = response.error?.message || 'Failed to send email via Resend';
+        console.error(`[Email] Resend failed: ${errorMsg}`);
+        return { success: false, error: errorMsg };
+      }
+
+      console.log(`[Email] Resend accepted message: ${response.data.id}`);
+      return { success: true, messageId: response.data.id };
+    } catch (err: any) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[Email] Resend failed: ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
   }
 
   /**
@@ -110,96 +155,13 @@ export class EmailService {
     },
     options?: EmailOptions
   ): Promise<EmailResult> {
-    if (!this.resend) {
-      console.error('[EmailService] Cannot send recovery email: Resend client not initialized (RESEND_API_KEY missing)');
-      return {
-        success: false,
-        error: 'Email service not configured (RESEND_API_KEY missing)',
-      };
-    }
-
-    const { recipient: finalRecipient, source } = this.resolveRecipient(customerEmail, options);
-
-    if (!finalRecipient || !finalRecipient.includes('@')) {
-      return {
-        success: false,
-        error: 'Customer email missing or invalid',
-      };
-    }
-
     const template = this.generateRecoveryEmailTemplate(
       customerName,
       orderNumber,
       failureContext,
       customContent
     );
-
-    try {
-      console.log(`[Email] source=${source} recipient=${finalRecipient}`);
-      return await this.dispatchEmail(finalRecipient, template, source);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Email] Resend failed: ${errorMessage}`);
-      return {
-        success: false,
-        error: `Failed to send recovery notification: ${errorMessage}`,
-      };
-    }
-  }
-
-  /**
-   * Safe email dispatch wrapper: executes live Resend API ONLY in real runtime (or when explicitly mocked).
-   * Suppresses live network requests in automated test suites (NODE_ENV=test) unless ALLOW_LIVE_RESEND=true.
-   */
-  private async dispatchEmail(
-    toRecipient: string,
-    template: { subject: string; html: string; text?: string },
-    source: EmailSource
-  ): Promise<EmailResult> {
-    if (!this.resend) {
-      return { success: false, error: 'Resend service uninitialized' };
-    }
-
-    const isTestEnv =
-      process.env.NODE_ENV === 'test' ||
-      process.env.JEST_WORKER_ID !== undefined ||
-      process.env.EMAIL_DELIVERY_MODE === 'test';
-
-    const isJestMock = Boolean(
-      (this.resend as any)?.emails?.send?._isMockFunction ||
-        (this.resend as any)?.emails?.send?.mock
-    );
-
-    if (isTestEnv && !isJestMock && process.env.ALLOW_LIVE_RESEND !== 'true') {
-      console.log(
-        `[Email] [TEST MOCK] Suppressed live network Resend call -> source=${source} recipient=${toRecipient}`
-      );
-      return { success: true, messageId: `msg_mock_test_${Date.now()}` };
-    }
-
-    const response = await this.resend.emails.send({
-      from: this.fromEmail,
-      to: toRecipient,
-      subject: template.subject,
-      html: template.html,
-      text: template.text,
-    });
-
-    if (response.error || !response.data?.id) {
-      const errorMsg = response.error?.message || 'Failed to send email via Resend';
-      if ((response.error as any)?.name === 'daily_quota_exceeded' || errorMsg.includes('quota')) {
-        console.error(`[Email] CRITICAL RESEND QUOTA ERROR: ${errorMsg}`);
-        console.error(
-          '[Email] To receive live emails, please update RESEND_API_KEY in .env with a fresh API key from https://resend.com/api-keys'
-        );
-      } else {
-        console.error(`[Email] Resend failed: ${errorMsg}`);
-      }
-      return { success: false, error: errorMsg };
-    }
-
-    console.log(`[Email] Resend accepted message: ${response.data.id}`);
-    return { success: true, messageId: response.data.id };
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
   }
 
   /**
@@ -226,28 +188,123 @@ export class EmailService {
     },
     options?: EmailOptions
   ): Promise<EmailResult> {
-    if (!this.isAvailable()) {
-      console.warn('[EmailService] Resend service unavailable. Skipping confirmation email.');
-      return { success: false, error: 'Email service unavailable' };
-    }
-
-    const { recipient: finalRecipient, source } = this.resolveRecipient(customerEmail, options);
-
-    if (!finalRecipient || !finalRecipient.includes('@')) {
-      console.warn('[EmailService] Invalid customer email address:', customerEmail);
-      return { success: false, error: 'Invalid recipient email' };
-    }
-
     const template = this.renderPaymentConfirmationTemplate(customerName, orderNumber, details);
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
 
-    try {
-      console.log(`[Email] source=${source} recipient=${finalRecipient}`);
-      return await this.dispatchEmail(finalRecipient, template, source);
-    } catch (err: any) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[Email] Resend failed: ${errorMsg}`);
-      return { success: false, error: errorMsg };
+  /**
+   * Send promise-to-pay follow-up email
+   */
+  async sendPromiseFollowUp(
+    customerEmail: string,
+    customerName: string,
+    deadlineDate: Date,
+    recoveryLink: string,
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const template = this.generatePromiseFollowUpTemplate(customerName, deadlineDate, recoveryLink);
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
+   * Send promise deadline missed notification
+   */
+  async sendPromiseMissedNotification(
+    customerEmail: string,
+    customerName: string,
+    recoveryLink: string,
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const template = this.generatePromiseMissedTemplate(customerName, recoveryLink);
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
+   * Generate recovery notification email template
+   */
+  private generateRecoveryEmailTemplate(
+    customerName: string,
+    orderNumber: string,
+    failureContext: {
+      amount: number;
+      reason: string;
+      recoveryLink: string;
+    },
+    customContent?: {
+      subject?: string;
+      greeting?: string;
+      body?: string;
+      call_to_action?: string;
     }
+  ): EmailTemplate {
+    const amountDisplay = (failureContext.amount / 100).toFixed(2);
+    const subject = customContent?.subject || `Payment Failed for Order ${orderNumber} - We Can Help`;
+    const greeting = customContent?.greeting || `Hi ${customerName},`;
+    const bodyText = customContent?.body || `We noticed that your payment for order ${orderNumber} failed. Don't worry—we're here to help you complete your purchase.`;
+    const ctaText = customContent?.call_to_action || `Respond to Payment Issue`;
+
+    return {
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body { font-family: Arial, sans-serif; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+      .content { line-height: 1.6; margin-bottom: 20px; }
+      .button { display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; }
+      .footer { font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 10px; margin-top: 20px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Payment Issue Detected</h1>
+      </div>
+      
+      <div class="content">
+        <p>${greeting}</p>
+        
+        <p>${bodyText}</p>
+        
+        <h3>Order Details:</h3>
+        <ul>
+          <li><strong>Order Number:</strong> ${orderNumber}</li>
+          <li><strong>Amount:</strong> ₹${amountDisplay}</li>
+          <li><strong>Reason:</strong> ${this.formatFailureReason(failureContext.reason)}</li>
+        </ul>
+        
+        <p style="text-align: center;">
+          <a href="${failureContext.recoveryLink}" class="button">${ctaText}</a>
+        </p>
+      </div>
+      
+      <div class="footer">
+        <p>© 2026 Razor Store. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
+      `,
+      text: `
+Payment Issue Detected
+
+${greeting}
+
+${bodyText}
+
+Order Details:
+- Order Number: ${orderNumber}
+- Amount: ₹${amountDisplay}
+- Reason: ${this.formatFailureReason(failureContext.reason)}
+
+Action: ${failureContext.recoveryLink}
+
+© 2026 Razor Store. All rights reserved.
+      `,
+    };
   }
 
   /**
@@ -350,15 +407,16 @@ export class EmailService {
               <td colspan="3" style="padding: 8px 10px; text-align: right;">Subtotal:</td>
               <td style="padding: 8px 10px; text-align: right;">₹${(details.subtotalCents / 100).toFixed(2)}</td>
             </tr>
-            ${details.discountCents > 0
-          ? `
+            ${
+              details.discountCents > 0
+                ? `
             <tr>
               <td colspan="3" style="padding: 8px 10px; text-align: right; color: #16a34a;">Bundle Discount:</td>
               <td style="padding: 8px 10px; text-align: right; color: #16a34a;">-₹${(details.discountCents / 100).toFixed(2)}</td>
             </tr>
             `
-          : ''
-        }
+                : ''
+            }
             <tr class="total-row">
               <td colspan="3" style="padding: 10px; text-align: right;">Total Paid:</td>
               <td style="padding: 10px; text-align: right;">₹${(details.totalCents / 100).toFixed(2)}</td>
@@ -399,165 +457,6 @@ ${details.discountCents > 0 ? `Bundle Discount: -₹${(details.discountCents / 1
 View your order online: ${details.orderLink}
 
 © 2026 Razor. All rights reserved.
-      `,
-    };
-  }
-
-  /**
-   * Send promise-to-pay follow-up email
-   */
-  async sendPromiseFollowUp(
-    customerEmail: string,
-    customerName: string,
-    deadlineDate: Date,
-    recoveryLink: string,
-    options?: EmailOptions
-  ): Promise<EmailResult> {
-    if (!this.resend) {
-      return {
-        success: false,
-        error: 'Email service not configured (RESEND_API_KEY missing)',
-      };
-    }
-
-    const { recipient: finalRecipient, source } = this.resolveRecipient(customerEmail, options);
-
-    const template = this.generatePromiseFollowUpTemplate(
-      customerName,
-      deadlineDate,
-      recoveryLink
-    );
-
-    try {
-      console.log(`[Email] source=${source} recipient=${finalRecipient}`);
-      return await this.dispatchEmail(finalRecipient, template, source);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Email] Resend failed: ${errorMessage}`);
-      return {
-        success: false,
-        error: `Failed to send promise follow-up: ${errorMessage}`,
-      };
-    }
-  }
-
-  /**
-   * Send promise deadline missed notification
-   */
-  async sendPromiseMissedNotification(
-    customerEmail: string,
-    customerName: string,
-    recoveryLink: string,
-    options?: EmailOptions
-  ): Promise<EmailResult> {
-    if (!this.resend) {
-      return {
-        success: false,
-        error: 'Email service not configured (RESEND_API_KEY missing)',
-      };
-    }
-
-    const { recipient: finalRecipient, source } = this.resolveRecipient(customerEmail, options);
-
-    const template = this.generatePromiseMissedTemplate(customerName, recoveryLink);
-
-    try {
-      console.log(`[Email] source=${source} recipient=${finalRecipient}`);
-      return await this.dispatchEmail(finalRecipient, template, source);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Email] Resend failed: ${errorMessage}`);
-      return {
-        success: false,
-        error: `Failed to send promise missed notification: ${errorMessage}`,
-      };
-    }
-  }
-
-  /**
-   * Generate recovery notification email template
-   */
-  private generateRecoveryEmailTemplate(
-    customerName: string,
-    orderNumber: string,
-    failureContext: {
-      amount: number;
-      reason: string;
-      recoveryLink: string;
-    },
-    customContent?: {
-      subject?: string;
-      greeting?: string;
-      body?: string;
-      call_to_action?: string;
-    }
-  ): EmailTemplate {
-    const amountDisplay = (failureContext.amount / 100).toFixed(2);
-    const subject = customContent?.subject || `Payment Failed for Order ${orderNumber} - We Can Help`;
-    const greeting = customContent?.greeting || `Hi ${customerName},`;
-    const bodyText = customContent?.body || `We noticed that your payment for order ${orderNumber} failed. Don't worry—we're here to help you complete your purchase.`;
-    const ctaText = customContent?.call_to_action || `Respond to Payment Issue`;
-
-    return {
-      subject,
-      html: `
-<!DOCTYPE html>
-<html>
-  <head>
-    <style>
-      body { font-family: Arial, sans-serif; color: #333; }
-      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-      .header { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-      .content { line-height: 1.6; margin-bottom: 20px; }
-      .button { display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 15px; }
-      .footer { font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 10px; margin-top: 20px; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>Payment Issue Detected</h1>
-      </div>
-      
-      <div class="content">
-        <p>${greeting}</p>
-        
-        <p>${bodyText}</p>
-        
-        <h3>Order Details:</h3>
-        <ul>
-          <li><strong>Order Number:</strong> ${orderNumber}</li>
-          <li><strong>Amount:</strong> ₹${amountDisplay}</li>
-          <li><strong>Reason:</strong> ${this.formatFailureReason(failureContext.reason)}</li>
-        </ul>
-        
-        <p style="text-align: center;">
-          <a href="${failureContext.recoveryLink}" class="button">${ctaText}</a>
-        </p>
-      </div>
-      
-      <div class="footer">
-        <p>© 2026 Razor Store. All rights reserved.</p>
-      </div>
-    </div>
-  </body>
-</html>
-      `,
-      text: `
-Payment Issue Detected
-
-${greeting}
-
-${bodyText}
-
-Order Details:
-- Order Number: ${orderNumber}
-- Amount: ₹${amountDisplay}
-- Reason: ${this.formatFailureReason(failureContext.reason)}
-
-Action: ${failureContext.recoveryLink}
-
-© 2026 Razor Store. All rights reserved.
       `,
     };
   }

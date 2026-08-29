@@ -12,6 +12,7 @@ import {
   closeTestDatabase,
 } from '../config/database.test.js';
 import { Customer } from '../models/Customer.js';
+import { Merchant } from '../models/Merchant.js';
 import { Product } from '../models/Product.js';
 import { Inventory } from '../models/Inventory.js';
 import { Order } from '../models/Order.js';
@@ -50,6 +51,7 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
 
   beforeEach(async () => {
     const customerRepo = TestDataSource.getRepository(Customer);
+    const merchantRepo = TestDataSource.getRepository(Merchant);
 
     // Primary merchant setup
     const m1Email = `merchant_primary_${Date.now()}@test.com`;
@@ -58,6 +60,13 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
         email: m1Email,
         name: 'Primary Merchant Owner',
         role: 'merchant',
+      })
+    );
+    await merchantRepo.save(
+      merchantRepo.create({
+        id: m1.id,
+        email: m1.email,
+        name: m1.name,
       })
     );
     merchantId = m1.id;
@@ -74,6 +83,13 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
         email: m2Email,
         name: 'Secondary Merchant Owner',
         role: 'merchant',
+      })
+    );
+    await merchantRepo.save(
+      merchantRepo.create({
+        id: m2.id,
+        email: m2.email,
+        name: m2.name,
       })
     );
     secondaryMerchantId = m2.id;

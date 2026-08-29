@@ -177,6 +177,6 @@ describe('Razorpay Payment Flow & Resend Test Safety Guardrails', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.messageId).toContain('msg_mock_test_');
+    expect(result.messageId).toContain('msg_mock_');
   });
 });

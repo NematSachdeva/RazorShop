@@ -354,7 +354,7 @@ export class CartService {
 
         const bundle = recommendation?.metadata?.bundle;
         if (bundle && Array.isArray(bundle.products) && bundle.products.length > 0) {
-          const bundleProductIds = new Set(bundle.products.map((p: any) => p.id));
+          const bundleProductIds = new Set(bundle.products.map((p: any) => p.id || p.product_id));
           let bundle_subtotal = 0;
           for (const item of cart.items || []) {
             if (bundleProductIds.has(item.product_id)) {

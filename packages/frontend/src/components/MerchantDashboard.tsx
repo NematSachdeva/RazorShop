@@ -104,12 +104,33 @@ export default function MerchantDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [activeRangeDays, setActiveRangeDays] = useState<number | 'prev_month' | 'custom'>(5);
   const [startDate, setStartDate] = useState(() => {
     const date = new Date();
-    date.setDate(date.getDate() - 30);
+    date.setDate(date.getDate() - 5);
     return date.toISOString().split('T')[0];
   });
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const handleRangeChange = (range: number | 'prev_month' | 'custom', customStart?: string, customEnd?: string) => {
+    setActiveRangeDays(range);
+    const now = new Date();
+
+    if (typeof range === 'number') {
+      const start = new Date();
+      start.setDate(now.getDate() - range);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(now.toISOString().split('T')[0]);
+    } else if (range === 'prev_month') {
+      const firstDayPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(firstDayPrevMonth.toISOString().split('T')[0]);
+      setEndDate(lastDayPrevMonth.toISOString().split('T')[0]);
+    } else if (range === 'custom' && customStart && customEnd) {
+      setStartDate(customStart);
+      setEndDate(customEnd);
+    }
+  };
 
   // Fetch dashboard data
   const fetchDashboard = async () => {
@@ -361,42 +382,112 @@ export default function MerchantDashboard() {
             {/* Payment Failure Reasons */}
             <PaymentFailureReasons reasons={dashboardData.failure_reasons} />
 
-            {/* Product Inventory & Sales Section */}
-            {(dashboardData as any).inventory_summary?.products && (
-              <div className="bg-white p-6 rounded-xl shadow border border-gray-200 mb-8">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-900">📦 Store Catalog & Inventory Summary</h3>
-                  <div className="flex gap-3">
-                    <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">
-                      Products Listed: {(dashboardData as any).inventory_summary.total_listed}
-                    </span>
-                    <span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full">
-                      Total Units Sold: {(dashboardData as any).inventory_summary.total_sold}
-                    </span>
+            {/* Authoritative Store Catalog & Inventory Summary Section */}
+            {(dashboardData as any).inventory_summary && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8 space-y-5">
+                <div className="flex flex-wrap justify-between items-center gap-4 border-b pb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <span>📦</span> Store Catalog & Inventory
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Authoritative PostgreSQL inventory levels and sales metrics</p>
+                  </div>
+                  <button
+                    onClick={handleViewProducts}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                  >
+                    View All Products & Stock →
+                  </button>
+                </div>
+
+                {/* Authoritative Catalog KPI Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-200">
+                    <p className="text-[11px] text-blue-800 font-bold">Products Listed</p>
+                    <p className="text-xl font-black text-blue-950 mt-0.5">
+                      {(dashboardData as any).inventory_summary.total_listed || 0}
+                    </p>
+                  </div>
+
+                  <div className="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200">
+                    <p className="text-[11px] text-emerald-800 font-bold">Total Stock Units</p>
+                    <p className="text-xl font-black text-emerald-950 mt-0.5">
+                      {(dashboardData as any).inventory_summary.total_units_in_stock || 0}
+                    </p>
+                  </div>
+
+                  <div className="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200">
+                    <p className="text-[11px] text-amber-800 font-bold">Low Stock Items</p>
+                    <p className="text-xl font-black text-amber-950 mt-0.5">
+                      {(dashboardData as any).inventory_summary.low_stock_count || 0}
+                    </p>
+                  </div>
+
+                  <div className="bg-red-50/70 p-3.5 rounded-xl border border-red-200">
+                    <p className="text-[11px] text-red-800 font-bold">Out of Stock</p>
+                    <p className="text-xl font-black text-red-950 mt-0.5">
+                      {(dashboardData as any).inventory_summary.out_of_stock_count || 0}
+                    </p>
+                  </div>
+
+                  <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-200 col-span-2 md:col-span-1">
+                    <p className="text-[11px] text-purple-800 font-bold">Total Units Sold</p>
+                    <p className="text-xl font-black text-purple-950 mt-0.5">
+                      {(dashboardData as any).inventory_summary.total_sold || 0}
+                    </p>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm text-gray-700">
-                    <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
+                {/* Compact Products Summary Table */}
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-50 text-gray-700 font-bold border-b">
                       <tr>
-                        <th className="py-3 px-4">Product Name</th>
-                        <th className="py-3 px-4">Category</th>
-                        <th className="py-3 px-4">Price</th>
-                        <th className="py-3 px-4">Stock on Hand</th>
-                        <th className="py-3 px-4">Units Sold</th>
+                        <th className="py-2.5 px-4">Product Name</th>
+                        <th className="py-2.5 px-4">Category</th>
+                        <th className="py-2.5 px-4 text-right">Price</th>
+                        <th className="py-2.5 px-4 text-center">Available Stock</th>
+                        <th className="py-2.5 px-4 text-right">Units Sold</th>
+                        <th className="py-2.5 px-4 text-center">Stock Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y">
-                      {(dashboardData as any).inventory_summary.products.map((item: any) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="py-3 px-4 font-medium text-gray-900">{item.name}</td>
-                          <td className="py-3 px-4"><span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{item.category}</span></td>
-                          <td className="py-3 px-4 font-semibold text-blue-600">₹{(item.price_cents / 100).toFixed(2)}</td>
-                          <td className="py-3 px-4">{item.quantity_on_hand}</td>
-                          <td className="py-3 px-4 font-bold text-green-700">{item.units_sold}</td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-gray-100 font-medium">
+                      {((dashboardData as any).inventory_summary.products || []).map((item: any) => {
+                        const available = item.available ?? Math.max(0, (item.quantity_on_hand || 0) - (item.reserved || 0));
+                        const isLow = available > 0 && available <= 5;
+                        const isOut = available === 0;
+
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="py-2.5 px-4 font-bold text-gray-900">{item.name}</td>
+                            <td className="py-2.5 px-4">
+                              <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[11px]">
+                                {item.category || 'General'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-bold text-blue-700">
+                              ₹{(item.price_cents / 100).toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-4 text-center font-bold text-gray-900">{available}</td>
+                            <td className="py-2.5 px-4 text-right font-bold text-green-700">{item.units_sold}</td>
+                            <td className="py-2.5 px-4 text-center">
+                              {isOut ? (
+                                <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold text-[10px]">
+                                  Out of Stock
+                                </span>
+                              ) : isLow ? (
+                                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px]">
+                                  Low Stock ({available})
+                                </span>
+                              ) : (
+                                <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold text-[10px]">
+                                  In Stock
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -404,7 +495,13 @@ export default function MerchantDashboard() {
             )}
 
             {/* Revenue Timeline */}
-            <RevenueTimeline timeline={dashboardData.revenue_timeline} />
+            <RevenueTimeline
+              timeline={dashboardData.revenue_timeline}
+              activeRangeDays={activeRangeDays}
+              onRangeChange={handleRangeChange}
+              customStartDate={startDate}
+              customEndDate={endDate}
+            />
 
             {/* M7-M8 Navigation Section */}
             <div className="mt-8 space-y-4">

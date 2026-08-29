@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
 // Resolve .env from monorepo root
-// Strategy: try multiple common paths in order
 let envPath: string;
 
 const possiblePaths = [
@@ -33,16 +32,17 @@ export interface Environment {
   JWT_SECRET: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
-  EMAIL_DEMO_MODE: boolean;
-  EMAIL_TEST_RECIPIENT: string;
+  EMAIL_DELIVERY_MODE: 'mock' | 'live';
+  AI_MODE: 'mock' | 'live';
+  SCHEDULER_ENABLED: boolean;
 }
 
 let cachedEnv: Environment | null = null;
 
 export function validateEnv(): Environment {
-  // Allow missing variables in test environment
+  // Determine if running in Jest test runner context
   const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
-  
+
   const requiredVars = [
     'NODE_ENV',
     'PORT',
@@ -65,18 +65,18 @@ export function validateEnv(): Environment {
     );
   }
 
-  const emailDemoModeStr = process.env.EMAIL_DEMO_MODE;
-  const EMAIL_DEMO_MODE = emailDemoModeStr === 'false' ? false : true;
+  const emailModeInput = (process.env.EMAIL_DELIVERY_MODE || '').toLowerCase();
+  // Automated tests MUST ALWAYS force mock mode regardless of developer .env
+  const EMAIL_DELIVERY_MODE: 'mock' | 'live' = isTest ? 'mock' : (emailModeInput === 'live' ? 'live' : 'mock');
 
-  const EMAIL_TEST_RECIPIENT = process.env.EMAIL_TEST_RECIPIENT || 't74209185@gmail.com';
+  const aiModeInput = (process.env.AI_MODE || '').toLowerCase();
+  const AI_MODE: 'mock' | 'live' = isTest ? 'mock' : (aiModeInput === 'live' ? 'live' : 'mock');
 
-  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!EMAIL_REGEX.test(EMAIL_TEST_RECIPIENT)) {
-    throw new Error(`Invalid EMAIL_TEST_RECIPIENT syntax: ${EMAIL_TEST_RECIPIENT}`);
-  }
+  // Background scheduler is disabled by default in test/dev unless explicitly enabled
+  const SCHEDULER_ENABLED = isTest ? false : process.env.SCHEDULER_ENABLED === 'true';
 
   return {
-    NODE_ENV: (process.env.NODE_ENV || 'development') as any,
+    NODE_ENV: (process.env.NODE_ENV || (isTest ? 'test' : 'development')) as any,
     PORT: parseInt(process.env.PORT || '3000', 10),
     DATABASE_URL: process.env.DATABASE_URL || '',
     FRONTEND_URL: process.env.FRONTEND_URL || '',
@@ -87,8 +87,9 @@ export function validateEnv(): Environment {
     JWT_SECRET: process.env.JWT_SECRET || '',
     RESEND_API_KEY: process.env.RESEND_API_KEY || '',
     RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM || 'nemat@razorshop.app',
-    EMAIL_DEMO_MODE,
-    EMAIL_TEST_RECIPIENT,
+    EMAIL_DELIVERY_MODE,
+    AI_MODE,
+    SCHEDULER_ENABLED,
   };
 }
 
@@ -103,7 +104,6 @@ export function resetEnvCache(): void {
   cachedEnv = null;
 }
 
-// For backward compatibility, export lazy getter
 export const env = new Proxy<Environment>({} as Environment, {
   get: (_, prop) => {
     const e = getEnv();

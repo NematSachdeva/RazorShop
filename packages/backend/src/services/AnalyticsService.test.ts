@@ -53,9 +53,11 @@ describe('AnalyticsService', () => {
     }
   });
 
+  const TEST_MERCHANT_UUID = '11111111-1111-1111-1111-111111111111';
+
   describe('getDashboardMetrics', () => {
     it('should return zero metrics for empty database', async () => {
-      const metrics = await analyticsService.getDashboardMetrics('default-merchant');
+      const metrics = await analyticsService.getDashboardMetrics(TEST_MERCHANT_UUID);
 
       expect(metrics.total_revenue_cents).toBeGreaterThanOrEqual(0);
       expect(metrics.revenue_at_risk_cents).toBeGreaterThanOrEqual(0);
@@ -66,7 +68,7 @@ describe('AnalyticsService', () => {
     });
 
     it('should return metrics with proper structure', async () => {
-      const metrics = await analyticsService.getDashboardMetrics('default-merchant');
+      const metrics = await analyticsService.getDashboardMetrics(TEST_MERCHANT_UUID);
 
       expect(metrics).toHaveProperty('total_revenue_cents');
       expect(metrics).toHaveProperty('revenue_at_risk_cents');
@@ -81,7 +83,7 @@ describe('AnalyticsService', () => {
     });
 
     it('should calculate recovery rate as percentage', async () => {
-      const metrics = await analyticsService.getDashboardMetrics('default-merchant');
+      const metrics = await analyticsService.getDashboardMetrics(TEST_MERCHANT_UUID);
 
       expect(metrics.recovery_rate_percent).toBeGreaterThanOrEqual(0);
       expect(metrics.recovery_rate_percent).toBeLessThanOrEqual(100);

@@ -32,10 +32,14 @@ export function createAuthenticate(service: AuthService = authService) {
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
 
-      // Verify customer exists in database before proceeding to downstream handlers
+      // Verify user exists in database (Customer or Merchant) before proceeding to downstream handlers
       const customer = await service.getCustomerById(decoded.id);
       if (!customer) {
-        return res.status(401).json({ error: 'User account no longer exists or session is invalid' });
+        const merchantRepo = (service as any)['dataSource']?.getRepository('Merchant');
+        const merchant = merchantRepo ? await merchantRepo.findOne({ where: { id: decoded.id } }) : null;
+        if (!merchant) {
+          return res.status(401).json({ error: 'User account no longer exists or session is invalid' });
+        }
       }
 
       // Attach user info to request

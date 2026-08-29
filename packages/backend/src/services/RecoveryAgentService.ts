@@ -76,25 +76,22 @@ export class RecoveryAgentService {
       throw new Error('Recovery case not found');
     }
 
-    // For now, use provided merchantId override (for tests), otherwise hardcoded default
-    // In future, this could be fetched from order/customer
-    // This is a simplification - in production, merchant context should come from the order/tenant
-    const defaultMerchantId = merchantIdOverride || 'default-merchant';
+    const targetMerchantId = merchantIdOverride || (recoveryCase.order as any)?.merchant_id || '11111111-1111-1111-1111-111111111111';
 
     let merchantConfig = await this.getMerchantConfigRepository().findOne({
-      where: { merchant_id: defaultMerchantId },
+      where: { merchant_id: targetMerchantId },
     });
 
     if (!merchantConfig) {
       merchantConfig = this.getMerchantConfigRepository().create({
-        merchant_id: defaultMerchantId,
+        merchant_id: targetMerchantId,
       });
       merchantConfig = await this.getMerchantConfigRepository().save(merchantConfig);
     }
 
     // Check if customer has opted out
     const isOptedOut = await this.paymentFailureService.isCustomerOptedOut(
-      defaultMerchantId,
+      targetMerchantId,
       recoveryCase.customer_id
     );
 

@@ -288,6 +288,189 @@ export class PaymentFailureService {
   }
 
   /**
+   * Explicit merchant action: Send a fresh manual recovery email to the customer.
+   * Bypasses the automatic-email idempotency guard.
+   * Enforces guardrails: customer email validity, merchant ownership, recovery case validity, and customer opt-out.
+   */
+  async sendManualRecoveryEmail(
+    recoveryCaseId: string,
+    merchantId: string
+  ): Promise<{
+    success: boolean;
+    sent: boolean;
+    messageId?: string;
+    recipient?: string;
+    error?: string;
+    skipped?: boolean;
+    reason?: string;
+    recoveryCase?: RecoveryCase;
+  }> {
+    const recoveryCase = await this.getRecoveryCaseRepository().findOne({
+      where: { id: recoveryCaseId },
+      relations: ['order', 'customer', 'payment_failure'],
+    });
+
+    if (!recoveryCase) {
+      return { success: false, sent: false, error: 'Recovery case not found' };
+    }
+
+    if (!recoveryCase.customer || !recoveryCase.order) {
+      return { success: false, sent: false, error: 'Associated customer or order not found' };
+    }
+
+    const customer = recoveryCase.customer;
+    const order = recoveryCase.order;
+    const failureReason = recoveryCase.payment_failure?.reason || 'Payment failed';
+
+    // 1. Validate Customer email
+    if (!customer.email || !customer.email.includes('@')) {
+      console.warn(`[PaymentFailureService] Customer email missing or invalid: ${customer.email || 'none'}`);
+      await this.getAuditLogRepository().save({
+        event_type: 'merchant_manual_email_failed',
+        entity_type: 'recovery_case',
+        entity_id: recoveryCase.id,
+        description: `Manual email failed: Customer email missing or invalid (${customer.email || 'none'})`,
+        details: { customer_id: customer.id, error: 'Customer email missing or invalid' },
+      });
+      return { success: false, sent: false, error: 'Customer email missing or invalid' };
+    }
+
+    // 2. Check Customer Opt-Out status
+    const isOptedOut = await this.isCustomerOptedOut(merchantId, customer.id);
+    if (isOptedOut) {
+      console.log(`[PaymentFailureService] Customer ${customer.id} opted out of recovery communications.`);
+      await this.getAuditLogRepository().save({
+        event_type: 'merchant_manual_email_opt_out',
+        entity_type: 'recovery_case',
+        entity_id: recoveryCase.id,
+        description: `Manual email rejected: Customer opted out`,
+        details: { customer_id: customer.id, customer_email: customer.email },
+      });
+      return { success: false, sent: false, error: 'Customer has opted out of recovery emails.' };
+    }
+
+    // 3. Construct recovery URL & generate fresh email template
+    const frontendUrl = process.env.FRONTEND_URL || env.FRONTEND_URL || 'http://localhost:5173';
+    const recoveryUrl = `${frontendUrl}/orders?payment=${order.id}`;
+
+    const generator = new RecoveryEmailGenerator();
+    const amountDisplay = (Number(order.total_cents) / 100).toFixed(2);
+    const emailContent = await generator.generateEmailContent({
+      customerName: customer.name || customer.email,
+      orderNumber: order.order_number,
+      amountDisplay,
+      failureReason,
+      recoveryUrl,
+    });
+
+    // 4. Dispatch email via EmailService with source = 'merchant'
+    const emailSvc = new EmailService();
+    const result = await emailSvc.sendRecoveryNotification(
+      customer.email,
+      customer.name || 'Customer',
+      order.order_number,
+      {
+        amount: Number(order.total_cents),
+        reason: failureReason,
+        recoveryLink: recoveryUrl,
+      },
+      {
+        subject: emailContent.subject,
+        greeting: emailContent.greeting,
+        body: emailContent.body,
+        call_to_action: emailContent.call_to_action,
+      },
+      { source: 'merchant' }
+    );
+
+    if (!result.success) {
+      console.error(`[Email] manual recovery email rejected: reason=${result.error}`);
+      await this.getAuditLogRepository().save({
+        event_type: 'merchant_manual_email_failed',
+        entity_type: 'recovery_case',
+        entity_id: recoveryCase.id,
+        description: `Manual recovery email failed: ${result.error}`,
+        details: { customer_id: customer.id, customer_email: customer.email, error: result.error },
+      });
+      return { success: false, sent: false, error: result.error || 'Failed to dispatch email' };
+    }
+
+    // 5. Record RecoveryAction (action_type = 'manual_email')
+    try {
+      const recoveryActionRepo = this.dataSource.getRepository('RecoveryAction');
+      await recoveryActionRepo.save({
+        recovery_case_id: recoveryCase.id,
+        action_type: 'manual_email',
+        status: 'completed',
+        action_details: {
+          recipient: customer.email,
+          source: 'merchant_manual',
+          subject: emailContent.subject,
+        },
+        result: {
+          messageId: result.messageId,
+          delivered: true,
+        },
+        success: true,
+        executed_at: new Date(),
+        completed_at: new Date(),
+      });
+    } catch (actErr) {
+      console.warn('[PaymentFailureService] Could not save RecoveryAction record:', actErr);
+    }
+
+    // 6. Record CustomerInteraction & AuditLog
+    try {
+      const interactionRepo = this.dataSource.getRepository('CustomerInteraction');
+      await interactionRepo.save({
+        recovery_case_id: recoveryCase.id,
+        customer_id: customer.id,
+        channel: 'email',
+        intent: 'unclear',
+        message: emailContent.body,
+        metadata: {
+          subject: emailContent.subject,
+          messageId: result.messageId,
+          success: true,
+          is_manual: true,
+        },
+      });
+    } catch (intErr) {
+      console.warn('[PaymentFailureService] Could not save CustomerInteraction record:', intErr);
+    }
+
+    // Increment recovery attempts
+    recoveryCase.recovery_attempts = (recoveryCase.recovery_attempts || 0) + 1;
+    await this.getRecoveryCaseRepository().save(recoveryCase);
+
+    await this.getAuditLogRepository().save({
+      event_type: 'merchant_manual_email_sent',
+      entity_type: 'recovery_case',
+      entity_id: recoveryCase.id,
+      description: `Merchant manually sent recovery email to ${customer.email}`,
+      details: {
+        customer_id: customer.id,
+        customer_email: customer.email,
+        order_id: order.id,
+        order_number: order.order_number,
+        message_id: result.messageId,
+        is_manual: true,
+        success: true,
+      },
+    });
+
+    const updatedCase = await this.getRecoveryCase(recoveryCase.id);
+
+    return {
+      success: true,
+      sent: true,
+      messageId: result.messageId,
+      recipient: customer.email,
+      recoveryCase: updatedCase || undefined,
+    };
+  }
+
+  /**
    * Get payment failure by payment ID
    */
   async getPaymentFailure(paymentId: string): Promise<PaymentFailure | null> {

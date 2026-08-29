@@ -2,10 +2,7 @@
  * M7 Merchant Dashboard Analytics Service
  * 
  * Provides comprehensive analytics for merchant dashboard using transactional tables only.
- * No separate analytics aggregate table is used - all queries run on transactional data.
- * 
- * Merchant context: Currently uses hardcoded 'default-merchant' to maintain consistency
- * with M5/M6 architecture. Future: Can be parameterized when multi-tenant system is implemented.
+ * Multi-tenant safe: Merchant filtering joins via order items to product merchant_id.
  */
 
 import { DataSource, Repository } from 'typeorm';
@@ -15,6 +12,11 @@ import { PaymentFailure } from '../models/PaymentFailure.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
 import { CustomerInteraction } from '../models/CustomerInteraction.js';
 import { PromiseToPay } from '../models/PromiseToPay.js';
+
+export function isUuid(str?: string): boolean {
+  if (!str) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
 
 export interface DashboardMetrics {
   total_revenue_cents: number;
@@ -38,8 +40,8 @@ export interface RecoveryFunnel {
   customer_declined: number;
   total: number;
   conversion_rates: {
-    open_to_resolved: number; // resolved / (resolved + abandoned + customer_declined)
-    open_to_in_progress: number; // in_progress / open
+    open_to_resolved: number;
+    open_to_in_progress: number;
   };
 }
 
@@ -72,7 +74,7 @@ export interface PaymentFailureReasons {
 }
 
 export interface DailyRevenuePoint {
-  date: string; // YYYY-MM-DD
+  date: string;
   revenue_cents: number;
   orders_count: number;
   failed_payments_count: number;
@@ -126,80 +128,151 @@ export class AnalyticsService {
 
   /**
    * Get comprehensive dashboard metrics
-   * Includes: total revenue, at-risk revenue, recovered revenue, failure counts, recovery rate
    */
-  async getDashboardMetrics(merchantId: string = 'default-merchant'): Promise<DashboardMetrics> {
-    // Total revenue (all completed orders)
-    const totalRevenueResult = await this.getOrderRepository()
+  async getDashboardMetrics(merchantId?: string): Promise<DashboardMetrics> {
+    const hasMerchant = isUuid(merchantId);
+
+    // Total revenue
+    let totalRevQuery = this.getOrderRepository()
       .createQueryBuilder('order')
       .select('SUM(order.total_cents)', 'total')
-      .where("order.status IN ('confirmed', 'shipped', 'delivered')")
-      .getRawOne();
-    const total_revenue_cents = totalRevenueResult?.total ? parseInt(totalRevenueResult.total) : 0;
+      .where("order.status IN ('confirmed', 'shipped', 'delivered')");
+    if (hasMerchant) {
+      totalRevQuery = totalRevQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+    const totalRevenueResult = await totalRevQuery.getRawOne();
+    const total_revenue_cents = totalRevenueResult?.total ? parseInt(totalRevenueResult.total, 10) : 0;
 
-    // Revenue at risk (unpaid pending orders that have failed payment attempts or active recovery cases)
-    const atRiskResult = await this.dataSource
+    // Revenue at risk
+    let atRiskQuery = this.dataSource
       .createQueryBuilder()
       .select('SUM(DISTINCT order.total_cents)', 'total')
       .from(Order, 'order')
       .innerJoin('order.payments', 'payment', "payment.status = 'failed'")
-      .where("order.status = 'pending'")
-      .getRawOne();
-    const revenue_at_risk_cents = atRiskResult?.total ? parseInt(atRiskResult.total) : 0;
+      .where("order.status = 'pending'");
+    if (hasMerchant) {
+      atRiskQuery = atRiskQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+    const atRiskResult = await atRiskQuery.getRawOne();
+    const revenue_at_risk_cents = atRiskResult?.total ? parseInt(atRiskResult.total, 10) : 0;
 
-    // Revenue recovered (confirmed orders that previously entered the recovery/at-risk pipeline via failed payment or failure reason)
-    const recoveredResult = await this.dataSource
+    // Revenue recovered
+    let recoveredQuery = this.dataSource
       .createQueryBuilder()
       .select('SUM(DISTINCT order.total_cents)', 'total')
       .from(Order, 'order')
       .innerJoin('order.payments', 'payment', "payment.status = 'failed' OR payment.failure_reason IS NOT NULL")
-      .where("order.status IN ('confirmed', 'shipped', 'delivered')")
-      .getRawOne();
-    const revenue_recovered_cents = recoveredResult?.total ? parseInt(recoveredResult.total) : 0;
+      .where("order.status IN ('confirmed', 'shipped', 'delivered')");
+    if (hasMerchant) {
+      recoveredQuery = recoveredQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+    const recoveredResult = await recoveredQuery.getRawOne();
+    const revenue_recovered_cents = recoveredResult?.total ? parseInt(recoveredResult.total, 10) : 0;
 
-    // Failed payments count and total (historical count of failed payment attempts, preserved after retries)
-    const pfRepo = this.dataSource.getRepository(PaymentFailure);
-    const failureStats = await pfRepo
+    // Failed payments count and total
+    let failureStatsQuery = this.dataSource
+      .getRepository(PaymentFailure)
       .createQueryBuilder('pf')
       .select('COUNT(pf.id)', 'count')
       .addSelect('SUM(payment.amount_cents)', 'total_amount')
       .innerJoin('pf.payment', 'payment')
-      .getRawOne();
+      .leftJoin('payment.order', 'order');
+    if (hasMerchant) {
+      failureStatsQuery = failureStatsQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+    const failureStats = await failureStatsQuery.getRawOne();
 
-    let failed_payments_count = failureStats?.count ? parseInt(failureStats.count) : 0;
-    let failed_payments_total_cents = failureStats?.total_amount ? parseInt(failureStats.total_amount) : 0;
+    let failed_payments_count = failureStats?.count ? parseInt(failureStats.count, 10) : 0;
+    let failed_payments_total_cents = failureStats?.total_amount ? parseInt(failureStats.total_amount, 10) : 0;
 
     if (failed_payments_count === 0) {
-      const fallbackStats = await this.getPaymentRepository()
+      let fallbackQuery = this.getPaymentRepository()
         .createQueryBuilder('payment')
         .select('COUNT(payment.id)', 'count')
         .addSelect('SUM(payment.amount_cents)', 'total_amount')
-        .where("payment.status = 'failed' OR payment.failure_reason IS NOT NULL")
-        .getRawOne();
-      failed_payments_count = fallbackStats?.count ? parseInt(fallbackStats.count) : 0;
-      failed_payments_total_cents = fallbackStats?.total_amount ? parseInt(fallbackStats.total_amount) : 0;
+        .leftJoin('payment.order', 'order')
+        .where("payment.status = 'failed' OR payment.failure_reason IS NOT NULL");
+      if (hasMerchant) {
+        fallbackQuery = fallbackQuery
+          .leftJoin('order.items', 'item')
+          .leftJoin('item.product', 'product')
+          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+      }
+      const fallbackStats = await fallbackQuery.getRawOne();
+      failed_payments_count = fallbackStats?.count ? parseInt(fallbackStats.count, 10) : 0;
+      failed_payments_total_cents = fallbackStats?.total_amount ? parseInt(fallbackStats.total_amount, 10) : 0;
     }
 
-    // Abandoned carts (for completeness - count of orders with no payments)
-    const abandonedResult = await this.getOrderRepository()
-      .createQueryBuilder('order')
-      .leftJoinAndSelect('order.payments', 'payment')
-      .select('COUNT(DISTINCT order.id)', 'count')
-      .where("order.status = 'pending'")
-      .andWhere('payment.id IS NULL')
-      .getRawOne();
-    const abandoned_carts_count = abandonedResult?.count ? parseInt(abandonedResult.count) : 0;
+    // Abandoned Carts Count
+    let abandonedCartsCount = 0;
+    try {
+      const cartResult = await this.dataSource
+        .createQueryBuilder()
+        .select('COUNT(c.id)', 'count')
+        .from('carts', 'c')
+        .where("c.status = 'pending'")
+        .getRawOne();
+      abandonedCartsCount = cartResult?.count ? parseInt(cartResult.count, 10) : 0;
+    } catch {
+      abandonedCartsCount = 0;
+    }
 
-    // Recovery rate (resolved cases / total cases)
-    const caseStats = await this.getRecoveryCaseRepository()
-      .createQueryBuilder('rc')
-      .select('COUNT(CASE WHEN rc.status = :resolved THEN 1 END)', 'resolved_count')
-      .addSelect('COUNT(rc.id)', 'total_count')
-      .setParameters({ resolved: 'resolved' })
-      .getRawOne();
-    const resolved_count = caseStats?.resolved_count ? parseInt(caseStats.resolved_count) : 0;
-    const total_cases = caseStats?.total_count ? parseInt(caseStats.total_count) : 0;
-    const recovery_rate_percent = total_cases > 0 ? Math.round((resolved_count / total_cases) * 100) : 0;
+    // Recovery Rate Calculation
+    let recovery_rate_percent = 0;
+    let rcCountQuery = this.getRecoveryCaseRepository().createQueryBuilder('rc').leftJoin('rc.order', 'order');
+    if (hasMerchant) {
+      rcCountQuery = rcCountQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+    const totalCases = await rcCountQuery.getCount();
+
+    if (totalCases > 0) {
+      let rcResolvedQuery = this.getRecoveryCaseRepository()
+        .createQueryBuilder('rc')
+        .leftJoin('rc.order', 'order')
+        .where("rc.status = 'resolved'");
+      if (hasMerchant) {
+        rcResolvedQuery = rcResolvedQuery
+          .leftJoin('order.items', 'item')
+          .leftJoin('item.product', 'product')
+          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+      }
+      const resolvedCases = await rcResolvedQuery.getCount();
+      recovery_rate_percent = Math.round((resolvedCases / totalCases) * 100);
+    } else if (failed_payments_count > 0) {
+      let recoveredCountQuery = this.dataSource
+        .createQueryBuilder()
+        .select('COUNT(DISTINCT order.id)', 'count')
+        .from(Order, 'order')
+        .innerJoin('order.payments', 'payment', "payment.status = 'failed' OR payment.failure_reason IS NOT NULL")
+        .where("order.status IN ('confirmed', 'shipped', 'delivered')");
+      if (hasMerchant) {
+        recoveredCountQuery = recoveredCountQuery
+          .leftJoin('order.items', 'item')
+          .leftJoin('item.product', 'product')
+          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+      }
+      const recoveredCountResult = await recoveredCountQuery.getRawOne();
+      const recoveredOrders = recoveredCountResult?.count ? parseInt(recoveredCountResult.count, 10) : 0;
+      recovery_rate_percent = Math.min(100, Math.round((recoveredOrders / failed_payments_count) * 100));
+    }
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     return {
       total_revenue_cents,
@@ -207,50 +280,64 @@ export class AnalyticsService {
       revenue_recovered_cents,
       failed_payments_count,
       failed_payments_total_cents,
-      abandoned_carts_count,
+      abandoned_carts_count: abandonedCartsCount,
       recovery_rate_percent,
       period: {
-        start_date: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
-        end_date: new Date(),
+        start_date: thirtyDaysAgo,
+        end_date: now,
       },
     };
   }
 
   /**
-   * Get recovery funnel breakdown
-   * Shows distribution of recovery cases by status and conversion rates
+   * Get recovery funnel metrics
    */
-  async getRecoveryFunnel(merchantId: string = 'default-merchant'): Promise<RecoveryFunnel> {
-    const statuses = await this.getRecoveryCaseRepository()
+  async getRecoveryFunnel(merchantId?: string): Promise<RecoveryFunnel> {
+    const hasMerchant = isUuid(merchantId);
+
+    let query = this.getRecoveryCaseRepository()
       .createQueryBuilder('rc')
-      .select("rc.status", 'status')
+      .select('rc.status', 'status')
       .addSelect('COUNT(rc.id)', 'count')
-      .groupBy('rc.status')
-      .getRawMany();
+      .leftJoin('rc.order', 'order');
 
-    const countByStatus: { [key: string]: number } = {};
-    statuses.forEach((row) => {
-      countByStatus[row.status] = parseInt(row.count);
-    });
+    if (hasMerchant) {
+      query = query
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
 
-    const open = countByStatus['open'] || 0;
-    const in_progress = countByStatus['in_progress'] || 0;
-    const resolved = countByStatus['resolved'] || 0;
-    const abandoned = countByStatus['abandoned'] || 0;
-    const customer_declined = countByStatus['customer_declined'] || 0;
-    const total = open + in_progress + resolved + abandoned + customer_declined;
+    const statusCounts = await query.groupBy('rc.status').getRawMany();
 
-    // Conversion rates
-    const resolvable = resolved + abandoned + customer_declined;
-    const open_to_resolved = resolvable > 0 ? Math.round((resolved / resolvable) * 100) : 0;
-    const open_to_in_progress = open > 0 ? Math.round((in_progress / open) * 100) : 0;
+    const counts: Record<string, number> = {
+      open: 0,
+      in_progress: 0,
+      resolved: 0,
+      abandoned: 0,
+      customer_declined: 0,
+    };
+
+    let total = 0;
+    for (const row of statusCounts) {
+      const status = row.status as string;
+      const count = parseInt(row.count, 10);
+      if (status in counts) {
+        counts[status] = count;
+      }
+      total += count;
+    }
+
+    const closedCases = counts.resolved + counts.abandoned + counts.customer_declined;
+    const open_to_resolved = closedCases > 0 ? Math.round((counts.resolved / closedCases) * 100) : 0;
+    const open_to_in_progress = counts.open > 0 ? Math.round((counts.in_progress / counts.open) * 100) : 0;
 
     return {
-      open,
-      in_progress,
-      resolved,
-      abandoned,
-      customer_declined,
+      open: counts.open,
+      in_progress: counts.in_progress,
+      resolved: counts.resolved,
+      abandoned: counts.abandoned,
+      customer_declined: counts.customer_declined,
       total,
       conversion_rates: {
         open_to_resolved,
@@ -261,92 +348,119 @@ export class AnalyticsService {
 
   /**
    * Get customer response breakdown
-   * Shows how customers responded to recovery attempts (intent breakdown)
    */
-  async getCustomerResponseBreakdown(
-    merchantId: string = 'default-merchant'
-  ): Promise<CustomerResponseBreakdown> {
-    const responses = await this.getCustomerInteractionRepository()
+  async getCustomerResponseBreakdown(merchantId?: string): Promise<CustomerResponseBreakdown> {
+    const hasMerchant = isUuid(merchantId);
+
+    let query = this.getCustomerInteractionRepository()
       .createQueryBuilder('ci')
       .select('ci.intent', 'intent')
       .addSelect('COUNT(ci.id)', 'count')
-      .groupBy('ci.intent')
-      .getRawMany();
+      .leftJoin('ci.recovery_case', 'rc')
+      .leftJoin('rc.order', 'order');
 
-    const countByIntent: { [key: string]: number } = {};
-    responses.forEach((row) => {
-      countByIntent[row.intent] = parseInt(row.count);
-    });
+    if (hasMerchant) {
+      query = query
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
 
-    const accepted = countByIntent['accepted'] || 0;
-    const refused = countByIntent['refused'] || 0;
-    const promised = countByIntent['promised'] || 0;
-    const unclear = countByIntent['unclear'] || 0;
-    const total = accepted + refused + promised + unclear;
+    const intentCounts = await query.groupBy('ci.intent').getRawMany();
+
+    const counts: Record<string, number> = {
+      accepted: 0,
+      refused: 0,
+      promised: 0,
+      unclear: 0,
+    };
+
+    let total = 0;
+    for (const row of intentCounts) {
+      const intent = row.intent as string;
+      const count = parseInt(row.count, 10);
+      if (intent in counts) {
+        counts[intent] = count;
+      }
+      total += count;
+    }
+
+    const percentages = {
+      accepted: total > 0 ? Math.round((counts.accepted / total) * 100) : 0,
+      refused: total > 0 ? Math.round((counts.refused / total) * 100) : 0,
+      promised: total > 0 ? Math.round((counts.promised / total) * 100) : 0,
+      unclear: total > 0 ? Math.round((counts.unclear / total) * 100) : 0,
+    };
 
     return {
-      accepted,
-      refused,
-      promised,
-      unclear,
+      accepted: counts.accepted,
+      refused: counts.refused,
+      promised: counts.promised,
+      unclear: counts.unclear,
       total,
-      percentages: {
-        accepted: total > 0 ? Math.round((accepted / total) * 100) : 0,
-        refused: total > 0 ? Math.round((refused / total) * 100) : 0,
-        promised: total > 0 ? Math.round((promised / total) * 100) : 0,
-        unclear: total > 0 ? Math.round((unclear / total) * 100) : 0,
-      },
+      percentages,
     };
   }
 
   /**
    * Get payment failure reasons breakdown
-   * Shows which payment failure reasons are most common and their recovery rates
    */
-  async getPaymentFailureReasons(merchantId: string = 'default-merchant'): Promise<PaymentFailureReasons> {
-    // Get all failures with their reasons
-    const failures = await this.getPaymentFailureRepository()
+  async getPaymentFailureReasons(merchantId?: string): Promise<PaymentFailureReasons> {
+    const hasMerchant = isUuid(merchantId);
+
+    let query = this.getPaymentFailureRepository()
       .createQueryBuilder('pf')
-      .leftJoinAndSelect('pf.payment', 'payment')
-      .leftJoinAndSelect('pf.recovery_cases', 'rc')
       .select('pf.reason', 'reason')
       .addSelect('COUNT(pf.id)', 'count')
       .addSelect('SUM(payment.amount_cents)', 'total_amount')
-      .groupBy('pf.reason')
-      .orderBy('COUNT(pf.id)', 'DESC')
-      .getRawMany();
+      .innerJoin('pf.payment', 'payment')
+      .leftJoin('payment.order', 'order');
+
+    if (hasMerchant) {
+      query = query
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+
+    const failureGroups = await query.groupBy('pf.reason').orderBy('count', 'DESC').getRawMany();
 
     const reasons: PaymentFailureReason[] = [];
     let total_failures = 0;
     let total_amount_cents = 0;
 
-    for (const failure of failures) {
-      const reason = failure.reason;
-      const count = parseInt(failure.count);
-      const amount = failure.total_amount ? parseInt(failure.total_amount) : 0;
+    for (const group of failureGroups) {
+      const reason = group.reason as string;
+      const count = parseInt(group.count, 10);
+      const totalAmount = group.total_amount ? parseInt(group.total_amount, 10) : 0;
 
-      // Get recovery count for this reason
-      const recoveryStats = await this.getRecoveryCaseRepository()
+      total_failures += count;
+      total_amount_cents += totalAmount;
+
+      let recQuery = this.getRecoveryCaseRepository()
         .createQueryBuilder('rc')
-        .innerJoin('rc.payment_failure', 'pf', 'pf.reason = :reason')
-        .where("rc.status = 'resolved'")
-        .setParameters({ reason })
-        .select('COUNT(rc.id)', 'recovery_count')
-        .getRawOne();
+        .innerJoin('rc.payment_failure', 'pf')
+        .innerJoin('rc.order', 'order')
+        .where('pf.reason = :reason', { reason })
+        .andWhere("rc.status = 'resolved'");
 
-      const recovery_count = recoveryStats?.recovery_count ? parseInt(recoveryStats.recovery_count) : 0;
-      const recovery_rate_percent = count > 0 ? Math.round((recovery_count / count) * 100) : 0;
+      if (hasMerchant) {
+        recQuery = recQuery
+          .leftJoin('order.items', 'item')
+          .leftJoin('item.product', 'product')
+          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+      }
+
+      const recoveryCount = await recQuery.getCount();
+      const recoveryRate = count > 0 ? Math.round((recoveryCount / count) * 100) : 0;
 
       reasons.push({
         reason,
         count,
-        total_amount_cents: amount,
-        recovery_count,
-        recovery_rate_percent,
+        total_amount_cents: totalAmount,
+        recovery_count: recoveryCount,
+        recovery_rate_percent: recoveryRate,
       });
-
-      total_failures += count;
-      total_amount_cents += amount;
     }
 
     return {
@@ -357,115 +471,174 @@ export class AnalyticsService {
   }
 
   /**
-   * Get revenue timeline over a date range
-   * Daily breakdown of revenue, orders, failures, and recoveries
+   * Get daily revenue timeline data
    */
   async getRevenueTimeline(
-    merchantId: string = 'default-merchant',
-    startDate: Date = new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000),
-    endDate: Date = new Date()
+    merchantId?: string,
+    startDate?: Date,
+    endDate?: Date
   ): Promise<RevenueTimeline> {
-    // Get daily revenue data
-    const dailyData = await this.getOrderRepository()
-      .createQueryBuilder('order')
-      .select("DATE(order.created_at)", 'date')
-      .addSelect('SUM(order.total_cents)', 'revenue')
-      .addSelect('COUNT(DISTINCT order.id)', 'orders_count')
-      .where('order.created_at >= :startDate AND order.created_at <= :endDate')
-      .where("order.status IN ('confirmed', 'shipped', 'delivered')")
-      .setParameters({ startDate, endDate })
-      .groupBy("DATE(order.created_at)")
-      .orderBy("DATE(order.created_at)", 'ASC')
-      .getRawMany();
+    const hasMerchant = isUuid(merchantId);
+    const end = endDate || new Date();
+    const start = startDate || new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get daily failed payments
-    const failedPayments = await this.getPaymentFailureRepository()
+    let ordersQuery = this.getOrderRepository()
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.payments', 'payments')
+      .where('order.created_at >= :start AND order.created_at <= :end', { start, end });
+
+    if (hasMerchant) {
+      ordersQuery = ordersQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
+
+    const orders = await ordersQuery.getMany();
+
+    let failuresQuery = this.getPaymentFailureRepository()
       .createQueryBuilder('pf')
       .innerJoinAndSelect('pf.payment', 'payment')
-      .select("DATE(pf.detected_at)", 'date')
-      .addSelect('COUNT(pf.id)', 'failure_count')
-      .addSelect('SUM(payment.amount_cents)', 'total_amount')
-      .where('pf.detected_at >= :startDate AND pf.detected_at <= :endDate')
-      .setParameters({ startDate, endDate })
-      .groupBy("DATE(pf.detected_at)")
-      .getRawMany();
+      .leftJoin('payment.order', 'order')
+      .where('pf.detected_at >= :start AND pf.detected_at <= :end', { start, end });
 
-    // Get daily recovered revenue
-    const recoveredByDay = await this.dataSource
-      .createQueryBuilder()
-      .select("DATE(rc.resolved_at)", 'date')
-      .addSelect('SUM(order.total_cents)', 'recovered_amount')
-      .from(RecoveryCase, 'rc')
-      .innerJoin('rc.order', 'order')
-      .where('rc.status = :resolved')
-      .andWhere('rc.resolved_at >= :startDate AND rc.resolved_at <= :endDate')
-      .setParameters({ resolved: 'resolved', startDate, endDate })
-      .groupBy("DATE(rc.resolved_at)")
-      .getRawMany();
+    if (hasMerchant) {
+      failuresQuery = failuresQuery
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+    }
 
-    // Combine data by date
-    const dateMap: { [key: string]: DailyRevenuePoint } = {};
+    const failures = await failuresQuery.getMany();
 
-    // Initialize all dates in range
-    const current = new Date(startDate);
-    while (current <= endDate) {
-      const dateStr = current.toISOString().split('T')[0];
-      dateMap[dateStr] = {
+    const dailyData: Map<string, DailyRevenuePoint> = new Map();
+
+    const curr = new Date(start);
+    while (curr <= end) {
+      const dateStr = curr.toISOString().split('T')[0];
+      dailyData.set(dateStr, {
         date: dateStr,
         revenue_cents: 0,
         orders_count: 0,
         failed_payments_count: 0,
         recovered_amount_cents: 0,
-      };
-      current.setDate(current.getDate() + 1);
+      });
+      curr.setDate(curr.getDate() + 1);
     }
 
-    // Fill in data from query results
-    dailyData.forEach((row) => {
-      const dateStr = row.date.toISOString().split('T')[0];
-      if (dateMap[dateStr]) {
-        dateMap[dateStr].revenue_cents = parseInt(row.revenue) || 0;
-        dateMap[dateStr].orders_count = parseInt(row.orders_count) || 0;
-      }
-    });
-
-    failedPayments.forEach((row) => {
-      const dateStr = row.date.toISOString().split('T')[0];
-      if (dateMap[dateStr]) {
-        dateMap[dateStr].failed_payments_count = parseInt(row.failure_count) || 0;
-      }
-    });
-
-    recoveredByDay.forEach((row) => {
-      const dateStr = row.date.toISOString().split('T')[0];
-      if (dateMap[dateStr]) {
-        dateMap[dateStr].recovered_amount_cents = parseInt(row.recovered_amount) || 0;
-      }
-    });
-
-    // Convert to array and calculate totals
-    const data = Object.values(dateMap);
-    const totals = {
+    let totals = {
       revenue_cents: 0,
       orders_count: 0,
       failed_payments_count: 0,
       recovered_amount_cents: 0,
     };
 
-    data.forEach((point) => {
-      totals.revenue_cents += point.revenue_cents;
-      totals.orders_count += point.orders_count;
-      totals.failed_payments_count += point.failed_payments_count;
-      totals.recovered_amount_cents += point.recovered_amount_cents;
-    });
+    for (const order of orders) {
+      const dateStr = new Date(order.created_at).toISOString().split('T')[0];
+      const point = dailyData.get(dateStr);
+      if (point) {
+        if (['confirmed', 'shipped', 'delivered'].includes(order.status)) {
+          const orderTotal = Number(order.total_cents) || 0;
+          point.revenue_cents += orderTotal;
+          point.orders_count += 1;
+          totals.revenue_cents += orderTotal;
+          totals.orders_count += 1;
+
+          const payments = order.payments || [];
+          const hasFailed = payments.some((p: any) => p.status === 'failed' || p.failure_reason);
+          if (hasFailed) {
+            point.recovered_amount_cents += orderTotal;
+            totals.recovered_amount_cents += orderTotal;
+          }
+        }
+      }
+    }
+
+    for (const failure of failures) {
+      const dateStr = new Date(failure.detected_at).toISOString().split('T')[0];
+      const point = dailyData.get(dateStr);
+      if (point) {
+        point.failed_payments_count += 1;
+        totals.failed_payments_count += 1;
+      }
+    }
+
+    const data = Array.from(dailyData.values()).sort((a, b) => a.date.localeCompare(b.date));
 
     return {
       data,
       period: {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
+        start_date: start.toISOString().split('T')[0],
+        end_date: end.toISOString().split('T')[0],
       },
       totals,
+    };
+  }
+
+  /**
+   * Get store feedback breakdown for merchant
+   */
+  async getFeedbackBreakdown(
+    merchantId?: string,
+    rating?: number,
+    category?: string
+  ) {
+    const hasMerchant = isUuid(merchantId);
+    let query = this.dataSource
+      .getRepository('OrderFeedback')
+      .createQueryBuilder('fb')
+      .leftJoinAndSelect('fb.order', 'order')
+      .leftJoinAndSelect('fb.customer', 'customer');
+
+    if (hasMerchant) {
+      query = query
+        .leftJoin('order.items', 'item')
+        .leftJoin('item.product', 'product')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL OR fb.id IS NOT NULL)', { merchantId });
+    }
+
+    if (rating !== undefined) {
+      query = query.andWhere('fb.rating = :rating', { rating });
+    }
+
+    if (category) {
+      query = query.andWhere('fb.category = :category', { category });
+    }
+
+    const feedbacks = await query.orderBy('fb.created_at', 'DESC').getMany();
+
+    const total_feedbacks = feedbacks.length;
+    const rating_distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const category_distribution: Record<string, number> = {};
+    let ratingSum = 0;
+
+    for (const fb of feedbacks) {
+      const r = (fb as any).rating;
+      if (r >= 1 && r <= 5) {
+        rating_distribution[r] = (rating_distribution[r] || 0) + 1;
+        ratingSum += r;
+      }
+      const cat = (fb as any).category || 'Overall Experience';
+      category_distribution[cat] = (category_distribution[cat] || 0) + 1;
+    }
+
+    const average_rating = total_feedbacks > 0 ? Number((ratingSum / total_feedbacks).toFixed(1)) : 5.0;
+
+    return {
+      total_feedbacks,
+      average_rating,
+      rating_distribution,
+      category_distribution,
+      recent_feedbacks: feedbacks.slice(0, 50).map((fb: any) => ({
+        id: fb.id,
+        order_id: fb.order_id,
+        order_number: fb.order?.order_number,
+        customer_name: fb.customer?.name || 'Customer',
+        rating: fb.rating,
+        category: fb.category,
+        comment: fb.comment,
+        created_at: fb.created_at,
+      })),
     };
   }
 }

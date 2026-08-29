@@ -579,6 +579,17 @@ export class RecommendationService {
    * Returns deterministic fallback if Groq is unavailable.
    */
   private async callGroqAPI(prompt: string): Promise<GroqResponse> {
+    const isFetchMocked = typeof (global as any).fetch?.mock !== 'undefined';
+    const isAiLive =
+      process.env.AI_MODE === 'live' ||
+      process.env.ALLOW_LIVE_GROQ === 'true' ||
+      isFetchMocked;
+
+    if (!isAiLive && process.env.NODE_ENV === 'test') {
+      console.log('[Recommendation] [TEST MOCK] Suppressed live network Groq call');
+      throw new Error('Groq AI call suppressed in mock/test mode');
+    }
+
     if (!env.GROQ_API_KEY) {
       console.warn('GROQ_API_KEY not configured - using deterministic fallback');
       throw new Error('AI service not configured');

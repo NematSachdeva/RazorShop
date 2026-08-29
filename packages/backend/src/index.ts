@@ -10,21 +10,11 @@ async function main() {
     // Initialize database
     await initializeDatabase();
 
-    // Auto-seed real catalog products in dev/prod if catalog is low
+    // Auto-seed real catalog products and demo accounts in dev/prod
     if (env.NODE_ENV !== 'test') {
       const { AppDataSource } = await import('./config/database.js');
-      const { Product } = await import('./models/Product.js');
-      const productRepo = AppDataSource.getRepository(Product);
-      const count = await productRepo
-        .createQueryBuilder('product')
-        .where("product.name NOT ILIKE :testPattern AND (product.category IS NULL OR product.category != 'test')", { testPattern: 'Test Product%' })
-        .getCount();
-
-      if (count < 20) {
-        console.log('Catalog count low (' + count + '). Auto-seeding catalog products...');
-        const { seedDatabase } = await import('./seed.js');
-        await seedDatabase(AppDataSource);
-      }
+      const { seedDatabase } = await import('./seed.js');
+      await seedDatabase(AppDataSource);
     }
 
     // Create Express app
@@ -35,8 +25,8 @@ async function main() {
       console.log(`✓ Server running on http://localhost:${env.PORT}`);
     });
 
-    // Start scheduler (M6 promise-to-pay workflow)
-    if (env.NODE_ENV !== 'test') {
+    // Start scheduler (M6 promise-to-pay workflow) - ONLY when SCHEDULER_ENABLED=true
+    if (env.SCHEDULER_ENABLED && env.NODE_ENV !== 'test') {
       await schedulerService.start();
     }
 

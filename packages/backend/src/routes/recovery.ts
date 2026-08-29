@@ -10,6 +10,7 @@ import { PaymentFailureService } from '../services/PaymentFailureService.js';
 import { RecoveryAgentService } from '../services/RecoveryAgentService.js';
 import { CustomerRecoveryService } from '../services/CustomerRecoveryService.js';
 import { AppDataSource } from '../config/database.js';
+import { DEMO_MERCHANT_UUID } from '../seed.js';
 
 const router = Router();
 
@@ -102,11 +103,11 @@ router.post('/cases/:id/opt-out', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Recovery case not found' });
     }
     
-    // Get merchant ID from order's customer (hardcoded to 'default-merchant' for now)
-    const merchantId = 'default-merchant';
+    // Get merchant ID from order context
+    const merchantId = (recoveryCase.order as any)?.merchant_id || DEMO_MERCHANT_UUID;
     
     // Add customer to opt-out list
-    const config = await paymentFailureService.optOutCustomer(merchantId, recoveryCase.customer_id);
+    await paymentFailureService.optOutCustomer(merchantId, recoveryCase.customer_id);
     
     // Update recovery case status to customer_declined
     const RecoveryCase = AppDataSource.getRepository('RecoveryCase');
@@ -237,13 +238,15 @@ router.post('/respond', async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Recovery case or order not found' });
       }
 
+      const merchantId = (recoveryCase.order as any)?.merchant_id || DEMO_MERCHANT_UUID;
+
       const promise = await customerRecoveryService.createPromiseToPay({
         recovery_case_id,
         customer_id,
         customer_interaction_id: interaction.id,
         promised_amount_cents: recoveryCase.order.total_cents,
         promised_deadline: deadline,
-        merchantIdOverride: 'default-merchant',
+        merchantIdOverride: merchantId,
       });
 
       return res.status(200).json({
@@ -257,13 +260,15 @@ router.post('/respond', async (req: Request, res: Response) => {
     }
 
     // For other intents (accepted, refused, unclear)
-    // Just handle the response and update recovery case status
+    const recCase = await paymentFailureService.getRecoveryCase(recovery_case_id);
+    const merchantId = (recCase?.order as any)?.merchant_id || DEMO_MERCHANT_UUID;
+
     await customerRecoveryService.handleCustomerResponse({
       recovery_case_id,
       customer_id,
       intent,
       channel,
-      merchantIdOverride: 'default-merchant',
+      merchantIdOverride: merchantId,
     });
 
     res.status(200).json({

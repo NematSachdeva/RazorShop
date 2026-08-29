@@ -3,6 +3,8 @@ import { getApiUrl } from '../config/api';
 import { authService } from '../services/authService';
 import { OrderDTO, PaymentDTO } from '@razor/shared';
 
+import OrderFeedbackModal from './OrderFeedbackModal';
+
 interface CustomerOrdersProps {
   onContinuePayment: (orderId: string, amountCents: number) => void;
   onRetryPayment: (orderId: string, amountCents: number) => void;
@@ -19,6 +21,23 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
   const [ordersWithPayments, setOrdersWithPayments] = useState<OrderWithPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackModalState, setFeedbackModalState] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    orderNumber: string;
+  }>({
+    isOpen: false,
+    orderId: '',
+    orderNumber: '',
+  });
+
+  const handleOpenFeedback = (orderId: string, orderNumber: string) => {
+    setFeedbackModalState({
+      isOpen: true,
+      orderId,
+      orderNumber,
+    });
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -221,39 +240,61 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
             )}
 
             {/* Actions */}
-            <div className="flex justify-end gap-3 pt-2 border-t">
-              {isConfirmed && (
+            <div className="flex flex-wrap justify-between items-center pt-3 border-t gap-3">
+              <div>
                 <button
-                  disabled
-                  className="px-4 py-2 bg-green-50 text-green-700 rounded text-sm font-semibold cursor-default"
+                  onClick={() => handleOpenFeedback(order.id, order.order_number)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-50 border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-lg text-xs font-semibold transition"
                 >
-                  ✓ Paid / Completed
+                  <span>💬</span>
+                  <span>Feedback</span>
                 </button>
-              )}
+              </div>
 
-              {isPending && (
-                <button
-                  onClick={() => onContinuePayment(order.id, order.total_cents)}
-                  disabled={loadingPayment}
-                  className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Continue Payment
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {isConfirmed && (
+                  <button
+                    disabled
+                    className="px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-semibold cursor-default"
+                  >
+                    ✓ Paid / Completed
+                  </button>
+                )}
 
-              {isFailed && (
-                <button
-                  onClick={() => onRetryPayment(order.id, order.total_cents)}
-                  disabled={loadingPayment}
-                  className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
-                >
-                  Retry Payment
-                </button>
-              )}
+                {isPending && (
+                  <button
+                    onClick={() => onContinuePayment(order.id, order.total_cents)}
+                    disabled={loadingPayment}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Continue Payment
+                  </button>
+                )}
+
+                {isFailed && (
+                  <button
+                    onClick={() => onRetryPayment(order.id, order.total_cents)}
+                    disabled={loadingPayment}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    Retry Payment
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         );
       })}
+
+      {feedbackModalState.orderId && (
+        <OrderFeedbackModal
+          orderId={feedbackModalState.orderId}
+          orderNumber={feedbackModalState.orderNumber}
+          isOpen={feedbackModalState.isOpen}
+          onClose={() => setFeedbackModalState({ isOpen: false, orderId: '', orderNumber: '' })}
+          onFeedbackSaved={fetchOrders}
+        />
+      )}
     </div>
   );
 }

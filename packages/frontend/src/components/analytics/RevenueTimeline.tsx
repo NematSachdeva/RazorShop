@@ -1,9 +1,11 @@
 /**
  * RevenueTimeline Component
- * Displays daily revenue, orders, failed payments, and recoveries
+ * Interactive Revenue & Recovery Analytics chart with range selection controls.
  */
 
-interface DailyDataPoint {
+import { useState } from 'react';
+
+export interface DailyDataPoint {
   date: string;
   revenue_cents: number;
   orders_count: number;
@@ -11,7 +13,7 @@ interface DailyDataPoint {
   recovered_amount_cents: number;
 }
 
-interface TimelineData {
+export interface TimelineData {
   data: DailyDataPoint[];
   period: {
     start_date: string;
@@ -27,9 +29,24 @@ interface TimelineData {
 
 interface RevenueTimelineProps {
   timeline: TimelineData;
+  activeRangeDays: number | 'prev_month' | 'custom';
+  onRangeChange: (range: number | 'prev_month' | 'custom', customStart?: string, customEnd?: string) => void;
+  customStartDate?: string;
+  customEndDate?: string;
 }
 
-export default function RevenueTimeline({ timeline }: RevenueTimelineProps) {
+export default function RevenueTimeline({
+  timeline,
+  activeRangeDays,
+  onRangeChange,
+  customStartDate = '',
+  customEndDate = '',
+}: RevenueTimelineProps) {
+  const [hoveredPoint, setHoveredPoint] = useState<DailyDataPoint | null>(null);
+  const [startDateInput, setStartDateInput] = useState(customStartDate);
+  const [endDateInput, setEndDateInput] = useState(customEndDate);
+  const [customError, setCustomError] = useState<string | null>(null);
+
   const formatPrice = (cents: number) => {
     return `₹${(cents / 100).toLocaleString('en-IN', {
       minimumFractionDigits: 0,
@@ -42,102 +59,240 @@ export default function RevenueTimeline({ timeline }: RevenueTimelineProps) {
     return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
   };
 
-  // Get max values for scaling
-  const maxRevenue = Math.max(...timeline.data.map(d => d.revenue_cents), 1);
-  const maxRecovered = Math.max(...timeline.data.map(d => d.recovered_amount_cents), 1);
+  const data = timeline?.data || [];
+  const maxRevenue = Math.max(...data.map((d) => d.revenue_cents), 1);
+  const maxRecovered = Math.max(...data.map((d) => d.recovered_amount_cents), 1);
+  const maxBarVal = Math.max(maxRevenue, maxRecovered, 100);
+
+  const handleApplyCustom = () => {
+    setCustomError(null);
+    if (!startDateInput || !endDateInput) {
+      setCustomError('Please select both start and end dates.');
+      return;
+    }
+    if (new Date(startDateInput) > new Date(endDateInput)) {
+      setCustomError('Start date cannot be after end date.');
+      return;
+    }
+    onRangeChange('custom', startDateInput, endDateInput);
+  };
+
+  // Calculate recovery rate for selected range
+  const totalRecovered = timeline?.totals?.recovered_amount_cents || 0;
+  const totalRev = timeline?.totals?.revenue_cents || 0;
+  const totalFailed = timeline?.totals?.failed_payments_count || 0;
 
   return (
-    <div className="bg-white rounded shadow p-6 mb-8">
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Revenue Timeline</h2>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8 space-y-6">
+      {/* Header & Range Selector Controls */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-4 border-b">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">📊 Revenue & Recovery Timeline</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Reporting Period: {timeline.period?.start_date} to {timeline.period?.end_date}
+          </p>
+        </div>
 
-      {timeline.data.length === 0 ? (
-        <p className="text-gray-500 py-4">No data available for this period</p>
+        {/* Preset Range Buttons */}
+        <div className="flex flex-wrap gap-1.5 bg-gray-100 p-1 rounded-xl">
+          <button
+            onClick={() => onRangeChange(5)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeRangeDays === 5 ? 'bg-blue-600 text-white shadow' : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Last 5 Days
+          </button>
+          <button
+            onClick={() => onRangeChange(10)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeRangeDays === 10 ? 'bg-blue-600 text-white shadow' : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Last 10 Days
+          </button>
+          <button
+            onClick={() => onRangeChange(20)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeRangeDays === 20 ? 'bg-blue-600 text-white shadow' : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Last 20 Days
+          </button>
+          <button
+            onClick={() => onRangeChange(30)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeRangeDays === 30 ? 'bg-blue-600 text-white shadow' : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Last 30 Days
+          </button>
+          <button
+            onClick={() => onRangeChange('prev_month')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeRangeDays === 'prev_month' ? 'bg-blue-600 text-white shadow' : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Previous Month
+          </button>
+          <button
+            onClick={() => onRangeChange('custom')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeRangeDays === 'custom' ? 'bg-blue-600 text-white shadow' : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Custom Range
+          </button>
+        </div>
+      </div>
+
+      {/* Custom Range Picker */}
+      {activeRangeDays === 'custom' && (
+        <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-100 flex flex-wrap items-center gap-3 text-xs">
+          <div>
+            <label className="block text-gray-700 font-bold mb-1">Start Date</label>
+            <input
+              type="date"
+              value={startDateInput}
+              onChange={(e) => setStartDateInput(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 font-bold mb-1">End Date</label>
+            <input
+              type="date"
+              value={endDateInput}
+              onChange={(e) => setEndDateInput(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white"
+            />
+          </div>
+          <div className="self-end">
+            <button
+              onClick={handleApplyCustom}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition"
+            >
+              Apply Filter
+            </button>
+          </div>
+          {customError && <p className="w-full text-red-600 font-bold">{customError}</p>}
+        </div>
+      )}
+
+      {/* Summary Metric Cards for Selected Range */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200">
+          <p className="text-xs text-blue-800 font-bold mb-1">Period Total Revenue</p>
+          <p className="text-2xl font-black text-blue-950">{formatPrice(totalRev)}</p>
+          <p className="text-[10px] text-blue-600 font-medium mt-1">{timeline?.totals?.orders_count || 0} Confirmed Orders</p>
+        </div>
+
+        <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200">
+          <p className="text-xs text-amber-800 font-bold mb-1">Period Total Orders</p>
+          <p className="text-2xl font-black text-amber-950">{timeline?.totals?.orders_count || 0}</p>
+          <p className="text-[10px] text-amber-600 font-medium mt-1">Confirmed & Processing</p>
+        </div>
+
+        <div className="bg-red-50/70 p-4 rounded-xl border border-red-200">
+          <p className="text-xs text-red-800 font-bold mb-1">Failed Payments</p>
+          <p className="text-2xl font-black text-red-950">{totalFailed}</p>
+          <p className="text-[10px] text-red-600 font-medium mt-1">Payment exceptions in range</p>
+        </div>
+
+        <div className="bg-green-50/70 p-4 rounded-xl border border-green-200">
+          <p className="text-xs text-green-800 font-bold mb-1">Total Recovered Revenue</p>
+          <p className="text-2xl font-black text-green-950">{formatPrice(totalRecovered)}</p>
+          <p className="text-[10px] text-green-600 font-medium mt-1">Recovered from failure flows</p>
+        </div>
+      </div>
+
+      {data.length === 0 ? (
+        <div className="bg-gray-50 rounded-xl p-8 text-center">
+          <p className="text-gray-500 font-medium">No activity recorded for the selected date range</p>
+        </div>
       ) : (
         <>
-          {/* Chart-like visualization */}
-          <div className="overflow-x-auto mb-6">
-            <div className="flex gap-1 items-end h-48 min-w-full pr-4">
-              {timeline.data.map((point, idx) => {
-                const revenueHeight = (point.revenue_cents / maxRevenue) * 100;
-                const recoveredHeight = (point.recovered_amount_cents / maxRecovered) * 100;
-                
+          {/* Interactive Chart */}
+          <div className="bg-gray-50/80 rounded-xl p-6 border border-gray-200 relative">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-6 text-xs font-bold">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-sm" />
+                  <span className="text-gray-700">Total Revenue</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-sm" />
+                  <span className="text-gray-700">Recovered Revenue</span>
+                </div>
+              </div>
+
+              {hoveredPoint && (
+                <div className="bg-white px-3 py-1 rounded-lg border border-gray-300 text-xs shadow-sm font-medium">
+                  <span className="font-bold">{formatDate(hoveredPoint.date)}: </span>
+                  <span className="text-blue-600 font-bold">{formatPrice(hoveredPoint.revenue_cents)}</span> |{' '}
+                  <span className="text-green-600 font-bold">Recovered: {formatPrice(hoveredPoint.recovered_amount_cents)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Visual Bar/Line Representation */}
+            <div className="h-56 flex items-end gap-2 pt-6 pb-2 px-2 border-b border-gray-300">
+              {data.map((point, idx) => {
+                const revHeight = Math.max((point.revenue_cents / maxBarVal) * 100, point.revenue_cents > 0 ? 8 : 2);
+                const recHeight = Math.max((point.recovered_amount_cents / maxBarVal) * 100, point.recovered_amount_cents > 0 ? 8 : 2);
+
                 return (
-                  <div key={idx} className="flex-1 flex flex-col items-center">
-                    <div className="w-full flex items-end justify-center gap-0.5 h-full mb-2">
-                      {/* Revenue bar */}
+                  <div
+                    key={idx}
+                    onMouseEnter={() => setHoveredPoint(point)}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                    className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
+                  >
+                    <div className="w-full flex items-end justify-center gap-1 h-full">
+                      {/* Total Revenue Bar */}
                       <div
-                        className="flex-1 bg-blue-400 rounded-t opacity-70 hover:opacity-100 transition"
-                        style={{ height: `${revenueHeight}%` }}
-                        title={`Revenue: ${formatPrice(point.revenue_cents)}`}
+                        className="w-1/2 bg-blue-500 hover:bg-blue-600 rounded-t transition-all group-hover:scale-105"
+                        style={{ height: `${revHeight}%` }}
                       />
-                      {/* Recovered bar */}
+                      {/* Recovered Revenue Bar */}
                       <div
-                        className="flex-1 bg-green-400 rounded-t opacity-70 hover:opacity-100 transition"
-                        style={{ height: `${recoveredHeight}%` }}
-                        title={`Recovered: ${formatPrice(point.recovered_amount_cents)}`}
+                        className="w-1/2 bg-green-500 hover:bg-green-600 rounded-t transition-all group-hover:scale-105"
+                        style={{ height: `${recHeight}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-600 text-center max-w-12 leading-tight">
-                      {formatDate(point.date)}
-                    </span>
                   </div>
                 );
               })}
             </div>
-          </div>
 
-          {/* Legend */}
-          <div className="flex gap-6 mb-6 pb-6 border-b">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-400 rounded"></div>
-              <span className="text-sm text-gray-700">Revenue</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-400 rounded"></div>
-              <span className="text-sm text-gray-700">Recovered Amount</span>
+            {/* Readable X-Axis Labels */}
+            <div className="flex justify-between text-[11px] text-gray-500 font-semibold pt-2 px-2">
+              <span>{formatDate(data[0].date)}</span>
+              {data.length > 4 && <span>{formatDate(data[Math.floor(data.length / 2)].date)}</span>}
+              <span>{formatDate(data[data.length - 1].date)}</span>
             </div>
           </div>
 
-          {/* Summary Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 p-4 rounded border-l-4 border-blue-400">
-              <p className="text-xs text-gray-600 mb-1">Total Revenue</p>
-              <p className="text-lg font-bold text-blue-900">{formatPrice(timeline.totals.revenue_cents)}</p>
-            </div>
-            <div className="bg-yellow-50 p-4 rounded border-l-4 border-yellow-400">
-              <p className="text-xs text-gray-600 mb-1">Total Orders</p>
-              <p className="text-lg font-bold text-yellow-900">{timeline.totals.orders_count}</p>
-            </div>
-            <div className="bg-red-50 p-4 rounded border-l-4 border-red-400">
-              <p className="text-xs text-gray-600 mb-1">Failed Payments</p>
-              <p className="text-lg font-bold text-red-900">{timeline.totals.failed_payments_count}</p>
-            </div>
-            <div className="bg-green-50 p-4 rounded border-l-4 border-green-400">
-              <p className="text-xs text-gray-600 mb-1">Total Recovered</p>
-              <p className="text-lg font-bold text-green-900">{formatPrice(timeline.totals.recovered_amount_cents)}</p>
-            </div>
-          </div>
-
-          {/* Detailed Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-gray-200 bg-gray-50">
-                  <th className="text-left py-2 px-2 font-semibold text-gray-700">Date</th>
-                  <th className="text-right py-2 px-2 font-semibold text-gray-700">Revenue</th>
-                  <th className="text-right py-2 px-2 font-semibold text-gray-700">Orders</th>
-                  <th className="text-right py-2 px-2 font-semibold text-gray-700">Failed</th>
-                  <th className="text-right py-2 px-2 font-semibold text-gray-700">Recovered</th>
+          {/* Compact Detailed Table */}
+          <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-gray-50 border-b border-gray-200 font-bold text-gray-700">
+                <tr>
+                  <th className="py-2.5 px-4">Date</th>
+                  <th className="py-2.5 px-4 text-right">Revenue</th>
+                  <th className="py-2.5 px-4 text-right">Orders</th>
+                  <th className="py-2.5 px-4 text-right">Failed Payments</th>
+                  <th className="py-2.5 px-4 text-right">Recovered Amount</th>
                 </tr>
               </thead>
-              <tbody>
-                {timeline.data.map((point, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-2 px-2 font-medium text-gray-900">{formatDate(point.date)}</td>
-                    <td className="py-2 px-2 text-right text-gray-700">{formatPrice(point.revenue_cents)}</td>
-                    <td className="py-2 px-2 text-right text-gray-700">{point.orders_count}</td>
-                    <td className="py-2 px-2 text-right text-gray-700">{point.failed_payments_count}</td>
-                    <td className="py-2 px-2 text-right text-green-600 font-medium">
+              <tbody className="divide-y divide-gray-100">
+                {data.map((point, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50 font-medium">
+                    <td className="py-2.5 px-4 text-gray-900 font-bold">{formatDate(point.date)}</td>
+                    <td className="py-2.5 px-4 text-right text-gray-900">{formatPrice(point.revenue_cents)}</td>
+                    <td className="py-2.5 px-4 text-right text-gray-700">{point.orders_count}</td>
+                    <td className="py-2.5 px-4 text-right text-red-600 font-bold">{point.failed_payments_count}</td>
+                    <td className="py-2.5 px-4 text-right text-green-600 font-bold">
                       {formatPrice(point.recovered_amount_cents)}
                     </td>
                   </tr>

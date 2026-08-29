@@ -181,6 +181,94 @@ export function createOrdersRouter(
     })
   );
 
+  // POST /api/orders/:id/feedback
+  // Submit or update customer feedback for an order
+  router.post(
+    '/:id/feedback',
+    authenticate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const { rating, comment, category } = req.body;
+
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid order ID format' });
+      }
+
+      if (!req.user || req.user.role !== 'customer') {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const order = await orderService.getOrderById(id);
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      if (order.customer_id !== req.user.id) {
+        return res.status(403).json({ error: 'You do not have permission to leave feedback for this order' });
+      }
+
+      const ratingNum = Number(rating);
+      if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+        return res.status(400).json({ error: 'Rating must be an integer between 1 and 5' });
+      }
+
+      const validCategories = ['Payment', 'Product', 'Checkout', 'Delivery', 'Overall Experience'];
+      const feedbackCategory = validCategories.includes(category) ? category : 'Overall Experience';
+
+      const feedbackRepo = orderService['dataSource'].getRepository('OrderFeedback');
+      let feedback: any = await feedbackRepo.findOne({ where: { order_id: id } });
+
+      if (feedback) {
+        feedback.rating = ratingNum;
+        feedback.comment = comment ? String(comment).trim() : null;
+        feedback.category = feedbackCategory;
+      } else {
+        feedback = feedbackRepo.create({
+          order_id: id,
+          customer_id: req.user.id,
+          rating: ratingNum,
+          comment: comment ? String(comment).trim() : null,
+          category: feedbackCategory,
+        });
+      }
+
+      const savedFeedback = await feedbackRepo.save(feedback);
+      res.status(200).json(savedFeedback);
+    })
+  );
+
+  // GET /api/orders/:id/feedback
+  // Get customer feedback for an order
+  router.get(
+    '/:id/feedback',
+    authenticate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { id } = req.params;
+
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid order ID format' });
+      }
+
+      if (!req.user || req.user.role !== 'customer') {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const order = await orderService.getOrderById(id);
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      if (order.customer_id !== req.user.id) {
+        return res.status(403).json({ error: 'You do not have permission to view feedback for this order' });
+      }
+
+      const feedbackRepo = orderService['dataSource'].getRepository('OrderFeedback');
+      const feedback = await feedbackRepo.findOne({ where: { order_id: id } });
+
+      res.status(200).json({ feedback });
+    })
+  );
+
   return router;
 }
 

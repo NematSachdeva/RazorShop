@@ -3,7 +3,11 @@ import { Customer } from './models/Customer.js';
 import { Merchant } from './models/Merchant.js';
 import { Product } from './models/Product.js';
 import { Inventory } from './models/Inventory.js';
+import { MerchantConfig } from './models/MerchantConfig.js';
 import bcrypt from 'bcryptjs';
+
+export const DEMO_MERCHANT_UUID = '11111111-1111-1111-1111-111111111111';
+export const DEMO_CUSTOMER_UUID = '22222222-2222-2222-2222-222222222222';
 
 const products = [
       // Technology (15 products)
@@ -303,11 +307,56 @@ export async function seedDatabase(ds: any = AppDataSource) {
     }
     console.log('Seeding database...');
 
-    // Seed demo customers with authentication
     const demoCustomerPassword = await bcrypt.hash('password123', 10);
 
-    const customers = [
+    // 1. Seed demo merchant in Merchant table
+    const merchantRepo = ds.getRepository(Merchant);
+    let demoMerchant = await merchantRepo.findOne({
+      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'merchant@example.com' }],
+    });
+    if (!demoMerchant) {
+      demoMerchant = await merchantRepo.save(
+        merchantRepo.create({
+          id: DEMO_MERCHANT_UUID,
+          email: 'merchant@example.com',
+          name: 'Demo Merchant',
+          contact_phone: '+919876543200',
+          status: 'active',
+        })
+      );
+    }
+
+    // 2. Seed demo merchant in Customer table for auth login
+    const customerRepo = ds.getRepository(Customer);
+    let merchantAuthUser = await customerRepo.findOne({
+      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'merchant@example.com' }],
+    });
+    if (!merchantAuthUser) {
+      await customerRepo.save(
+        customerRepo.create({
+          id: DEMO_MERCHANT_UUID,
+          email: 'merchant@example.com',
+          name: 'Demo Merchant',
+          password_hash: demoCustomerPassword,
+          role: 'merchant',
+        })
+      );
+    } else if (merchantAuthUser.id !== DEMO_MERCHANT_UUID) {
+      // If customer record exists with another UUID, update it to DEMO_MERCHANT_UUID
+      try {
+        await customerRepo.query('UPDATE customers SET id = $1 WHERE email = $2', [
+          DEMO_MERCHANT_UUID,
+          'merchant@example.com',
+        ]);
+      } catch {
+        // Ignored if foreign keys reference existing ID
+      }
+    }
+
+    // 3. Seed demo customers
+    const customersData = [
       {
+        id: DEMO_CUSTOMER_UUID,
         email: 'customer@example.com',
         phone: '+919876543210',
         name: 'Demo Customer',
@@ -336,13 +385,6 @@ export async function seedDatabase(ds: any = AppDataSource) {
         role: 'customer' as const,
       },
       {
-        email: 'merchant@example.com',
-        phone: '+919876543200',
-        name: 'Demo Merchant',
-        password_hash: demoCustomerPassword,
-        role: 'merchant' as const,
-      },
-      {
         email: 'xanematsachdevabis@gmail.com',
         phone: '+919876543299',
         name: 'Nemat Sachdeva',
@@ -351,60 +393,77 @@ export async function seedDatabase(ds: any = AppDataSource) {
       },
     ];
 
-    for (const customerData of customers) {
-      const existing = await ds.getRepository(Customer).findOne({
+    for (const customerData of customersData) {
+      const existing = await customerRepo.findOne({
         where: { email: customerData.email },
       });
       if (!existing) {
-        await ds.getRepository(Customer).insert(customerData);
+        await customerRepo.save(customerRepo.create(customerData));
       }
     }
 
-    // Seed demo merchant
-    const merchants = [
-      {
-        email: 'merchant@example.com',
-        name: 'Demo Merchant',
-        contact_phone: '+919876543200',
-        status: 'active' as const,
-      },
-    ];
-
-    for (const merchantData of merchants) {
-      const existing = await ds.getRepository(Merchant).findOne({
-        where: { email: merchantData.email },
-      });
-      if (!existing) {
-        await ds.getRepository(Merchant).insert(merchantData);
-      }
-    }
-
-    // Seed 180+ products
+    // 4. Seed products with merchant_id = DEMO_MERCHANT_UUID
+    const productRepo = ds.getRepository(Product);
     for (const productData of products) {
-      const existing = await ds.getRepository(Product).findOne({
+      const existing = await productRepo.findOne({
         where: { name: productData.name },
       });
       if (!existing) {
-        await ds.getRepository(Product).insert(productData);
+        await productRepo.save(
+          productRepo.create({
+            ...productData,
+            merchant_id: DEMO_MERCHANT_UUID,
+          })
+        );
+      } else if (!existing.merchant_id) {
+        existing.merchant_id = DEMO_MERCHANT_UUID;
+        await productRepo.save(existing);
       }
     }
     console.log(`✓ Seeded products`);
 
-    // Seed inventory
-    const allProducts = await ds.getRepository(Product).find();
+    // 5. Seed inventory
+    const inventoryRepo = ds.getRepository(Inventory);
+    const allProducts = await productRepo.find();
     for (const product of allProducts) {
-      const existing = await ds.getRepository(Inventory).findOne({
+      const existing = await inventoryRepo.findOne({
         where: { product_id: product.id },
       });
       if (!existing) {
-        await ds.getRepository(Inventory).insert({
-          product_id: product.id,
-          quantity_on_hand: Math.floor(Math.random() * 100) + 10,
-          reserved: 0,
-        });
+        await inventoryRepo.save(
+          inventoryRepo.create({
+            product_id: product.id,
+            quantity_on_hand: Math.floor(Math.random() * 100) + 10,
+            reserved: 0,
+          })
+        );
       }
     }
     console.log('✓ Seeded inventory');
+
+    // 6. Seed MerchantConfig
+    const configRepo = ds.getRepository(MerchantConfig);
+    let merchantConfig = await configRepo.findOne({
+      where: { merchant_id: DEMO_MERCHANT_UUID },
+    });
+    if (!merchantConfig) {
+      await configRepo.save(
+        configRepo.create({
+          merchant_id: DEMO_MERCHANT_UUID,
+          max_recovery_attempts: 3,
+          max_discount_percent: 30,
+          allowed_channels: ['email', 'sms', 'whatsapp'],
+          max_promise_days: 14,
+          ai_insights_enabled: true,
+          bundle_recommendations_enabled: true,
+          discount_strategy_enabled: true,
+          inventory_opt_enabled: true,
+          recovery_targeting_enabled: true,
+          min_confidence_score: 70,
+        })
+      );
+    }
+    console.log('✓ Seeded merchant config');
   } catch (error) {
     console.error('Seeding failed:', error);
   }

@@ -60,65 +60,53 @@ export class SchedulerService {
         const merchantAgent = new MerchantAgent(this.dataSource);
         const insightRepo = this.dataSource.getRepository(MerchantInsight);
         const auditRepo = this.dataSource.getRepository(AuditLog);
+        const merchantRepo = this.dataSource.getRepository('Merchant');
 
-        // Generate insights for default merchant
-        const merchantId = 'default-merchant';
-        const insights = await merchantAgent.generateDailyInsights(merchantId);
+        const merchants: any[] = await merchantRepo.find();
+        for (const m of merchants) {
+          const merchantId = m.id;
+          const insights = await merchantAgent.generateDailyInsights(merchantId);
 
-        if (insights.length === 0) {
-          console.log(`[SchedulerService] No insights generated for merchant ${merchantId}`);
-          return;
-        }
+          if (insights.length === 0) continue;
 
-        // Check if we already have insights for today
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-        const existingCount = await insightRepo.count({
-          where: {
-            merchant_id: merchantId,
-            created_at: today,
-          },
-        });
-
-        if (existingCount > 0) {
-          console.log(
-            `[SchedulerService] Insights already generated today for merchant ${merchantId}, skipping duplicate`
-          );
-          return;
-        }
-
-        // Store insights
-        for (const insight of insights) {
-          const storedInsight = insightRepo.create({
-            merchant_id: merchantId,
-            type: insight.type,
-            title: insight.title,
-            summary: insight.summary,
-            insights: insight.insights,
-            data_summary: insight.data_summary,
-            confidence_percent: insight.confidence_percent,
-            guard_rails_applied: insight.guard_rails_applied,
-            is_read: false,
+          const existingCount = await insightRepo.count({
+            where: {
+              merchant_id: merchantId,
+              created_at: today,
+            },
           });
 
-          await insightRepo.save(storedInsight);
+          if (existingCount > 0) continue;
+
+          for (const insightData of insights) {
+            const saved = await insightRepo.save(
+              insightRepo.create({
+                merchant_id: merchantId,
+                type: insightData.type,
+                title: insightData.title,
+                summary: insightData.summary,
+                insights: insightData.insights,
+                data_summary: insightData.data_summary,
+                confidence_percent: insightData.confidence_percent,
+                guard_rails_applied: insightData.guard_rails_applied,
+              })
+            );
+
+            await auditRepo.save({
+              event_type: 'insights_generated',
+              entity_type: 'merchant_insight',
+              entity_id: saved.id,
+              description: `Daily insight generated: ${insightData.title}`,
+              details: {
+                type: insightData.type,
+                merchant_id: merchantId,
+              },
+            });
+          }
         }
-
-        console.log(`[SchedulerService] Stored ${insights.length} insights for merchant ${merchantId}`);
-
-        // Log audit event
-        await auditRepo.save({
-          event_type: 'insights_generated',
-          entity_type: 'merchant_insights',
-          entity_id: merchantId,
-          description: `Generated ${insights.length} daily merchant insights`,
-          details: {
-            insight_types: insights.map((i) => i.type),
-            total_confidence: insights.reduce((sum, i) => sum + i.confidence_percent, 0) /
-              insights.length,
-          },
-        });
       } catch (error) {
         console.error(`[SchedulerService] Error in ${jobName}:`, error);
         // Don't crash scheduler if AI service fails
