@@ -11,7 +11,7 @@ async function main() {
     await initializeDatabase();
 
     // Auto-seed real catalog products and demo accounts in dev/prod
-    if (env.NODE_ENV !== 'test') {
+    if (env.NODE_ENV !== 'development') {
       const { AppDataSource } = await import('./config/database.js');
       const { seedDatabase } = await import('./seed.js');
       await seedDatabase(AppDataSource);
