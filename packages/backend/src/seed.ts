@@ -341,16 +341,21 @@ export async function seedDatabase(ds: any = AppDataSource) {
           role: 'merchant',
         })
       );
-    } else if (merchantAuthUser.id !== DEMO_MERCHANT_UUID) {
-      // If customer record exists with another UUID, update it to DEMO_MERCHANT_UUID
-      try {
-        await customerRepo.query('UPDATE customers SET id = $1 WHERE email = $2', [
-          DEMO_MERCHANT_UUID,
-          'merchant@example.com',
-        ]);
-      } catch {
-        // Ignored if foreign keys reference existing ID
+    } else {
+      merchantAuthUser.password_hash = demoCustomerPassword;
+      merchantAuthUser.role = 'merchant';
+      if (merchantAuthUser.id !== DEMO_MERCHANT_UUID) {
+        try {
+          await customerRepo.query('UPDATE customers SET id = $1 WHERE email = $2', [
+            DEMO_MERCHANT_UUID,
+            'merchant@example.com',
+          ]);
+          merchantAuthUser.id = DEMO_MERCHANT_UUID;
+        } catch {
+          // Ignored if foreign keys reference existing ID
+        }
       }
+      await customerRepo.save(merchantAuthUser);
     }
 
     // 3. Seed demo customers
@@ -399,6 +404,10 @@ export async function seedDatabase(ds: any = AppDataSource) {
       });
       if (!existing) {
         await customerRepo.save(customerRepo.create(customerData));
+      } else {
+        existing.password_hash = customerData.password_hash;
+        existing.role = customerData.role;
+        await customerRepo.save(existing);
       }
     }
 
