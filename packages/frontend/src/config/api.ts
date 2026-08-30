@@ -1,13 +1,10 @@
 // API client configuration
-// In production or when VITE_API_URL is not set, use same-origin relative path '/api'
-// In local development (Vite dev server), fallback to local backend if VITE_API_URL is not explicitly specified
+// In production (or when VITE_API_URL is set), use same-origin relative path '/api'
+// In local development (Vite dev server), fallback to local backend 'http://localhost:3000/api'
 
 export const API_BASE_URL: string =
-  import.meta.env.VITE_API_URL !== undefined
-    ? import.meta.env.VITE_API_URL
-    : import.meta.env.DEV
-    ? 'http://localhost:3000/api'
-    : '/api';
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api');
 
 export const getApiUrl = (path: string): string => {
   const basePath = API_BASE_URL.replace(/\/+$/, '');
