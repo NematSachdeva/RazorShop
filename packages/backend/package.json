@@ -8,6 +8,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "npm run db:migrate && NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "eslint src/",
     "db:migrate": "node --loader ts-node/esm src/migration.ts",
     "db:seed": "node --loader ts-node/esm src/seed.ts",

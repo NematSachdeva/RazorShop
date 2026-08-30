@@ -15,6 +15,34 @@ jobs:
     name: Continuous Integration
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: razor_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/razor_test
+      FRONTEND_URL: http://localhost:5173
+      RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_TEST_KEY_ID || 'rzp_test_placeholder' }}
+      RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_TEST_KEY_SECRET || 'test_key_secret_placeholder' }}
+      RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET || 'test_webhook_secret' }}
+      GROQ_API_KEY: ${{ secrets.GROQ_TEST_API_KEY || 'gsk_placeholder' }}
+      JWT_SECRET: ${{ secrets.JWT_TEST_SECRET || 'ci_test_jwt_secret_for_validation_only' }}
+      EMAIL_DELIVERY_MODE: mock
+      AI_MODE: mock
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -34,11 +62,31 @@ jobs:
       - name: Frontend Typecheck
         run: npm run typecheck --workspace=packages/frontend
 
-      - name: Run Test Suite
-        run: npm run test --workspace=packages/backend
+      - name: Initialize CI Test Database Schema
+        run: npm run db:migrate --workspace=packages/backend
 
-      - name: Build Application
+      - name: Run Backend Test Suite (Isolated Unit & Integration Tests)
+        run: npm run test:unit --workspace=packages/backend
+
+      - name: Build Production Workspace Bundles
         run: npm run build
+
+      - name: Verify Frontend Production Bundle
+        run: |
+          echo "Verifying production frontend bundle contains no local API endpoints..."
+          if grep -rn "localhost:3000" packages/frontend/dist > /dev/null; then
+            echo "ERROR: Found hardcoded 'localhost:3000' in production build!"
+            exit 1
+          fi
+          if grep -rn "localhost:7070" packages/frontend/dist > /dev/null; then
+            echo "ERROR: Found hardcoded 'localhost:7070' in production build!"
+            exit 1
+          fi
+          if grep -rn "127.0.0.1:7070" packages/frontend/dist > /dev/null; then
+            echo "ERROR: Found hardcoded '127.0.0.1:7070' in production build!"
+            exit 1
+          fi
+          echo "✓ Frontend bundle verified: pure same-origin /api paths."
 
   deploy:
     name: Continuous Deployment
@@ -56,13 +104,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Execute EC2 Deployment via AWS SSM
+      - name: Execute EC2 Deployment & RDS Migration via AWS SSM
         run: |
           echo "Triggering production deployment on EC2 via AWS SSM..."
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.AWS_EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --comment "Automated CI/CD deployment for Razor" \
+            --comment "Automated production deployment & RDS migration for Razor" \
             --parameters 'commands=["bash /home/ubuntu/razor/scripts/deploy-production.sh"]' \
             --query "Command.CommandId" \
             --output text)
@@ -90,4 +138,4 @@ jobs:
             exit 1
           fi
           
-          echo "Production deployment completed successfully."
+          echo "Production deployment and RDS database migration completed successfully."

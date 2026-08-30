@@ -1,10 +1,10 @@
-# CI/CD Pipeline & Deployment Architecture
+# Real Production CI/CD Pipeline & Deployment Guide
 
-This document describes the repository automation, CI/CD pipeline structure, and deployment procedures for the **Razor** application.
+This document describes the production CI/CD architecture, stage separation, database migration flow, and automated rollback strategy for **Razor** (`https://razorshop.app`).
 
 ---
 
-## Pipeline Overview
+## Architecture Overview
 
 ```
                       [ Git Push to master / Dispatch ]
@@ -15,8 +15,10 @@ This document describes the repository automation, CI/CD pipeline structure, and
                       |  - npm ci                    |
                       |  - backend typecheck         |
                       |  - frontend typecheck        |
-                      |  - backend test suite        |
+                      |  - backend unit tests        |
+                      |    (Isolated Test Env)       |
                       |  - npm run build             |
+                      |  - dist bundle URL check     |
                       +--------------+---------------+
                                      │ (Success)
                                      ▼
@@ -26,75 +28,88 @@ This document describes the repository automation, CI/CD pipeline structure, and
                       |  - AWS OIDC Authentication   |
                       |  - AWS SSM Send-Command      |
                       +--------------+---------------+
-                                     │ (SSM Execution)
+                                     │ (SSM Command Execution)
                                      ▼
                       +------------------------------+
-                      |  EC2 Production Instance     |
-                      |  - scripts/deploy-production |
-                      |  - Sync frontend (/var/www)  |
-                      |  - PM2 restart razor-backend |
-                      |  - Health verification       |
+                      |  EC2 Server (/home/ubuntu)   |
+                      |  - Record PREV_COMMIT        |
+                      |  - git fetch & reset master  |
+                      |  - Preserve EC2 .env         |
+                      |  - npm ci                    |
+                      |  - npm run db:migrate (RDS)  |
+                      |  - npm run build             |
+                      |  - Sync /var/www/razorshop   |
+                      |  - pm2 restart razor-backend |
+                      |  - Health checks             |
+                      |  - Rollback on failure       |
                       +------------------------------+
 ```
 
 ---
 
-## Repository Automation Components
+## 1. CI Validation (Continuous Integration)
 
-### 1. GitHub Workflow (`.github/workflows/ci-cd.yml`)
-- **Triggers**: Automated execution on `push` to the `master` branch and manual trigger via `workflow_dispatch`.
-- **Job 1: `ci`**
-  - Runs in an isolated `ubuntu-latest` container.
-  - Installs dependencies using `npm ci`.
-  - Runs backend (`npm run typecheck --workspace=packages/backend`) and frontend (`npm run typecheck --workspace=packages/frontend`) type checks.
-  - Executes unit and integration test suites via Jest (`npm run test --workspace=packages/backend`).
-  - Verifies production builds (`npm run build`).
-- **Job 2: `deploy`**
-  - Blocked until `ci` passes (`needs: ci`).
-  - Scoped to GitHub Deployment Environment `production`.
-  - Authenticates with AWS via OpenID Connect (OIDC) without hardcoded keys.
-  - Issues an AWS Systems Manager (SSM) command to run `bash /home/ubuntu/razor/scripts/deploy-production.sh` on the target EC2 instance.
+The CI job runs on every push to `master` to validate code quality and build integrity **before** any code reaches production.
 
-### 2. EC2 Deployment Script (`scripts/deploy-production.sh`)
-- Executed on the EC2 server under `/home/ubuntu/razor`.
-- **Key Guarantee**: Strictly preserves local `/home/ubuntu/razor/.env` configuration.
-- Fetches and hard-resets working tree to `origin/master`.
-- Installs dependencies (`npm ci`) and builds workspace assets (`npm run build`).
-- **Bundle Safety Verification**: Ensures `packages/frontend/dist` contains zero hardcoded `localhost` or port `7070` references.
-- **Frontend Assets**: Atomically syncs `packages/frontend/dist` to `/var/www/razorshop`.
-- **Backend Process**: Reloads the existing PM2 process named `razor-backend` without spawning duplicate processes.
-- **Health Check**: Validates internal API health (`http://127.0.0.1:7070/health`) and public HTTPS endpoint (`https://razorshop.app/api/health`).
+### Key Rules
+- **No Production Secrets in CI**: CI uses isolated, non-production placeholder environment variables (`NODE_ENV=test`, dummy key formats).
+- **No Production RDS Connection**: CI never connects to or modifies the production AWS RDS PostgreSQL database.
+- **Isolated Test Command**: CI runs Jest unit tests via `npm run test:unit --workspace=packages/backend` (`NODE_OPTIONS=--experimental-vm-modules jest`) directly, bypassing local developer database migration pre-hooks.
+
+### Executed Steps
+1. Checkout source code (`actions/checkout@v4`).
+2. Setup Node.js 20 with npm caching (`actions/setup-node@v4`).
+3. Install dependencies (`npm ci`).
+4. Typecheck backend (`npm run typecheck --workspace=packages/backend`).
+5. Typecheck frontend (`npm run typecheck --workspace=packages/frontend`).
+6. Run unit tests (`npm run test:unit --workspace=packages/backend`).
+7. Build production workspace bundles (`npm run build`).
+8. Verify frontend bundle safety (confirms zero `localhost:3000`, `localhost:7070`, or `127.0.0.1:7070` references in `dist/`).
 
 ---
 
-## Required GitHub Inputs & Secrets
+## 2. CD Deployment & Production RDS Migrations
 
-The GitHub Actions workflow requires the following configuration values to be set in your GitHub Repository Settings (**Settings > Secrets and variables > Actions** & **Settings > Environments > production**):
+The CD job executes **only** after CI succeeds (`needs: ci`) and is scoped to GitHub Deployment Environment `production`.
 
-| Configuration Key | Type | Description / Expected Value |
-| :--- | :--- | :--- |
-| `AWS_ROLE_TO_ASSUME` | Secret | ARN of the AWS IAM Role configured with GitHub OIDC trust policy (e.g. `arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME`) |
-| `AWS_REGION` | Secret / Variable | AWS Region where the EC2 instance and SSM service are hosted (e.g. `ap-south-1`) |
-| `AWS_EC2_INSTANCE_ID` | Secret / Variable | AWS EC2 Instance ID of the production server (e.g. `i-0123456789abcdef0`) |
-
-> **Security Note:** Do not commit actual AWS secret keys, access keys, or private SSH keys into repository files or environment definitions. OIDC authentication eliminates the need for long-lived credentials.
+### Key Rules
+- **AWS OIDC Authentication**: Authenticates with AWS using OpenID Connect (`aws-actions/configure-aws-credentials@v4`) without hardcoded access keys.
+- **AWS Systems Manager (SSM)**: Triggers `/home/ubuntu/razor/scripts/deploy-production.sh` remotely on the EC2 instance.
+- **Production .env Preservation**: The deployment script never overwrites `/home/ubuntu/razor/.env`, which remains the source of truth for production database credentials and API secrets.
+- **Production RDS Database Migrations**: Pending migrations are executed directly against the production AWS RDS PostgreSQL instance using:
+  ```bash
+  npm run db:migrate --workspace=packages/backend
+  ```
+- **Atomic Frontend Asset Deployment**: Builds static frontend assets and syncs them to `/var/www/razorshop`.
+- **PM2 Service Reload**: Restarts the existing daemon process `razor-backend` without spawning duplicate PM2 instances.
 
 ---
 
-## External Infrastructure Setup (Manual Steps)
+## 3. Automated Rollback Strategy
 
-The following infrastructure tasks must be completed separately in your AWS Console / CLI:
+If database migration, asset compilation, file copying, PM2 restart, or health verification fails during deployment on EC2:
 
-1. **AWS IAM OIDC Identity Provider**:
-   - Create an IAM OIDC Identity Provider for `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
-2. **AWS IAM Deployment Role**:
-   - Create an IAM role with a Trust Policy allowing `repo:NematSachdeva/RazorShop:environment:production` to assume the role.
-   - Attach permissions to grant `ssm:SendCommand`, `ssm:GetCommandInvocation`, `ssm:ListCommandInvocations` for the target EC2 instance.
-3. **AWS Systems Manager (SSM) Agent on EC2**:
-   - Ensure `amazon-ssm-agent` is running on the Ubuntu EC2 instance.
-   - Attach an IAM Instance Profile to the EC2 instance with policy `AmazonSSMManagedInstanceCore`.
-4. **Permissions on Web Root**:
-   - Ensure the `ubuntu` user has permissions to write/rsync to `/var/www/razorshop`.
-5. **GitHub Environment `production`**:
-   - Create an environment named `production` under GitHub Repository Settings > Environments.
-   - Configure secrets (`AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `AWS_EC2_INSTANCE_ID`).
+1. **Trap Handler Activated**: `trap rollback ERR` catches any failed exit code.
+2. **Git Commit Restore**: Reverts the repository to the previously recorded Git commit (`git reset --hard $PREV_COMMIT`).
+3. **Re-Install & Rebuild**: Runs `npm ci` and `npm run build` on the previous commit code.
+4. **Restore Web Root**: Re-syncs the previous static frontend bundle to `/var/www/razorshop`.
+5. **Restart PM2**: Restarts the `razor-backend` process with the previous working code.
+6. **Re-Verify Health**: Checks backend health (`http://127.0.0.1:7070/health`).
+7. **Signal Failure**: Exits with non-zero status `1`, causing the GitHub Actions deployment job to report failure cleanly.
+
+---
+
+## 4. Required GitHub Inputs & Infrastructure Setup
+
+### GitHub Environment Secrets (`production`)
+
+| Key | Description |
+| :--- | :--- |
+| `AWS_ROLE_TO_ASSUME` | IAM Role ARN configured for GitHub OIDC (e.g. `arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME`) |
+| `AWS_REGION` | AWS Region of the EC2 instance and SSM service (e.g. `ap-south-1`) |
+| `AWS_EC2_INSTANCE_ID` | EC2 Instance ID of the production server (e.g. `i-0123456789abcdef0`) |
+
+### Manual Infrastructure Configuration
+1. **AWS IAM OIDC Trust**: Create an OIDC provider for `https://token.actions.githubusercontent.com` and an IAM role allowing `repo:NematSachdeva/RazorShop:environment:production` to assume it.
+2. **IAM SSM Permissions**: Attach `AmazonSSMManagedInstanceCore` to the EC2 instance profile and grant `ssm:SendCommand` to the OIDC deployment role.
+3. **EC2 Production `.env`**: Maintain `/home/ubuntu/razor/.env` on the EC2 server containing valid `DATABASE_URL` (AWS RDS), `RAZORPAY_*`, `GROQ_API_KEY`, `JWT_SECRET`, and `RESEND_API_KEY`.
