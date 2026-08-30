@@ -11,6 +11,7 @@ import ProductDetailModal from './components/ProductDetailModal';
 import CartDrawer from './components/CartDrawer';
 import StockBadge from './components/common/StockBadge';
 import ProfilePopover from './components/common/ProfilePopover';
+import { AddressesModal } from './components/common/AddressesModal';
 import ApplicationStatusPage from './components/ApplicationStatusPage';
 import AdminDashboard from './components/AdminDashboard';
 import { authService } from './services/authService';
@@ -22,6 +23,7 @@ export default function App() {
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAddressesModalOpen, setIsAddressesModalOpen] = useState(false);
   const [cart, setCart] = useState<CartDTO>({
     id: '',
     customer_id: '',
@@ -480,6 +482,7 @@ export default function App() {
                       user={user}
                       onLogout={handleLogout}
                       onNavigateToOrders={() => setActiveTab('orders')}
+                      onNavigateToAddresses={() => setIsAddressesModalOpen(true)}
                       onNavigateToStore={() => setActiveTab('store')}
                       onOpenCart={() => setCartOpen(true)}
                     />
@@ -758,6 +761,12 @@ export default function App() {
                   }}
                 />
               )}
+
+              {/* Customer Saved Addresses Modal */}
+              <AddressesModal
+                isOpen={isAddressesModalOpen}
+                onClose={() => setIsAddressesModalOpen(false)}
+              />
             </>
           )}
         </>

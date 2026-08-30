@@ -193,6 +193,60 @@ export class EmailService {
   }
 
   /**
+   * Send notification when an order is dispatched by the merchant
+   */
+  async sendOrderDispatchedNotification(
+    customerEmail: string,
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      orderDate: string;
+      shippingAddress?: {
+        full_address: string;
+        state: string;
+        pin_code: string;
+        phone?: string;
+      } | null;
+      items: Array<{
+        name: string;
+        quantity: number;
+        lineTotalCents: number;
+      }>;
+      totalCents: number;
+      orderLink: string;
+    },
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const template = this.renderOrderDispatchedTemplate(customerName, orderNumber, details);
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
+   * Send notification when an order is marked as delivered
+   */
+  async sendOrderDeliveredNotification(
+    customerEmail: string,
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      deliveredDate: string;
+      items: Array<{
+        name: string;
+        quantity: number;
+        lineTotalCents: number;
+      }>;
+      totalCents: number;
+      orderLink: string;
+    },
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const template = this.renderOrderDeliveredTemplate(customerName, orderNumber, details);
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
    * Send promise-to-pay follow-up email
    */
   async sendPromiseFollowUp(
@@ -611,6 +665,196 @@ Please visit: ${recoveryLink}
 We appreciate your prompt attention to this matter.
 
 © 2026 Razor. All rights reserved.
+      `,
+    };
+  }
+
+  /**
+   * Render Order Dispatched HTML/Text Template
+   */
+  private renderOrderDispatchedTemplate(
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      orderDate: string;
+      shippingAddress?: {
+        full_address: string;
+        state: string;
+        pin_code: string;
+        phone?: string;
+      } | null;
+      items: Array<{
+        name: string;
+        quantity: number;
+        lineTotalCents: number;
+      }>;
+      totalCents: number;
+      orderLink: string;
+    }
+  ): EmailTemplate {
+    const addressStr = details.shippingAddress
+      ? `${details.shippingAddress.full_address}, ${details.shippingAddress.state} - ${details.shippingAddress.pin_code}`
+      : 'Address on file';
+
+    const itemsSummary = details.items
+      .map((item) => `- ${item.name} x${item.quantity} (₹${(item.lineTotalCents / 100).toFixed(2)})`)
+      .join('\n');
+
+    return {
+      subject: `Your RazorShop order #${orderNumber} has been dispatched`,
+      html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+      .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; }
+      .content { padding: 20px; }
+      .badge { display: inline-block; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
+      .info-box { background: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      .button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; font-weight: bold; }
+      .footer { font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 15px; margin-top: 25px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin:0; font-size:24px;">🚚 Order Dispatched!</h1>
+        <p style="margin:5px 0 0 0; opacity: 0.9;">Order #${orderNumber}</p>
+      </div>
+
+      <div class="content">
+        <p>Hi <strong>${customerName}</strong>,</p>
+
+        <p>Good news! Your RazorShop order <strong>#${orderNumber}</strong> has been dispatched and is now on its way to you.</p>
+
+        <div class="info-box">
+          <span class="badge">Status: DISPATCHED</span>
+          <p style="margin: 10px 0 0 0; font-size: 14px; color: #1e40af;">
+            <strong>Expected Delivery:</strong> Approximately 3–5 days<br/>
+            <strong>Delivery Address:</strong> ${addressStr}
+          </p>
+        </div>
+
+        <p>You can view your order and track its status anytime from your RazorShop account.</p>
+
+        <p style="text-align: center;">
+          <a href="${details.orderLink}" class="button">Track Order Status</a>
+        </p>
+      </div>
+
+      <div class="footer">
+        <p>© 2026 RazorShop. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
+      `,
+      text: `
+Good news! Your RazorShop order #${orderNumber} has been dispatched and is now on its way to you.
+
+Status: DISPATCHED
+Expected Delivery: Approximately 3–5 days
+Delivery Address: ${addressStr}
+
+Items Summary:
+${itemsSummary}
+
+Track Order: ${details.orderLink}
+
+© 2026 RazorShop. All rights reserved.
+      `,
+    };
+  }
+
+  /**
+   * Render Order Delivered HTML/Text Template
+   */
+  private renderOrderDeliveredTemplate(
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      deliveredDate: string;
+      items: Array<{
+        name: string;
+        quantity: number;
+        lineTotalCents: number;
+      }>;
+      totalCents: number;
+      orderLink: string;
+    }
+  ): EmailTemplate {
+    return {
+      subject: `Your RazorShop order #${orderNumber} has been delivered`,
+      html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+      .header { background: #9333ea; color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; }
+      .content { padding: 20px; }
+      .badge { display: inline-block; background: #a855f7; color: white; padding: 4px 12px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
+      .info-box { background: #faf5ff; border: 1px solid #e9d5ff; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      .button { display: inline-block; background: #9333ea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; font-weight: bold; }
+      .footer { font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 15px; margin-top: 25px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin:0; font-size:24px;">🎉 Order Delivered!</h1>
+        <p style="margin:5px 0 0 0; opacity: 0.9;">Order #${orderNumber}</p>
+      </div>
+
+      <div class="content">
+        <p>Hi <strong>${customerName}</strong>,</p>
+
+        <p>Your RazorShop order <strong>#${orderNumber}</strong> was delivered on <strong>${details.deliveredDate}</strong>.</p>
+
+        <p>We hope everything arrived safely and that you enjoy your purchase!</p>
+
+        <div class="info-box">
+          <span class="badge">Status: DELIVERED</span>
+          <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b21a8;">
+            Thank you for shopping with RazorShop. We really appreciate your business!
+          </p>
+        </div>
+
+        <p>We'd love to hear about your experience. You can leave feedback or review your order from your account.</p>
+
+        <p style="text-align: center;">
+          <a href="${details.orderLink}" class="button">View Order & Leave Feedback</a>
+        </p>
+
+        <p>We look forward to serving you again soon.</p>
+      </div>
+
+      <div class="footer">
+        <p>© 2026 RazorShop. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
+      `,
+      text: `
+Your RazorShop order #${orderNumber} was delivered on ${details.deliveredDate}.
+
+We hope everything arrived safely and that you enjoy your purchase.
+
+Thank you for shopping with RazorShop. We really appreciate your business.
+
+We'd love to hear about your experience. You can leave feedback from your RazorShop account: ${details.orderLink}
+
+We look forward to serving you again.
+
+© 2026 RazorShop. All rights reserved.
       `,
     };
   }

@@ -1,11 +1,12 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import { DataSource } from 'typeorm';
 import { env } from './config/env.js';
 import { requestLogger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import healthRoutes from './routes/health.js';
 import productsRoutes from './routes/products.js';
-import authRoutes from './routes/auth.js';
+import authRoutes, { createAuthRouter } from './routes/auth.js';
 import cartsRoutes from './routes/carts.js';
 import { createOrdersRouter } from './routes/orders.js';
 import { createPaymentsRouter } from './routes/payments.js';
@@ -17,7 +18,11 @@ import { createAdminRouter } from './routes/admin.js';
 import { OrderService } from './services/OrderService.js';
 import { PaymentService } from './services/PaymentService.js';
 import { RecommendationService } from './services/RecommendationService.js';
+import { AuthService, authService as defaultAuthService } from './services/AuthService.js';
 import { AppDataSource } from './config/database.js';
+
+import addressesRoutes, { createAddressesRouter } from './routes/addresses.js';
+import { AddressService } from './services/AddressService.js';
 
 /**
  * Middleware to capture raw body for webhook signature verification
@@ -29,7 +34,10 @@ function captureRawBody(req: Request, res: Response, buf: Buffer) {
   }
 }
 
-export function createApp(): Express {
+export function createApp(
+  dataSource: DataSource = AppDataSource,
+  authService: AuthService = defaultAuthService
+): Express {
   const app = express();
 
   // Middleware
@@ -47,23 +55,25 @@ export function createApp(): Express {
   app.use(express.urlencoded({ extended: true }));
   app.use(requestLogger);
 
-  // Create services with AppDataSource for production
-  const orderService = new OrderService(AppDataSource);
-  const paymentService = new PaymentService(AppDataSource);
-  const recommendationService = new RecommendationService(AppDataSource);
+  // Create services with passed DataSource for test/production flexibility
+  const orderService = new OrderService(dataSource);
+  const paymentService = new PaymentService(dataSource);
+  const recommendationService = new RecommendationService(dataSource);
+  const addressService = new AddressService(dataSource);
 
   // Routes
   app.use('/api', healthRoutes);
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', createAuthRouter(authService));
   app.use('/api/products', productsRoutes);
   app.use('/api/carts', cartsRoutes);
+  app.use('/api/addresses', createAddressesRouter(addressService, authService));
   app.use('/api/recommendations', createRecommendationsRouter(recommendationService));
-  app.use('/api/orders', createOrdersRouter(orderService));
+  app.use('/api/orders', createOrdersRouter(orderService, authService));
   app.use('/api/payments', createPaymentsRouter(paymentService));
   app.use('/api/recovery', recoveryRoutes);
-  app.use('/api/merchant', createMerchantRouter(AppDataSource));
-  app.use('/api/admin', createAdminRouter(AppDataSource));
-  app.use('/api/webhooks', createWebhooksRouter(AppDataSource));
+  app.use('/api/merchant', createMerchantRouter(dataSource, authService));
+  app.use('/api/admin', createAdminRouter(dataSource, authService));
+  app.use('/api/webhooks', createWebhooksRouter(dataSource));
 
   // Health check at root for backwards compatibility
   app.get('/health', (_req, res) => {

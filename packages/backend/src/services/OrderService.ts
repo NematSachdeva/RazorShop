@@ -1,6 +1,6 @@
 import { AppDataSource } from '../config/database.js';
 import { DataSource } from 'typeorm';
-import { Order, OrderStatus } from '../models/Order.js';
+import { Order, OrderStatus, ShippingAddressSnapshot } from '../models/Order.js';
 import { OrderItem } from '../models/OrderItem.js';
 import { Cart } from '../models/Cart.js';
 import { CartItem } from '../models/CartItem.js';
@@ -8,6 +8,8 @@ import { Product } from '../models/Product.js';
 import { Inventory } from '../models/Inventory.js';
 import { Customer } from '../models/Customer.js';
 import { Recommendation } from '../models/Recommendation.js';
+import { CustomerAddress } from '../models/CustomerAddress.js';
+import { OrderTimeline, OrderTimelineEventType } from '../models/OrderTimeline.js';
 
 // Local DTO types (re-exported to maintain compatibility)
 export interface OrderItemDTO {
@@ -25,6 +27,7 @@ export interface OrderDTO {
   customer_id: string;
   order_number: string;
   status: OrderStatus;
+  shipping_address?: ShippingAddressSnapshot | null;
   items: OrderItemDTO[];
   subtotal_cents: number;
   tax_cents: number;
@@ -65,11 +68,23 @@ export class OrderService {
     return this.dataSource.getRepository(Customer);
   }
 
+  private getAddressRepository() {
+    return this.dataSource.getRepository(CustomerAddress);
+  }
+
+  private getTimelineRepository() {
+    return this.dataSource.getRepository(OrderTimeline);
+  }
+
   /**
    * Create an order from a cart with full transaction support.
    * Handles inventory reservation, cart conversion, and proper locking.
    */
-  async createOrderFromCart(cartId: string, customerId: string): Promise<OrderDTO> {
+  async createOrderFromCart(
+    cartId: string,
+    customerId: string,
+    shippingAddressPayload?: ShippingAddressSnapshot | null
+  ): Promise<OrderDTO> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction('SERIALIZABLE');
@@ -116,6 +131,38 @@ export class OrderService {
 
       if (!customer) {
         throw new Error('Customer not found');
+      }
+
+      // Resolve address snapshot
+      let finalAddress: ShippingAddressSnapshot | null = null;
+      if (shippingAddressPayload && shippingAddressPayload.full_address) {
+        finalAddress = {
+          full_address: shippingAddressPayload.full_address.trim(),
+          state: (shippingAddressPayload.state || '').trim(),
+          pin_code: (shippingAddressPayload.pin_code || '').trim(),
+          phone: shippingAddressPayload.phone ? shippingAddressPayload.phone.trim() : undefined,
+          name: shippingAddressPayload.name ? shippingAddressPayload.name.trim() : customer.name || undefined,
+        };
+      } else {
+        // Look up default address from database for this customer
+        const defaultAddr = await queryRunner.manager.findOne(CustomerAddress, {
+          where: { customer_id: customerId, is_default: true },
+        });
+
+        const fallbackAddr = defaultAddr || await queryRunner.manager.findOne(CustomerAddress, {
+          where: { customer_id: customerId },
+          order: { created_at: 'DESC' },
+        });
+
+        if (fallbackAddr) {
+          finalAddress = {
+            full_address: fallbackAddr.full_address,
+            state: fallbackAddr.state,
+            pin_code: fallbackAddr.pin_code,
+            phone: fallbackAddr.phone || undefined,
+            name: customer.name || undefined,
+          };
+        }
       }
 
       // 5. Verify all products exist and collect pricing
@@ -225,6 +272,7 @@ export class OrderService {
         customer_id: customerId,
         order_number: orderNumber,
         status: 'pending',
+        shipping_address: finalAddress,
         subtotal_cents,
         tax_cents,
         discount_cents,
@@ -294,13 +342,12 @@ export class OrderService {
     const nextNumber = (result?.count || 0) + 1;
     const orderNumber = `${datePrefix}-${String(nextNumber).padStart(5, '0')}`;
 
-    // Verify uniqueness (should be guaranteed by UNIQUE constraint, but double-check)
+    // Verify uniqueness
     const existing = await manager.findOne(Order, {
       where: { order_number: orderNumber },
     });
 
     if (existing) {
-      // Collision (extremely rare), retry with incremented counter
       throw new Error('Order number collision. Please retry.');
     }
 
@@ -333,6 +380,48 @@ export class OrderService {
     if (!order) return null;
 
     return this.orderToDTO(order, order.items || []);
+  }
+
+  /**
+   * Add a persistent timeline event for an order
+   */
+  async addTimelineEvent(
+    orderId: string,
+    eventType: OrderTimelineEventType,
+    actorRole: 'customer' | 'merchant' | 'system' | 'admin' = 'system',
+    actorId?: string,
+    description?: string
+  ): Promise<OrderTimeline> {
+    const timelineRepo = this.getTimelineRepository();
+
+    // Prevent duplicate event creation if same event already recorded recently
+    const existing = await timelineRepo.findOne({
+      where: { order_id: orderId, event_type: eventType },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    const event = timelineRepo.create({
+      order_id: orderId,
+      event_type: eventType,
+      actor_role: actorRole,
+      actor_id: actorId,
+      description: description || `Order event ${eventType} recorded`,
+    });
+
+    return timelineRepo.save(event);
+  }
+
+  /**
+   * Get chronological timeline for an order
+   */
+  async getOrderTimeline(orderId: string): Promise<OrderTimeline[]> {
+    return this.getTimelineRepository().find({
+      where: { order_id: orderId },
+      order: { created_at: 'ASC' },
+    });
   }
 
   /**
@@ -391,6 +480,7 @@ export class OrderService {
       customer_id: order.customer_id,
       order_number: order.order_number,
       status: order.status,
+      shipping_address: order.shipping_address || null,
       items: itemDTOs,
       subtotal_cents: Number(order.subtotal_cents),
       tax_cents: Number(order.tax_cents),
@@ -403,3 +493,4 @@ export class OrderService {
 }
 
 export const orderService = new OrderService();
+

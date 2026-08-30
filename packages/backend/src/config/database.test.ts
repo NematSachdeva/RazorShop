@@ -25,6 +25,8 @@ import { MerchantInsight } from '../models/MerchantInsight.js';
 import { OrderFeedback } from '../models/OrderFeedback.js';
 import { MerchantApplication } from '../models/MerchantApplication.js';
 import { MerchantApplicationTimeline } from '../models/MerchantApplicationTimeline.js';
+import { CustomerAddress } from '../models/CustomerAddress.js';
+import { OrderTimeline } from '../models/OrderTimeline.js';
 
 // Test database configuration - uses same schema as production
 // Connects using getEnv() to ensure .env is loaded before creating DataSource
@@ -33,7 +35,7 @@ export const TestDataSource = new DataSource({
   url: getEnv().DATABASE_URL,
   synchronize: false,
   logging: false,
-  entities: [Customer, Merchant, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent, Recommendation, RecommendationEvent, PaymentFailure, RecoveryCase, RecoveryAction, MerchantConfig, AgentDecision, AuditLog, CustomerInteraction, PromiseToPay, MerchantInsight, OrderFeedback, MerchantApplication, MerchantApplicationTimeline],
+  entities: [Customer, Merchant, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent, Recommendation, RecommendationEvent, PaymentFailure, RecoveryCase, RecoveryAction, MerchantConfig, AgentDecision, AuditLog, CustomerInteraction, PromiseToPay, MerchantInsight, OrderFeedback, MerchantApplication, MerchantApplicationTimeline, CustomerAddress, OrderTimeline],
   subscribers: [],
   migrations: [], // Migrations run via npm script before tests, not here
   ssl: false,

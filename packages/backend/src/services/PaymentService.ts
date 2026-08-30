@@ -5,6 +5,7 @@ import { Payment, PaymentStatus } from '../models/Payment.js';
 import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { Order } from '../models/Order.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
+import { OrderTimeline } from '../models/OrderTimeline.js';
 import crypto from 'crypto';
 
 // Razorpay client abstraction
@@ -526,11 +527,25 @@ export class PaymentService {
       payment.razorpay_signature = request.razorpay_signature;
       await qr.manager.save(payment);
 
-      // 7. Confirm the order.
+      // 7. Update order status to confirmed
       const order = await qr.manager.findOne(Order, { where: { id: request.order_id } });
       if (order) {
         order.status = 'confirmed';
         await qr.manager.save(order);
+
+        // Record ORDER_CONFIRMED timeline event
+        const existingEvent = await qr.manager.findOne(OrderTimeline, {
+          where: { order_id: request.order_id, event_type: 'ORDER_CONFIRMED' },
+        });
+        if (!existingEvent) {
+          const timelineEvent = qr.manager.create(OrderTimeline, {
+            order_id: request.order_id,
+            event_type: 'ORDER_CONFIRMED',
+            actor_role: 'system',
+            description: 'Payment successful. Order confirmed.',
+          });
+          await qr.manager.save(timelineEvent);
+        }
       }
 
       // 8. Resolve any open recovery cases for this order

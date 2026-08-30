@@ -12,7 +12,15 @@ import { Customer } from './Customer.js';
 import { OrderItem } from './OrderItem.js';
 import { Payment } from './Payment.js';
 
-export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'shipped' | 'delivered' | 'cancelled';
+
+export interface ShippingAddressSnapshot {
+  full_address: string;
+  state: string;
+  pin_code: string;
+  phone?: string;
+  name?: string;
+}
 
 @Entity('orders')
 export class Order {
@@ -31,6 +39,9 @@ export class Order {
 
   @Column({ type: 'varchar', default: 'pending' })
   status!: OrderStatus;
+
+  @Column({ type: 'jsonb', nullable: true })
+  shipping_address?: ShippingAddressSnapshot | null;
 
   @Column({ type: 'bigint' })
   subtotal_cents!: number;

@@ -78,7 +78,15 @@ export interface ProductListResponse {
 }
 
 // M3 Order Models
-export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'shipped' | 'delivered' | 'cancelled';
+
+export interface ShippingAddressSnapshot {
+  full_address: string;
+  state: string;
+  pin_code: string;
+  phone?: string;
+  name?: string;
+}
 
 export interface OrderItemDTO {
   id: string;
@@ -95,6 +103,7 @@ export interface OrderDTO {
   customer_id: string;
   order_number: string;
   status: OrderStatus;
+  shipping_address?: ShippingAddressSnapshot | null;
   items: OrderItemDTO[];
   subtotal_cents: number;
   tax_cents: number;

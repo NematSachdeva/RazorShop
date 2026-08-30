@@ -31,7 +31,7 @@ export function createOrdersRouter(
     '/',
     optionalAuthenticate,
     asyncHandler(async (req: Request, res: Response) => {
-      const { cart_id, customer_id } = req.body;
+      const { cart_id, customer_id, shipping_address } = req.body;
 
       // Validation
       if (!cart_id) {
@@ -56,7 +56,7 @@ export function createOrdersRouter(
       }
 
       try {
-        const order = await orderService.createOrderFromCart(cart_id, customer_id);
+        const order = await orderService.createOrderFromCart(cart_id, customer_id, shipping_address);
         res.status(201).json(order);
       } catch (error) {
         if (error instanceof Error) {
@@ -91,6 +91,32 @@ export function createOrdersRouter(
         }
         throw error;
       }
+    })
+  );
+
+  // GET /api/orders/:id/timeline
+  // Get order timeline history
+  router.get(
+    '/:id/timeline',
+    optionalAuthenticate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { id } = req.params;
+
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid order ID format' });
+      }
+
+      const order = await orderService.getOrderById(id);
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      if (req.user && req.user.role === 'customer' && order.customer_id !== req.user.id) {
+        return res.status(403).json({ error: 'You do not have permission to view this order' });
+      }
+
+      const timeline = await orderService.getOrderTimeline(id);
+      res.json(timeline);
     })
   );
 

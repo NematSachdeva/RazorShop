@@ -9,6 +9,7 @@ interface Props {
   };
   onLogout: () => void;
   onNavigateToOrders?: () => void;
+  onNavigateToAddresses?: () => void;
   onOpenCart?: () => void;
   onNavigateToStore?: () => void;
   onNavigateToMerchant?: () => void;
@@ -18,6 +19,7 @@ export default function ProfilePopover({
   user,
   onLogout,
   onNavigateToOrders,
+  onNavigateToAddresses,
   onOpenCart,
   onNavigateToStore,
   onNavigateToMerchant,
@@ -127,6 +129,19 @@ export default function ProfilePopover({
               >
                 <span>📦</span>
                 <span>My Orders</span>
+              </button>
+            )}
+
+            {!isMerchant && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onNavigateToAddresses) onNavigateToAddresses();
+                }}
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>📍</span>
+                <span>Saved Addresses</span>
               </button>
             )}
 

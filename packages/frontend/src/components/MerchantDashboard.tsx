@@ -23,6 +23,7 @@ import RecoveryCaseDetail from './analytics/RecoveryCaseDetail';
 import InsightsFeed from './analytics/InsightsFeed';
 import MerchantConfigUI from './analytics/MerchantConfigUI';
 import MerchantProducts from './merchant/MerchantProducts';
+import { MerchantOrdersTab } from './merchant/MerchantOrdersTab';
 
 interface DashboardData {
   merchant_id: string;
@@ -96,7 +97,7 @@ interface DashboardData {
   };
 }
 
-type ViewState = 'dashboard' | 'products' | 'recovery-cases' | 'recovery-case-detail' | 'insights' | 'config';
+type ViewState = 'dashboard' | 'products' | 'orders' | 'recovery-cases' | 'recovery-case-detail' | 'insights' | 'config';
 
 export default function MerchantDashboard() {
   const [viewState, setViewState] = useState<ViewState>('dashboard');
@@ -188,14 +189,11 @@ export default function MerchantDashboard() {
   };
 
   const renderHeaderNav = () => (
-    <header className="bg-white shadow sticky top-0 z-10">
-      <div className="mx-auto max-w-7xl px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl font-black tracking-tight text-blue-900">RAZOR</span>
-          <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded">MERCHANT HUB</span>
-        </div>
-
-        <nav className="flex items-center gap-1 sm:gap-2">
+    <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
+      <div className="mx-auto max-w-7xl px-4 py-3 flex justify-between items-center">
+        <h1 className="text-xl font-bold text-gray-900">Merchant Portal</h1>
+        
+        <nav className="flex items-center gap-2">
           <button
             onClick={() => setViewState('dashboard')}
             className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
@@ -208,7 +206,18 @@ export default function MerchantDashboard() {
           </button>
 
           <button
-            onClick={handleViewProducts}
+            onClick={() => setViewState('orders')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
+              viewState === 'orders'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            🚚 Orders & Fulfillment
+          </button>
+
+          <button
+            onClick={() => setViewState('products')}
             className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
               viewState === 'products'
                 ? 'bg-blue-600 text-white'
@@ -219,7 +228,7 @@ export default function MerchantDashboard() {
           </button>
 
           <button
-            onClick={handleViewRecoveryCases}
+            onClick={() => setViewState('recovery-cases')}
             className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
               viewState === 'recovery-cases' || viewState === 'recovery-case-detail'
                 ? 'bg-blue-600 text-white'
@@ -230,7 +239,7 @@ export default function MerchantDashboard() {
           </button>
 
           <button
-            onClick={handleViewInsights}
+            onClick={() => setViewState('insights')}
             className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
               viewState === 'insights'
                 ? 'bg-blue-600 text-white'
@@ -241,7 +250,7 @@ export default function MerchantDashboard() {
           </button>
 
           <button
-            onClick={handleViewConfig}
+            onClick={() => setViewState('config')}
             className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
               viewState === 'config'
                 ? 'bg-blue-600 text-white'
@@ -254,6 +263,17 @@ export default function MerchantDashboard() {
       </div>
     </header>
   );
+
+  if (viewState === 'orders') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {renderHeaderNav()}
+        <main className="mx-auto max-w-7xl px-4 py-8">
+          <MerchantOrdersTab />
+        </main>
+      </div>
+    );
+  }
 
   if (viewState === 'products') {
     return (

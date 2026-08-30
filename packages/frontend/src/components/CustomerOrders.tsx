@@ -4,6 +4,29 @@ import { authService } from '../services/authService';
 import { OrderDTO, PaymentDTO } from '@razor/shared';
 
 import OrderFeedbackModal from './OrderFeedbackModal';
+import { OrderTimelineView, TimelineEvent } from './OrderTimelineView';
+
+function CustomerOrderTimeline({ orderId, currentStatus }: { orderId: string; currentStatus: string }) {
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch(getApiUrl(`/orders/${orderId}/timeline`), {
+      headers: { ...authService.getAuthHeader() },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (isMounted) setTimeline(data || []);
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [orderId, currentStatus]);
+
+  return <OrderTimelineView timeline={timeline} currentStatus={currentStatus} />;
+}
 
 interface CustomerOrdersProps {
   onContinuePayment: (orderId: string, amountCents: number) => void;
@@ -231,11 +254,34 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
               ))}
             </div>
 
+            {/* Delivery Address Snapshot */}
+            {order.shipping_address && (
+              <div className="mb-4 p-3.5 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-1">
+                <span className="font-bold text-gray-700 block text-[11px] uppercase tracking-wider">
+                  Delivery Address Snapshot
+                </span>
+                <p className="text-gray-900 font-medium">{order.shipping_address.full_address}</p>
+                <p className="text-gray-600">
+                  {order.shipping_address.state} — {order.shipping_address.pin_code}
+                </p>
+                {order.shipping_address.phone && (
+                  <p className="text-gray-500">📞 {order.shipping_address.phone}</p>
+                )}
+              </div>
+            )}
+
             {/* Failure reason if failed */}
             {isFailed && payment?.failure_reason && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">
                 <span className="font-semibold">Reason for failure: </span>
                 {payment.failure_reason}
+              </div>
+            )}
+
+            {/* Order Timeline Component */}
+            {isConfirmed && (
+              <div className="mb-4">
+                <CustomerOrderTimeline orderId={order.id} currentStatus={order.status} />
               </div>
             )}
 

@@ -7,6 +7,7 @@ import { Payment } from '../models/Payment.js';
 import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { Order } from '../models/Order.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
+import { OrderTimeline } from '../models/OrderTimeline.js';
 import { env } from '../config/env.js';
 import { PaymentFailureService } from '../services/PaymentFailureService.js';
 
@@ -189,6 +190,22 @@ export function createWebhooksRouter(dataSource: DataSource = AppDataSource) {
               if (order) {
                 order.status = 'confirmed';
                 await orderRepo.save(order);
+
+                // Record ORDER_CONFIRMED timeline event
+                const timelineRepo = dataSource.getRepository(OrderTimeline);
+                const existingEvent = await timelineRepo.findOne({
+                  where: { order_id: order.id, event_type: 'ORDER_CONFIRMED' },
+                });
+                if (!existingEvent) {
+                  await timelineRepo.save(
+                    timelineRepo.create({
+                      order_id: order.id,
+                      event_type: 'ORDER_CONFIRMED',
+                      actor_role: 'system',
+                      description: 'Payment captured via webhook. Order confirmed.',
+                    })
+                  );
+                }
 
                 // Resolve any open recovery cases for this order
                 const recoveryCaseRepo = dataSource.getRepository(RecoveryCase);

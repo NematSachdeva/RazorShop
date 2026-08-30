@@ -13,14 +13,20 @@ import { MerchantAgent } from '../services/MerchantAgent.js';
 import { MerchantConfig } from '../models/MerchantConfig.js';
 import { MerchantInsight } from '../models/MerchantInsight.js';
 import { Merchant } from '../models/Merchant.js';
+import { Customer } from '../models/Customer.js';
+import { Order } from '../models/Order.js';
+import { OrderItem } from '../models/OrderItem.js';
+import { OrderTimeline } from '../models/OrderTimeline.js';
 import { AppDataSource } from '../config/database.js';
 import { createAuthenticate, createRequireApprovedMerchant } from '../middleware/auth.js';
 import { AuthService, authService as defaultAuthService } from '../services/AuthService.js';
+import { emailService as defaultEmailService } from '../services/EmailService.js';
 import { DEMO_MERCHANT_UUID } from '../seed.js';
 
 export function createMerchantRouter(
   dataSource: DataSource = AppDataSource,
-  authService: AuthService = defaultAuthService
+  authService: AuthService = defaultAuthService,
+  emailService = defaultEmailService
 ): Router {
   const router = Router();
   const authenticate = createAuthenticate(authService);
@@ -787,6 +793,312 @@ export function createMerchantRouter(
       res.json({ message: 'Product deleted successfully', id });
     } catch (err: any) {
       console.error('Error deleting product:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/merchant/orders
+   * List orders containing items belonging to this merchant
+   */
+  router.get('/orders', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { status, page = '1', limit = '20' } = req.query;
+
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
+
+      const orderRepo = dataSource.getRepository(Order);
+      const query = orderRepo
+        .createQueryBuilder('order')
+        .innerJoinAndSelect('order.items', 'item')
+        .innerJoinAndSelect('item.product', 'product')
+        .leftJoinAndSelect('order.customer', 'customer')
+        .where('product.merchant_id = :merchantId', { merchantId });
+
+      if (status && typeof status === 'string') {
+        query.andWhere('order.status = :status', { status });
+      }
+
+      query.orderBy('order.created_at', 'DESC');
+
+      const orders = await query.getMany();
+
+      // Filter each order's items to only include products belonging to this merchant
+      const merchantOrders = orders.map((order) => {
+        const merchantItems = (order.items || []).filter(
+          (item) => item.product && item.product.merchant_id === merchantId
+        );
+        const merchantSubtotalCents = merchantItems.reduce(
+          (sum, item) => sum + (Number(item.line_total_cents) || 0),
+          0
+        );
+
+        return {
+          id: order.id,
+          order_number: order.order_number,
+          status: order.status,
+          created_at: order.created_at,
+          customer: {
+            id: order.customer?.id,
+            name: order.customer?.name || 'Customer',
+            email: order.customer?.email,
+          },
+          shipping_address: order.shipping_address || null,
+          items_count: merchantItems.reduce((acc, item) => acc + item.quantity, 0),
+          merchant_items: merchantItems.map((item) => ({
+            id: item.id,
+            product_id: item.product_id,
+            name: item.product?.name || 'Product',
+            quantity: item.quantity,
+            price_cents: Number(item.price_cents),
+            line_total_cents: Number(item.line_total_cents),
+          })),
+          merchant_total_cents: merchantSubtotalCents,
+          total_cents: Number(order.total_cents),
+        };
+      });
+
+      const total = merchantOrders.length;
+      const skip = (pageNum - 1) * limitNum;
+      const paginatedData = merchantOrders.slice(skip, skip + limitNum);
+
+      res.json({
+        data: paginatedData,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum) || 1,
+      });
+    } catch (err: any) {
+      console.error('Error fetching merchant orders:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/merchant/orders/:id
+   * Detail view for a specific merchant order with timeline events
+   */
+  router.get('/orders/:id', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { id } = req.params;
+
+      const orderRepo = dataSource.getRepository(Order);
+      const order = await orderRepo.findOne({
+        where: { id },
+        relations: ['items', 'items.product', 'customer'],
+      });
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const merchantItems = (order.items || []).filter(
+        (item) => item.product && item.product.merchant_id === merchantId
+      );
+
+      if (merchantItems.length === 0) {
+        return res.status(403).json({ error: 'Order contains no products for this merchant' });
+      }
+
+      const timelineRepo = dataSource.getRepository(OrderTimeline);
+      const timeline = await timelineRepo.find({
+        where: { order_id: id },
+        order: { created_at: 'ASC' },
+      });
+
+      const merchantSubtotalCents = merchantItems.reduce(
+        (sum, item) => sum + (Number(item.line_total_cents) || 0),
+        0
+      );
+
+      const mappedMerchantItems = merchantItems.map((item) => ({
+        id: item.id,
+        product_id: item.product_id,
+        name: item.product?.name || 'Product',
+        quantity: item.quantity,
+        price_cents: Number(item.price_cents),
+        line_total_cents: Number(item.line_total_cents),
+      }));
+
+      res.json({
+        id: order.id,
+        order_number: order.order_number,
+        status: order.status,
+        created_at: order.created_at,
+        updated_at: order.updated_at,
+        customer: {
+          id: order.customer?.id,
+          name: order.customer?.name || 'Customer',
+          email: order.customer?.email,
+          phone: order.customer?.phone,
+        },
+        shipping_address: order.shipping_address || null,
+        merchant_items: mappedMerchantItems,
+        items: mappedMerchantItems,
+        merchant_total_cents: merchantSubtotalCents,
+        order_total_cents: Number(order.total_cents),
+        timeline,
+      });
+    } catch (err: any) {
+      console.error('Error fetching merchant order details:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * PATCH /api/merchant/orders/:id/status
+   * Advance order fulfillment status (CONFIRMED -> DISPATCHED -> DELIVERED)
+   */
+  router.patch('/orders/:id/status', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || typeof status !== 'string') {
+        return res.status(400).json({ error: 'Status is required' });
+      }
+
+      const normalizedStatus = status.toLowerCase().trim();
+      const validStatuses = ['dispatched', 'shipped', 'delivered'];
+
+      if (!validStatuses.includes(normalizedStatus)) {
+        return res.status(400).json({ error: 'Invalid status target. Must be dispatched or delivered' });
+      }
+
+      const orderRepo = dataSource.getRepository(Order);
+      const order = await orderRepo.findOne({
+        where: { id },
+        relations: ['items', 'items.product', 'customer'],
+      });
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const hasMerchantItems = (order.items || []).some(
+        (item) => item.product && item.product.merchant_id === merchantId
+      );
+
+      if (!hasMerchantItems) {
+        return res.status(403).json({ error: 'Unauthorized to update status for another merchant order' });
+      }
+
+      const currentStatus = (order.status || 'pending').toLowerCase();
+
+      // State machine transition validation
+      // Allowed: confirmed -> dispatched/shipped, dispatched/shipped -> delivered
+      if (normalizedStatus === 'dispatched' || normalizedStatus === 'shipped') {
+        if (currentStatus !== 'confirmed') {
+          return res.status(400).json({
+            error: `Cannot transition order from '${currentStatus}' to '${normalizedStatus}'. Order must be 'confirmed'`,
+          });
+        }
+      } else if (normalizedStatus === 'delivered') {
+        if (currentStatus !== 'dispatched' && currentStatus !== 'shipped' && currentStatus !== 'confirmed') {
+          return res.status(400).json({
+            error: `Cannot transition order from '${currentStatus}' to 'delivered'`,
+          });
+        }
+      }
+
+      // Apply status transition
+      const targetStatus = normalizedStatus === 'shipped' ? 'dispatched' : normalizedStatus;
+      const targetEventType = targetStatus === 'dispatched' ? 'ORDER_DISPATCHED' : 'ORDER_DELIVERED';
+
+      // Check Idempotency via OrderTimeline records
+      const timelineRepo = dataSource.getRepository(OrderTimeline);
+      const existingEvent = await timelineRepo.findOne({
+        where: { order_id: id, event_type: targetEventType as any },
+      });
+
+      order.status = targetStatus as any;
+      await orderRepo.save(order);
+
+      // Record Timeline Event if not already recorded
+      let timelineEvent = existingEvent;
+      if (!existingEvent) {
+        const eventDescription =
+          targetStatus === 'dispatched'
+            ? 'Order marked as Dispatched by Merchant'
+            : 'Order marked as Delivered by Merchant';
+
+        timelineEvent = timelineRepo.create({
+          order_id: id,
+          event_type: targetEventType as any,
+          actor_role: 'merchant',
+          actor_id: merchantId,
+          description: eventDescription,
+        });
+
+        await timelineRepo.save(timelineEvent);
+      }
+
+      // Trigger Email Notification safely if this is the first time transitioning to this status
+      let emailNotificationResult = null;
+      if (!existingEvent && order.customer?.email) {
+        try {
+          const customerEmail = order.customer.email;
+          const customerName = order.customer.name || 'Valued Customer';
+          const frontendUrl = process.env.FRONTEND_URL || 'https://razorshop.app';
+          const orderLink = `${frontendUrl}/orders`;
+
+          if (targetStatus === 'dispatched') {
+            emailNotificationResult = await emailService.sendOrderDispatchedNotification(
+              customerEmail,
+              customerName,
+              order.order_number,
+              {
+                orderId: order.id,
+                orderDate: new Date(order.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                shippingAddress: order.shipping_address,
+                items: (order.items || []).map((item) => ({
+                  name: item.product?.name || 'Product',
+                  quantity: item.quantity,
+                  lineTotalCents: Number(item.line_total_cents),
+                })),
+                totalCents: Number(order.total_cents),
+                orderLink,
+              }
+            );
+          } else if (targetStatus === 'delivered') {
+            emailNotificationResult = await emailService.sendOrderDeliveredNotification(
+              customerEmail,
+              customerName,
+              order.order_number,
+              {
+                orderId: order.id,
+                deliveredDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                items: (order.items || []).map((item) => ({
+                  name: item.product?.name || 'Product',
+                  quantity: item.quantity,
+                  lineTotalCents: Number(item.line_total_cents),
+                })),
+                totalCents: Number(order.total_cents),
+                orderLink,
+              }
+            );
+          }
+        } catch (emailErr: any) {
+          console.error(`[OrderEmail] Failed to send ${targetStatus} notification email for order ${order.id}:`, emailErr);
+          // Do NOT throw error or rollback order status / timeline event!
+        }
+      }
+
+      res.json({
+        id: order.id,
+        order_number: order.order_number,
+        status: order.status,
+        updated_at: order.updated_at,
+        timeline_event: timelineEvent,
+        email_sent: emailNotificationResult?.success || false,
+      });
+    } catch (err: any) {
+      console.error('Error updating order status:', err);
       res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });
