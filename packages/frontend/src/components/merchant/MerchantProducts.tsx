@@ -100,16 +100,16 @@ export default function MerchantProducts() {
     <div className="bg-white rounded-xl shadow border border-gray-200 p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">📦 Catalog & Inventory Management</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Catalog & Inventory Management</h2>
           <p className="text-sm text-gray-600">
             Create and edit store catalog products, manage stock levels, and monitor sales.
           </p>
         </div>
         <button
           onClick={handleAddProduct}
-          className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-sm flex items-center gap-2"
+          className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-xs flex items-center gap-2 text-xs"
         >
-          <span>➕</span> Add Product
+          <span>Add Product</span>
         </button>
       </div>
 

@@ -14,10 +14,23 @@ import ProfilePopover from './components/common/ProfilePopover';
 import { AddressesModal } from './components/common/AddressesModal';
 import ApplicationStatusPage from './components/ApplicationStatusPage';
 import AdminDashboard from './components/AdminDashboard';
+import Footer from './components/Footer';
+import { PrivacyPolicyPage } from './components/info/PrivacyPolicyPage';
+import { TermsOfServicePage } from './components/info/TermsOfServicePage';
+import { ContactSupportPage } from './components/info/ContactSupportPage';
+import { ApiStatusPage } from './components/info/ApiStatusPage';
+import {
+  IconSearch,
+  IconCart,
+  IconFilter,
+  IconClose,
+  IconStore,
+  IconPackage,
+} from './components/common/Icons';
 import { authService } from './services/authService';
 
 type ViewState = 'browse' | 'checkout' | 'payment' | 'confirmation';
-type ActiveTab = 'store' | 'orders';
+type ActiveTab = 'store' | 'orders' | 'privacy' | 'terms' | 'support' | 'status';
 
 export default function App() {
   const [products, setProducts] = useState<ProductDTO[]>([]);
@@ -38,16 +51,20 @@ export default function App() {
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
+  const [sortOption, setSortOption] = useState<'newest' | 'price_asc' | 'price_desc' | 'name_asc' | 'name_desc'>('newest');
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
 
-  // Selected product modal for recommendations
+  // Selected product modal for recommendations & detail view
   const [selectedProduct, setSelectedProduct] = useState<ProductDTO | null>(null);
 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [user, setUser] = useState(authService.getUser());
 
-  // Customer Navigation State
+  // Customer Navigation State (HTML5 History router integration)
   const [activeTab, setActiveTab] = useState<ActiveTab>('store');
 
   // View state management
@@ -57,6 +74,37 @@ export default function App() {
 
   // Merchant Application View state
   const [showApplicationStatusView, setShowApplicationStatusView] = useState(false);
+
+  const getTabFromPath = (path: string): ActiveTab => {
+    const p = path.toLowerCase();
+    if (p === '/orders') return 'orders';
+    if (p === '/privacy') return 'privacy';
+    if (p === '/terms') return 'terms';
+    if (p === '/support' || p === '/contact') return 'support';
+    if (p === '/status' || p === '/health') return 'status';
+    return 'store';
+  };
+
+  const navigateToPath = (path: string) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setActiveTab(getTabFromPath(path));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Listen for browser Back & Forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getTabFromPath(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    setActiveTab(getTabFromPath(window.location.pathname));
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   // Check authentication & recovery deep-links on mount
   useEffect(() => {
@@ -71,11 +119,8 @@ export default function App() {
     }
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') || params.get('order')) {
-      setActiveTab('orders');
+      navigateToPath('/orders');
       setViewState('browse');
-    }
-    if (window.location.pathname === '/admin') {
-      // route view
     }
   }, []);
 
@@ -95,7 +140,7 @@ export default function App() {
     fetchCategories();
   }, []);
 
-  // Fetch products
+  // Fetch products with search, category, minPrice, maxPrice, sort
   useEffect(() => {
     const fetchProducts = async () => {
       try {
@@ -106,11 +151,14 @@ export default function App() {
           limit: '100',
           ...(selectedCategory && { category: selectedCategory }),
           ...(searchTerm && { search: searchTerm }),
+          ...(minPrice !== '' && !isNaN(Number(minPrice)) && { minPrice }),
+          ...(maxPrice !== '' && !isNaN(Number(maxPrice)) && { maxPrice }),
+          ...(sortOption && { sort: sortOption }),
         });
         const response = await fetch(getApiUrl(`/products?${query}`));
         if (response.ok) {
           const data: ProductListResponse = await response.json();
-          setProducts(data.data);
+          setProducts(data.data || []);
           setPagination({ total: data.total, pages: data.pages });
         } else {
           setError('Failed to load products');
@@ -122,7 +170,7 @@ export default function App() {
       }
     };
     fetchProducts();
-  }, [currentPage, selectedCategory, searchTerm]);
+  }, [currentPage, selectedCategory, searchTerm, minPrice, maxPrice, sortOption]);
 
   const handleUnauthorized = () => {
     authService.logout();
@@ -348,7 +396,7 @@ export default function App() {
       updated_at: new Date(),
     });
     setCartOpen(false);
-    setActiveTab('store');
+    navigateToPath('/');
     localStorage.removeItem('cartId');
   };
 
@@ -358,8 +406,22 @@ export default function App() {
     setViewState('payment');
   };
 
+  const clearAllFilters = () => {
+    setSelectedCategory('');
+    setSearchTerm('');
+    setMinPrice('');
+    setMaxPrice('');
+    setInStockOnly(false);
+    setSortOption('newest');
+    setCurrentPage(1);
+  };
+
+  const filteredProducts = inStockOnly
+    ? products.filter((p) => (p.inventory?.available ?? 0) > 0)
+    : products;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900">
       {/* Show login if not authenticated */}
       {!isAuthenticated && (
         <LoginPage
@@ -376,103 +438,144 @@ export default function App() {
 
       {isAuthenticated && user && (
         <>
-          {/* Admin Dashboard */}
-          {user.role === 'admin' && (
-            <AdminDashboard onLogout={handleLogout} />
-          )}
-
-          {/* Merchant Views */}
-          {user.role === 'merchant' && (
-            <>
-              {showApplicationStatusView || user.application_status === 'pending' || user.application_status === 'rejected' ? (
-                <ApplicationStatusPage
-                  onGoToDashboard={() => setShowApplicationStatusView(false)}
-                  onLogout={handleLogout}
-                />
-              ) : (
-                <div>
-                  <header className="bg-purple-950 text-white shadow-md sticky top-0 z-30 border-b border-purple-800">
-                    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">🏬</span>
-                        <div>
-                          <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                            RAZOR <span className="bg-purple-800 text-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Merchant Hub</span>
-                          </h1>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={() => setShowApplicationStatusView(true)}
-                          className="text-xs text-purple-300 hover:text-white underline font-semibold"
-                        >
-                          View Application Timeline
-                        </button>
-                        <ProfilePopover
-                          user={user}
-                          onLogout={handleLogout}
-                          onNavigateToMerchant={() => setActiveTab('store')}
-                        />
-                      </div>
-                    </div>
-                  </header>
-                  <MerchantDashboard />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Customer Store */}
-          {user.role === 'customer' && (
-            <>
-              <header className="bg-white/95 backdrop-blur-md shadow-sm sticky top-0 z-30 border-b border-gray-200">
+          {activeTab === 'privacy' || activeTab === 'terms' || activeTab === 'support' || activeTab === 'status' ? (
+            <div className="min-h-screen flex flex-col w-full bg-gray-50 font-sans text-gray-900">
+              {/* Universal Info Header */}
+              <header className="w-full bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3.5 flex justify-between items-center gap-4">
-                  <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-3">
                     <div
-                      onClick={() => setActiveTab('store')}
-                      className="flex items-center gap-2 cursor-pointer group"
+                      onClick={() => navigateToPath('/')}
+                      className="cursor-pointer group flex items-center gap-2 select-none"
+                      title="RazorShop Home"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-black text-lg flex items-center justify-center shadow-md group-hover:bg-blue-700 transition">
-                        ⚡
-                      </div>
-                      <span className="text-xl font-black tracking-tight text-gray-900">
-                        RAZOR <span className="text-blue-600">STORE</span>
+                      <span className="text-2xl font-black tracking-tight text-gray-900">
+                        Razor<span className="text-blue-600">Shop</span>
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded uppercase tracking-wider">
+                      {user.role === 'merchant'
+                        ? 'Merchant Documentation'
+                        : user.role === 'admin'
+                        ? 'Admin Documentation'
+                        : 'Documentation'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => navigateToPath('/')}
+                      className="px-3.5 py-2 text-xs font-bold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition shadow-xs"
+                    >
+                      Back to {user.role === 'merchant' ? 'Merchant Dashboard' : user.role === 'admin' ? 'Admin Portal' : 'Store Catalog'}
+                    </button>
+                    <ProfilePopover user={user} onLogout={handleLogout} />
+                  </div>
+                </div>
+              </header>
+
+              {/* Info Content Workspace */}
+              <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8">
+                {activeTab === 'privacy' && <PrivacyPolicyPage />}
+                {activeTab === 'terms' && <TermsOfServicePage />}
+                {activeTab === 'support' && <ContactSupportPage />}
+                {activeTab === 'status' && <ApiStatusPage />}
+              </main>
+
+              {/* Universal Footer */}
+              <Footer
+                isMerchant={user.role === 'merchant'}
+                isAdmin={user.role === 'admin'}
+                onNavigateToStore={() => navigateToPath('/')}
+                onNavigateToOrders={() => navigateToPath('/orders')}
+                onOpenCart={() => navigateToPath('/')}
+                onOpenPrivacy={() => navigateToPath('/privacy')}
+                onOpenTerms={() => navigateToPath('/terms')}
+                onOpenContact={() => navigateToPath('/support')}
+                onOpenApiStatus={() => navigateToPath('/status')}
+              />
+            </div>
+          ) : (
+            <>
+              {/* Admin Dashboard */}
+              {user.role === 'admin' && (
+                <AdminDashboard onLogout={handleLogout} onNavigateToPath={navigateToPath} />
+              )}
+
+              {/* Merchant Views */}
+              {user.role === 'merchant' && (
+                <>
+                  {showApplicationStatusView || user.application_status === 'pending' || user.application_status === 'rejected' ? (
+                    <ApplicationStatusPage
+                      onGoToDashboard={() => setShowApplicationStatusView(false)}
+                      onLogout={handleLogout}
+                    />
+                  ) : (
+                    <MerchantDashboard
+                      onShowApplicationTimeline={() => setShowApplicationStatusView(true)}
+                      onLogout={handleLogout}
+                      onNavigateToPath={navigateToPath}
+                    />
+                  )}
+                </>
+              )}
+
+              {/* Customer Storefront */}
+              {user.role === 'customer' && (
+            <div className="min-h-screen flex flex-col w-full">
+              {/* Full-width Header */}
+              <header className="w-full bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
+                <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3.5 flex justify-between items-center gap-4">
+                  {/* Brand & Main Navigation */}
+                  <div className="flex items-center gap-8">
+                    {/* Clickable Brand Logo -> Returns to Store Catalog */}
+                    <div
+                      onClick={() => navigateToPath('/')}
+                      className="cursor-pointer group flex items-center gap-2 select-none"
+                      title="RazorShop Home / Catalog"
+                      id="brand-logo"
+                    >
+                      <span className="text-2xl font-black tracking-tight text-gray-900">
+                        Razor<span className="text-blue-600">Shop</span>
                       </span>
                     </div>
 
                     <nav className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
                       <button
-                        onClick={() => setActiveTab('store')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        onClick={() => navigateToPath('/')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                           activeTab === 'store'
-                            ? 'bg-white text-blue-700 shadow-sm'
+                            ? 'bg-white text-blue-700 shadow-xs'
                             : 'text-gray-600 hover:text-gray-900'
                         }`}
                       >
-                        Store
+                        <IconStore className="w-3.5 h-3.5" />
+                        <span>Store</span>
                       </button>
                       <button
-                        onClick={() => setActiveTab('orders')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        onClick={() => navigateToPath('/orders')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                           activeTab === 'orders'
-                            ? 'bg-white text-blue-700 shadow-sm'
+                            ? 'bg-white text-blue-700 shadow-xs'
                             : 'text-gray-600 hover:text-gray-900'
                         }`}
                       >
-                        Orders
+                        <IconPackage className="w-3.5 h-3.5" />
+                        <span>Orders</span>
                       </button>
                     </nav>
                   </div>
 
+                  {/* Actions (Cart & Profile) */}
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setCartOpen(true)}
-                      className="relative px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 active:scale-95"
+                      className="relative px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs hover:shadow transition-all flex items-center gap-2 active:scale-95"
                     >
-                      <span>🛒</span>
+                      <IconCart className="w-4 h-4 text-white" />
                       <span className="hidden sm:inline">Cart</span>
                       {cart && cart.items && cart.items.length > 0 && (
-                        <span className="bg-red-500 text-white text-[11px] font-black rounded-full min-w-[20px] h-[20px] px-1 flex items-center justify-center animate-pulse">
+                        <span className="bg-red-500 text-white text-[11px] font-black rounded-full min-w-[20px] h-[20px] px-1 flex items-center justify-center">
                           {cart.items.length}
                         </span>
                       )}
@@ -481,52 +584,161 @@ export default function App() {
                     <ProfilePopover
                       user={user}
                       onLogout={handleLogout}
-                      onNavigateToOrders={() => setActiveTab('orders')}
+                      onNavigateToOrders={() => navigateToPath('/orders')}
                       onNavigateToAddresses={() => setIsAddressesModalOpen(true)}
-                      onNavigateToStore={() => setActiveTab('store')}
+                      onNavigateToStore={() => navigateToPath('/')}
                       onOpenCart={() => setCartOpen(true)}
                     />
                   </div>
                 </div>
               </header>
 
-              <main className="mx-auto max-w-7xl px-4 sm:px-6 py-8 min-h-[calc(100vh-80px)]">
-                {activeTab === 'orders' ? (
+              {/* Main Container */}
+              <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8">
+                {activeTab === 'orders' && (
                   <CustomerOrders
                     onContinuePayment={(id, amount) => handleStartPayment(id, amount)}
                     onRetryPayment={(id, amount) => handleStartPayment(id, amount)}
                     targetOrderId={new URLSearchParams(window.location.search).get('payment') || new URLSearchParams(window.location.search).get('order')}
                   />
-                ) : (
+                )}
+
+                {activeTab === 'store' && (
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                    {/* Sidebar Filters */}
+                    {/* Left Sidebar Filters */}
                     <aside className="lg:col-span-1">
-                      <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-5 sticky top-24">
+                      <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs space-y-6 sticky top-24">
                         <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-                          <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-                            <span>🔍</span>
-                            <span>Filters & Search</span>
+                          <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                            <IconFilter className="w-4 h-4 text-blue-600" />
+                            <span>Filters</span>
                           </h3>
-                          {(searchTerm || selectedCategory) && (
+                          {(selectedCategory || searchTerm || minPrice || maxPrice || inStockOnly) && (
                             <button
-                              onClick={() => {
-                                setSearchTerm('');
-                                setSelectedCategory('');
-                                setCurrentPage(1);
-                              }}
+                              onClick={clearAllFilters}
                               className="text-xs text-blue-600 hover:text-blue-800 font-bold underline"
                             >
-                              Clear
+                              Clear All
                             </button>
                           )}
                         </div>
 
-                        {/* Search Bar */}
+                        {/* Category List */}
                         <div>
-                          <label className="text-xs font-bold text-gray-700 block mb-1.5 uppercase tracking-wider">
-                            Search Products
+                          <label className="text-xs font-bold text-gray-700 block mb-2 uppercase tracking-wider">
+                            Categories
                           </label>
-                          <div className="relative">
+                          <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                            <button
+                              onClick={() => {
+                                setSelectedCategory('');
+                                setCurrentPage(1);
+                              }}
+                              className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                selectedCategory === ''
+                                  ? 'bg-blue-50 text-blue-700 font-bold'
+                                  : 'text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              All Categories
+                            </button>
+                            {categories.map((cat) => (
+                              <button
+                                key={cat}
+                                onClick={() => {
+                                  setSelectedCategory(cat);
+                                  setCurrentPage(1);
+                                }}
+                                className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                  selectedCategory === cat
+                                    ? 'bg-blue-50 text-blue-700 font-bold'
+                                    : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Price Range Filter */}
+                        <div className="pt-4 border-t border-gray-100 space-y-2">
+                          <label className="text-xs font-bold text-gray-700 block uppercase tracking-wider">
+                            Price Range (₹)
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <input
+                                type="number"
+                                value={minPrice}
+                                onChange={(e) => {
+                                  setMinPrice(e.target.value);
+                                  setCurrentPage(1);
+                                }}
+                                placeholder="₹ Min"
+                                min="0"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50"
+                              />
+                            </div>
+                            <div>
+                              <input
+                                type="number"
+                                value={maxPrice}
+                                onChange={(e) => {
+                                  setMaxPrice(e.target.value);
+                                  setCurrentPage(1);
+                                }}
+                                placeholder="₹ Max"
+                                min="0"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* In Stock Toggle */}
+                        <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+                          <label htmlFor="inStockFilter" className="text-xs font-bold text-gray-700 cursor-pointer">
+                            In Stock Only
+                          </label>
+                          <input
+                            type="checkbox"
+                            id="inStockFilter"
+                            checked={inStockOnly}
+                            onChange={(e) => {
+                              setInStockOnly(e.target.checked);
+                              setCurrentPage(1);
+                            }}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Result Count */}
+                        <div className="pt-4 border-t border-gray-100 text-xs text-gray-500 font-medium flex justify-between items-center">
+                          <span>Products found:</span>
+                          <span className="font-bold text-gray-900 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                            {filteredProducts.length}
+                          </span>
+                        </div>
+                      </div>
+                    </aside>
+
+                    {/* Right Product Catalog */}
+                    <div className="lg:col-span-3 space-y-6">
+                      {/* Top Bar (Heading + Search + Sort) */}
+                      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-4">
+                        <div>
+                          <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">
+                            RazorShop Store
+                          </span>
+                          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">
+                            {selectedCategory || 'Collection Catalog'}
+                          </h1>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+                          {/* Search Input */}
+                          <div className="relative w-full sm:w-72">
                             <input
                               type="text"
                               value={searchTerm}
@@ -534,135 +746,146 @@ export default function App() {
                                 setSearchTerm(e.target.value);
                                 setCurrentPage(1);
                               }}
-                              placeholder="Search by title..."
-                              className="w-full pl-3.5 pr-8 py-2.5 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50"
+                              placeholder="Search products..."
+                              className="w-full pl-9 pr-8 py-2.5 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50 font-medium"
                             />
+                            <IconSearch className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                             {searchTerm && (
                               <button
                                 onClick={() => setSearchTerm('')}
-                                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
                               >
-                                ✕
+                                <IconClose className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>
-                        </div>
 
-                        {/* Category Dropdown */}
-                        <div>
-                          <label className="text-xs font-bold text-gray-700 block mb-1.5 uppercase tracking-wider">
-                            Category
-                          </label>
-                          <select
-                            value={selectedCategory}
-                            onChange={(e) => {
-                              setSelectedCategory(e.target.value);
-                              setCurrentPage(1);
-                            }}
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50 font-medium"
-                          >
-                            <option value="">All Categories ({categories.length})</option>
-                            {categories.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Status Count Summary */}
-                        <div className="pt-3 border-t border-gray-100 text-xs text-gray-500 font-medium flex justify-between items-center">
-                          <span>Results found:</span>
-                          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded">
-                            {pagination.total} {pagination.total === 1 ? 'product' : 'products'}
-                          </span>
+                          {/* Sort Dropdown */}
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Sort by:</span>
+                            <select
+                              value={sortOption}
+                              onChange={(e) => {
+                                setSortOption(e.target.value as any);
+                                setCurrentPage(1);
+                              }}
+                              className="w-full sm:w-auto px-3.5 py-2.5 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50 font-bold text-gray-800"
+                            >
+                              <option value="newest">Recommended / Newest</option>
+                              <option value="price_asc">Price: Low to High</option>
+                              <option value="price_desc">Price: High to Low</option>
+                              <option value="name_asc">Name: A to Z</option>
+                              <option value="name_desc">Name: Z to A</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
-                    </aside>
 
-                    {/* Products Grid */}
-                    <div className="lg:col-span-3">
-                      {loading && <p className="text-center py-8">Loading products...</p>}
-                      {error && <p className="text-center py-8 text-red-600">{error}</p>}
-                      {!loading && products.length === 0 && <p className="text-center py-8">No products found</p>}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                        {products.map((product) => {
-                          const available = product.inventory?.available ?? 10;
-                          const canAdd = available > 0;
+                      {/* Product Grid */}
+                      {loading && (
+                        <div className="text-center py-16 bg-white rounded-2xl border border-gray-200">
+                          <p className="text-gray-500 text-sm font-medium">Loading catalog products...</p>
+                        </div>
+                      )}
+                      {error && (
+                        <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 text-red-600">
+                          <p className="font-bold">{error}</p>
+                        </div>
+                      )}
+                      {!loading && filteredProducts.length === 0 && (
+                        <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 space-y-2">
+                          <p className="text-gray-800 font-bold text-base">No products match your criteria</p>
+                          <p className="text-gray-500 text-xs">Try clearing or broadening your search and filter settings.</p>
+                          <button
+                            onClick={clearAllFilters}
+                            className="mt-3 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition"
+                          >
+                            Clear Filters
+                          </button>
+                        </div>
+                      )}
 
-                          return (
-                            <div
-                              key={product.id}
-                              onClick={() => setSelectedProduct(product)}
-                              className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
-                            >
-                              <div>
-                                <div className="flex justify-between items-start gap-2 mb-2">
-                                  <h3
-                                    className="font-bold text-gray-900 text-base line-clamp-2 group-hover:text-blue-600 transition-colors"
-                                  >
+                      {!loading && filteredProducts.length > 0 && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {filteredProducts.map((product) => {
+                            const available = product.inventory?.available ?? 10;
+                            const canAdd = available > 0;
+
+                            return (
+                              <div
+                                key={product.id}
+                                onClick={() => setSelectedProduct(product)}
+                                className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group hover:border-gray-300"
+                              >
+                                <div>
+                                  <div className="mb-2">
+                                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-block">
+                                      {product.category || 'General'}
+                                    </span>
+                                  </div>
+
+                                  <h3 className="font-extrabold text-gray-900 text-base mb-1.5 group-hover:text-blue-600 transition-colors line-clamp-2">
                                     {product.name}
                                   </h3>
-                                  <span className="bg-gray-100 text-gray-700 text-[11px] font-semibold px-2 py-0.5 rounded shrink-0">
-                                    {product.category || 'General'}
-                                  </span>
+
+                                  <p className="text-xs text-gray-600 mb-4 line-clamp-3 leading-relaxed">
+                                    {product.description || 'High quality product carefully inspected for maximum value.'}
+                                  </p>
                                 </div>
 
-                                <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
-                                  {product.description}
-                                </p>
+                                <div className="space-y-3 pt-3 border-t border-gray-100">
+                                  <div>
+                                    <StockBadge availableQuantity={available} compact />
+                                  </div>
 
-                                <div className="mb-3">
-                                  <StockBadge availableQuantity={available} compact />
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xl font-black text-gray-900">
+                                      {formatPrice(product.price_cents)}
+                                    </span>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedProduct(product);
+                                        }}
+                                        className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition"
+                                      >
+                                        Details
+                                      </button>
+                                      <button
+                                        disabled={!canAdd}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (canAdd) addToCart(product.id);
+                                        }}
+                                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition shadow-xs ${
+                                          canAdd
+                                            ? 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
+                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed border'
+                                        }`}
+                                      >
+                                        {canAdd ? 'Add' : 'Out of Stock'}
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
-
-                              <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-                                <span className="text-xl font-extrabold text-blue-700">
-                                  {formatPrice(product.price_cents)}
-                                </span>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedProduct(product);
-                                    }}
-                                    className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition"
-                                  >
-                                    Details
-                                  </button>
-                                  <button
-                                    disabled={!canAdd}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (canAdd) addToCart(product.id);
-                                    }}
-                                    className={`px-3.5 py-1.5 text-xs font-bold rounded-lg shadow-sm transition ${
-                                      canAdd
-                                        ? 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
-                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed border'
-                                    }`}
-                                  >
-                                    {canAdd ? 'Add to Cart' : 'Out of Stock'}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* Pagination */}
                       {pagination.pages > 1 && (
-                        <div className="flex justify-center gap-2 mb-8">
+                        <div className="flex justify-center gap-2 pt-4">
                           {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((page) => (
                             <button
                               key={page}
                               onClick={() => setCurrentPage(page)}
-                              className={`px-3.5 py-2 rounded-lg font-bold text-sm transition ${
+                              className={`px-3.5 py-2 rounded-xl font-bold text-xs transition ${
                                 currentPage === page
-                                  ? 'bg-blue-600 text-white shadow-md'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
                               }`}
                             >
                               {page}
@@ -717,7 +940,6 @@ export default function App() {
                     setOrderId(id);
                     setOrderAmount(amount);
                     setViewState('payment');
-                    // Reload cart so customer gets a new active cart
                     loadCart();
                   }}
                   onCancel={() => setViewState('browse')}
@@ -734,15 +956,13 @@ export default function App() {
                       setViewState('confirmation');
                       loadCart();
                     } else {
-                      // Navigate to Orders page on cancel or failure so user can Continue / Retry
-                      setActiveTab('orders');
+                      navigateToPath('/orders');
                       setViewState('browse');
                       setOrderId(null);
                     }
                   }}
                   onCancel={() => {
-                    // Navigate to Orders tab so user can access order anytime
-                    setActiveTab('orders');
+                    navigateToPath('/orders');
                     setViewState('browse');
                     setOrderId(null);
                   }}
@@ -754,7 +974,7 @@ export default function App() {
                 <OrderConfirmation
                   orderId={orderId}
                   onDone={() => {
-                    setActiveTab('orders');
+                    navigateToPath('/orders');
                     setViewState('browse');
                     setOrderId(null);
                     setOrderAmount(0);
@@ -767,10 +987,23 @@ export default function App() {
                 isOpen={isAddressesModalOpen}
                 onClose={() => setIsAddressesModalOpen(false)}
               />
-            </>
+
+              {/* Footer */}
+              <Footer
+                onNavigateToStore={() => navigateToPath('/')}
+                onNavigateToOrders={() => navigateToPath('/orders')}
+                onOpenCart={() => setCartOpen(true)}
+                onOpenPrivacy={() => navigateToPath('/privacy')}
+                onOpenTerms={() => navigateToPath('/terms')}
+                onOpenContact={() => navigateToPath('/support')}
+                onOpenApiStatus={() => navigateToPath('/status')}
+              />
+            </div>
           )}
         </>
       )}
-    </div>
+    </>
+  )}
+</div>
   );
 }

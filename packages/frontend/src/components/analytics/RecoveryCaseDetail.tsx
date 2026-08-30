@@ -179,9 +179,8 @@ export default function RecoveryCaseDetail({ caseId }: RecoveryCaseDetailProps) 
             <button
               onClick={handleSendRecoveryEmail}
               disabled={sendingEmail || isResolved}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow disabled:opacity-50 flex items-center gap-2"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50 flex items-center gap-2"
             >
-              <span>📧</span>
               <span>{sendingEmail ? 'Sending Email...' : 'Send Recovery Email'}</span>
             </button>
           </div>

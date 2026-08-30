@@ -158,7 +158,7 @@ export const MerchantOrdersTab: React.FC = () => {
       {/* Header & Filter Controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-200">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">🚚 Merchant Order Fulfillment</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Merchant Order Fulfillment</h2>
           <p className="text-sm text-gray-600">
             View orders containing products from your catalog and advance their fulfillment status.
           </p>
@@ -182,7 +182,6 @@ export const MerchantOrdersTab: React.FC = () => {
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm font-medium flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span>⚠️</span>
             <span>{error}</span>
           </div>
           <button
@@ -202,9 +201,6 @@ export const MerchantOrdersTab: React.FC = () => {
         </div>
       ) : orders.length === 0 ? (
         <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-300 space-y-3">
-          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto text-xl font-bold">
-            📦
-          </div>
           <h3 className="text-base font-bold text-gray-900">No merchant orders found</h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
             When customers purchase products from your catalog, orders will appear here for fulfillment.
@@ -224,7 +220,7 @@ export const MerchantOrdersTab: React.FC = () => {
             return (
               <div
                 key={order.id}
-                className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 transition shadow-2xs space-y-4"
+                className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 transition shadow-2xs space-y-4 font-sans"
               >
                 {/* Header Row */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100">
@@ -278,17 +274,17 @@ export const MerchantOrdersTab: React.FC = () => {
                     <span className="font-extrabold text-gray-700 block text-[11px] uppercase tracking-wider">
                       Customer & Delivery Address
                     </span>
-                    <p className="text-gray-900 font-bold">👤 {order.customer?.name || 'Customer'}</p>
-                    <p className="text-gray-600 font-medium">✉️ {order.customer?.email || 'N/A'}</p>
+                    <p className="text-gray-900 font-bold">{order.customer?.name || 'Customer'}</p>
+                    <p className="text-gray-600 font-medium">{order.customer?.email || 'N/A'}</p>
                     
                     {order.shipping_address ? (
                       <div className="mt-2 pt-2 border-t border-gray-200/60 space-y-0.5 text-gray-700">
-                        <p className="font-semibold text-gray-900">📍 {order.shipping_address.full_address}</p>
+                        <p className="font-semibold text-gray-900">{order.shipping_address.full_address}</p>
                         <p className="text-gray-600">
                           {order.shipping_address.state} — {order.shipping_address.pin_code}
                         </p>
                         {order.shipping_address.phone && (
-                          <p className="text-gray-500 font-medium">📞 {order.shipping_address.phone}</p>
+                          <p className="text-gray-500 font-medium">Phone: {order.shipping_address.phone}</p>
                         )}
                       </div>
                     ) : (
@@ -328,7 +324,7 @@ export const MerchantOrdersTab: React.FC = () => {
                   <div className="flex items-center gap-2">
                     {isPending && (
                       <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
-                        ⏳ Awaiting Customer Payment
+                        Awaiting Customer Payment
                       </span>
                     )}
 
@@ -354,7 +350,7 @@ export const MerchantOrdersTab: React.FC = () => {
 
                     {isDelivered && (
                       <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1">
-                        ✓ Order Delivered
+                        Order Delivered
                       </span>
                     )}
                   </div>
@@ -374,7 +370,7 @@ export const MerchantOrdersTab: React.FC = () => {
           }}
         >
           <div
-            className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-2xl p-5 sm:p-6 space-y-5 max-h-[90vh] overflow-y-auto my-auto"
+            className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-2xl p-5 sm:p-6 space-y-5 max-h-[90vh] overflow-y-auto my-auto font-sans"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -393,7 +389,7 @@ export const MerchantOrdersTab: React.FC = () => {
 
             {modalError && (
               <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-medium flex items-center justify-between">
-                <span>⚠️ {modalError}</span>
+                <span>{modalError}</span>
                 <button
                   onClick={() => handleOpenDetails(selectedOrder)}
                   className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded font-bold"
@@ -417,14 +413,14 @@ export const MerchantOrdersTab: React.FC = () => {
                 {selectedOrder.shipping_address ? (
                   <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-1 text-xs">
                     <span className="font-extrabold text-blue-900 block uppercase tracking-wider text-[11px]">
-                      📍 Delivery Address Snapshot
+                      Delivery Address Snapshot
                     </span>
                     <p className="font-bold text-gray-900">{selectedOrder.shipping_address.full_address}</p>
                     <p className="text-gray-600">
                       {selectedOrder.shipping_address.state} — {selectedOrder.shipping_address.pin_code}
                     </p>
                     {selectedOrder.shipping_address.phone && (
-                      <p className="text-gray-500 font-medium">📞 {selectedOrder.shipping_address.phone}</p>
+                      <p className="text-gray-500 font-medium">Phone: {selectedOrder.shipping_address.phone}</p>
                     )}
                   </div>
                 ) : (

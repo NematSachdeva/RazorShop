@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CartDTO } from '@razor/shared';
 import CartRecommendations from './CartRecommendations';
+import { IconCart, IconClose, IconTag, IconArrowRight, IconTrash, IconPlus, IconMinus } from './common/Icons';
 
 interface Props {
   isOpen: boolean;
@@ -86,7 +87,7 @@ export default function CartDrawer({
       {/* Backdrop */}
       <div
         onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-fadeIn"
+        className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-fadeIn"
       />
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-4 sm:pl-10">
@@ -95,9 +96,9 @@ export default function CartDrawer({
           className="w-screen max-w-md bg-white shadow-2xl flex flex-col border-l border-gray-100"
         >
           {/* Header */}
-          <div className="p-4 sm:p-6 bg-gradient-to-r from-blue-900 to-indigo-900 text-white flex justify-between items-center shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xl sm:text-2xl">🛒</span>
+          <div className="p-4 sm:p-6 bg-blue-600 text-white flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-2.5">
+              <IconCart className="w-6 h-6 text-white" />
               <h2 className="text-lg sm:text-xl font-bold">Your Shopping Cart</h2>
               <span className="bg-blue-800 text-blue-100 text-xs px-2.5 py-0.5 rounded-full font-semibold">
                 {items.length} {items.length === 1 ? 'item' : 'items'}
@@ -108,20 +109,22 @@ export default function CartDrawer({
                 e.stopPropagation();
                 onClose();
               }}
-              className="text-blue-200 hover:text-white font-bold text-xl p-1 rounded-full hover:bg-blue-800/50 transition-colors"
+              className="text-blue-100 hover:text-white font-bold p-1.5 rounded-full hover:bg-blue-700 transition-colors"
               aria-label="Close cart drawer"
             >
-              ✕
+              <IconClose className="w-5 h-5" />
             </button>
           </div>
 
           {/* Cart Content */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
             {items.length === 0 ? (
-              <div className="text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-                <span className="text-4xl block mb-3">🛍️</span>
-                <p className="text-gray-700 font-bold text-lg">Your cart is empty</p>
-                <p className="text-gray-400 text-xs mt-1 mb-5">
+              <div className="text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-300 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
+                  <IconCart className="w-6 h-6" />
+                </div>
+                <p className="text-gray-800 font-bold text-base">Your cart is empty</p>
+                <p className="text-gray-500 text-xs max-w-xs mx-auto">
                   Explore our catalog and add your favorite products.
                 </p>
                 <button
@@ -129,7 +132,7 @@ export default function CartDrawer({
                     e.stopPropagation();
                     onClose();
                   }}
-                  className="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 shadow-md transition"
+                  className="mt-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 shadow-sm transition"
                 >
                   Start Shopping
                 </button>
@@ -169,10 +172,10 @@ export default function CartDrawer({
                             <button
                               disabled={isUpdating || item.quantity <= 1}
                               onClick={(e) => handleQuantityChange(e, item.product_id, item.quantity, -1)}
-                              className="px-2.5 py-1 text-gray-700 hover:bg-gray-200 disabled:opacity-30 text-sm font-bold"
+                              className="p-1.5 text-gray-700 hover:bg-gray-200 disabled:opacity-30 transition"
                               title={item.quantity <= 1 ? 'Minimum quantity is 1' : 'Decrease quantity'}
                             >
-                              -
+                              <IconMinus className="w-3.5 h-3.5" />
                             </button>
                             <span className="px-3 text-xs font-bold text-gray-900 min-w-[24px] text-center">
                               {isUpdating ? '...' : item.quantity}
@@ -180,10 +183,10 @@ export default function CartDrawer({
                             <button
                               disabled={isUpdating || isMax}
                               onClick={(e) => handleQuantityChange(e, item.product_id, item.quantity, 1)}
-                              className="px-2.5 py-1 text-gray-700 hover:bg-gray-200 disabled:opacity-30 text-sm font-bold"
+                              className="p-1.5 text-gray-700 hover:bg-gray-200 disabled:opacity-30 transition"
                               title={isMax ? `Only ${available} available in stock` : 'Increase quantity'}
                             >
-                              +
+                              <IconPlus className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -191,9 +194,10 @@ export default function CartDrawer({
                         <button
                           disabled={isUpdating}
                           onClick={(e) => handleRemove(e, item.product_id)}
-                          className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 hover:bg-rose-50 rounded transition disabled:opacity-50"
+                          className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 hover:bg-rose-50 rounded transition disabled:opacity-50 flex items-center gap-1"
                         >
-                          Remove
+                          <IconTrash className="w-3.5 h-3.5" />
+                          <span>Remove</span>
                         </button>
                       </div>
 
@@ -236,7 +240,7 @@ export default function CartDrawer({
               {discountCents > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm bg-green-50 p-2.5 rounded-xl border border-green-200">
                   <div className="flex items-center gap-1.5 text-green-800 font-bold">
-                    <span>🎁</span>
+                    <IconTag className="w-4 h-4 text-green-700" />
                     <span>Bundle Discount ({discountPercent}% OFF)</span>
                   </div>
                   <span className="font-bold text-green-700">-{formatPrice(discountCents)}</span>
@@ -254,10 +258,10 @@ export default function CartDrawer({
                   onClose();
                   onCheckout();
                 }}
-                className="w-full py-3.5 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 active:scale-98"
+                className="w-full py-3.5 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 active:scale-98 text-sm"
               >
                 <span>Proceed to Checkout</span>
-                <span>→</span>
+                <IconArrowRight className="w-4 h-4" />
               </button>
             </div>
           )}

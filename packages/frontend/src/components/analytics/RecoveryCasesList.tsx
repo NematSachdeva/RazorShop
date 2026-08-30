@@ -92,15 +92,8 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const getStatusIcon = (status: string) => {
-    const icons: { [key: string]: string } = {
-      open: '📥',
-      in_progress: '⏳',
-      resolved: '✅',
-      abandoned: '❌',
-      customer_declined: '🚫',
-    };
-    return icons[status] || '❓';
+  const getStatusIcon = (_status: string) => {
+    return '';
   };
 
   const formatPrice = (cents?: number) => {
@@ -123,7 +116,7 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
   const currentPage = Math.floor(offset / limit) + 1;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* Filters Header */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-3">
@@ -147,9 +140,9 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
 
         <button
           onClick={() => fetchCases()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition"
         >
-          🔄 Refresh Cases
+          Refresh Cases
         </button>
       </div>
 

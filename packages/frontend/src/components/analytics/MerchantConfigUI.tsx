@@ -146,7 +146,7 @@ export default function MerchantConfigUI() {
   return (
     <div className="bg-white rounded shadow p-6 mb-8">
       {/* Header */}
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">⚙️ Merchant Configuration</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">Merchant Configuration</h2>
 
       {/* Error Message */}
       {error && (

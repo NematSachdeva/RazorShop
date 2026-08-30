@@ -5,6 +5,7 @@ import { OrderDTO, PaymentDTO } from '@razor/shared';
 
 import OrderFeedbackModal from './OrderFeedbackModal';
 import { OrderTimelineView, TimelineEvent } from './OrderTimelineView';
+import { IconPackage, IconRefresh, IconPhone, IconCheck } from './common/Icons';
 
 function CustomerOrderTimeline({ orderId, currentStatus }: { orderId: string; currentStatus: string }) {
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
@@ -154,19 +155,19 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
 
   if (loading) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow text-center py-12">
-        <p className="text-gray-600">Loading your orders...</p>
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center py-16">
+        <p className="text-gray-600 font-medium">Loading your orders...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow text-center py-12 text-red-600">
-        <p>{error}</p>
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center py-16 text-red-600">
+        <p className="font-bold">{error}</p>
         <button
           onClick={fetchOrders}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="mt-4 px-5 py-2.5 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 transition"
         >
           Retry
         </button>
@@ -176,22 +177,29 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
 
   if (ordersWithPayments.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow text-center py-12 text-gray-600">
-        <h3 className="text-xl font-bold mb-2">No Orders Found</h3>
-        <p>You haven't placed any orders yet.</p>
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center py-16 text-gray-600 space-y-3 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
+          <IconPackage className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900">No Orders Found</h3>
+        <p className="text-xs text-gray-500 max-w-xs mx-auto">You haven't placed any orders yet.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">Your Orders</h2>
+    <div className="space-y-6 font-sans">
+      <div className="flex justify-between items-center pb-2">
+        <div className="flex items-center gap-2.5">
+          <IconPackage className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-black text-gray-900">Your Orders & Tracking</h2>
+        </div>
         <button
           onClick={fetchOrders}
-          className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
+          className="px-3.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
         >
-          Refresh Orders
+          <IconRefresh className="w-3.5 h-3.5" />
+          <span>Refresh</span>
         </button>
       </div>
 
@@ -202,37 +210,42 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
         const isTarget = Boolean(targetOrderId && order.id === targetOrderId);
 
         return (
-          <div key={order.id} className={`bg-white rounded-lg shadow p-6 border transition ${isTarget ? 'border-2 border-amber-500 ring-2 ring-amber-200 bg-amber-50/30' : 'border-gray-200'}`}>
-            <div className="flex flex-wrap justify-between items-start border-b pb-4 mb-4 gap-4">
+          <div
+            key={order.id}
+            className={`bg-white rounded-2xl shadow-sm p-6 border transition-all ${
+              isTarget ? 'border-2 border-blue-500 ring-2 ring-blue-100 bg-blue-50/20' : 'border-gray-200'
+            }`}
+          >
+            <div className="flex flex-wrap justify-between items-start border-b border-gray-100 pb-4 mb-4 gap-4">
               <div>
-                <span className="font-mono text-sm text-gray-500 block mb-1">
+                <span className="font-mono text-xs font-bold text-gray-500 block mb-1">
                   Order #{order.order_number}
                 </span>
                 <p className="text-xs text-gray-400">Placed on: {formatDate(order.created_at)}</p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 {/* Order Status Badge */}
                 {isConfirmed && (
-                  <span className="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                  <span className="px-3 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
                     Paid / Completed
                   </span>
                 )}
                 {isFailed && (
-                  <span className="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                  <span className="px-3 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-200">
                     Payment Failed
                   </span>
                 )}
                 {isPending && (
-                  <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">
+                  <span className="px-3 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
                     Pending Payment
                   </span>
                 )}
 
                 {/* Total */}
                 <div className="text-right">
-                  <p className="text-sm text-gray-500">Total</p>
-                  <p className="text-lg font-bold text-blue-600">{formatPrice(order.total_cents)}</p>
+                  <p className="text-[11px] text-gray-400 font-semibold uppercase">Total</p>
+                  <p className="text-lg font-black text-blue-700">{formatPrice(order.total_cents)}</p>
                 </div>
               </div>
             </div>
@@ -240,14 +253,14 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
             {/* Order Items */}
             <div className="space-y-2 mb-6">
               {order.items.map((item) => (
-                <div key={item.id || item.product_id} className="flex justify-between text-sm py-1">
+                <div key={item.id || item.product_id} className="flex justify-between text-xs py-1.5 border-b border-gray-50">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-900">
+                    <span className="font-bold text-gray-900">
                       {item.product?.name || `Product (${item.product_id.slice(0, 8)})`}
                     </span>
-                    <span className="text-gray-500">x{item.quantity}</span>
+                    <span className="text-gray-500 font-semibold">x{item.quantity}</span>
                   </div>
-                  <span className="font-medium text-gray-700">
+                  <span className="font-bold text-gray-800">
                     {formatPrice(item.line_total_cents)}
                   </span>
                 </div>
@@ -256,24 +269,27 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
 
             {/* Delivery Address Snapshot */}
             {order.shipping_address && (
-              <div className="mb-4 p-3.5 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-1">
+              <div className="mb-4 p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
                 <span className="font-bold text-gray-700 block text-[11px] uppercase tracking-wider">
                   Delivery Address Snapshot
                 </span>
-                <p className="text-gray-900 font-medium">{order.shipping_address.full_address}</p>
+                <p className="text-gray-900 font-bold">{order.shipping_address.full_address}</p>
                 <p className="text-gray-600">
                   {order.shipping_address.state} — {order.shipping_address.pin_code}
                 </p>
                 {order.shipping_address.phone && (
-                  <p className="text-gray-500">📞 {order.shipping_address.phone}</p>
+                  <p className="text-gray-500 flex items-center gap-1.5 pt-0.5">
+                    <IconPhone className="w-3.5 h-3.5" />
+                    <span>{order.shipping_address.phone}</span>
+                  </p>
                 )}
               </div>
             )}
 
             {/* Failure reason if failed */}
             {isFailed && payment?.failure_reason && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-                <span className="font-semibold">Reason for failure: </span>
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium">
+                <span className="font-bold">Reason for failure: </span>
                 {payment.failure_reason}
               </div>
             )}
@@ -286,13 +302,12 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
             )}
 
             {/* Actions */}
-            <div className="flex flex-wrap justify-between items-center pt-3 border-t gap-3">
+            <div className="flex flex-wrap justify-between items-center pt-4 border-t border-gray-100 gap-3">
               <div>
                 <button
                   onClick={() => handleOpenFeedback(order.id, order.order_number)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-50 border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-lg text-xs font-semibold transition"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gray-50 border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-xl text-xs font-bold transition shadow-xs"
                 >
-                  <span>💬</span>
                   <span>Feedback</span>
                 </button>
               </div>
@@ -301,9 +316,10 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
                 {isConfirmed && (
                   <button
                     disabled
-                    className="px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-semibold cursor-default"
+                    className="px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold cursor-default flex items-center gap-1.5"
                   >
-                    ✓ Paid / Completed
+                    <IconCheck className="w-3.5 h-3.5" />
+                    <span>Paid / Completed</span>
                   </button>
                 )}
 
@@ -311,7 +327,7 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
                   <button
                     onClick={() => onContinuePayment(order.id, order.total_cents)}
                     disabled={loadingPayment}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition shadow-sm"
                   >
                     Continue Payment
                   </button>
@@ -321,7 +337,7 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
                   <button
                     onClick={() => onRetryPayment(order.id, order.total_cents)}
                     disabled={loadingPayment}
-                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
+                    className="px-5 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 disabled:opacity-50 transition shadow-sm"
                   >
                     Retry Payment
                   </button>

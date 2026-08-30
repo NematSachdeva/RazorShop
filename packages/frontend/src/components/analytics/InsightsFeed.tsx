@@ -38,13 +38,13 @@ export default function InsightsFeed() {
   const [insightTypeFilter, setInsightTypeFilter] = useState<string>('');
 
   const insightTypes = [
-    { value: 'payment_failure_patterns', label: '💳 Payment Failures' },
-    { value: 'abandoned_cart_patterns', label: '🛒 Abandoned Carts' },
-    { value: 'recovery_success_rates', label: '📈 Recovery Performance' },
-    { value: 'product_bundles', label: '📦 Product Bundles' },
-    { value: 'discount_strategy', label: '💰 Discount Strategy' },
-    { value: 'inventory_optimization', label: '📊 Inventory Optimization' },
-    { value: 'recovery_targeting', label: '🎯 Recovery Targeting' },
+    { value: 'payment_failure_patterns', label: 'Payment Failures' },
+    { value: 'abandoned_cart_patterns', label: 'Abandoned Carts' },
+    { value: 'recovery_success_rates', label: 'Recovery Performance' },
+    { value: 'product_bundles', label: 'Product Bundles' },
+    { value: 'discount_strategy', label: 'Discount Strategy' },
+    { value: 'inventory_optimization', label: 'Inventory Optimization' },
+    { value: 'recovery_targeting', label: 'Recovery Targeting' },
   ];
 
   const fetchInsights = async () => {

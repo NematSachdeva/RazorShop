@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CustomerAddress, AddressPayload, frontendAddressService } from '../../services/addressService';
 import { AddressFormModal } from './AddressFormModal';
+import { IconMapPin, IconClose, IconPlus, IconPhone, IconTrash } from './Icons';
 
 interface AddressesModalProps {
   isOpen: boolean;
@@ -70,36 +71,34 @@ export const AddressesModal: React.FC<AddressesModalProps> = ({ isOpen, onClose 
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs transition-opacity font-sans"
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose();
         }}
       >
         <div
-          className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col"
+          className="w-full max-w-xl bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div>
-              <h3 className="text-lg font-bold text-slate-100">Saved Delivery Addresses</h3>
-              <p className="text-xs text-slate-400">Manage your saved shipping addresses for faster checkout</p>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <IconMapPin className="w-5 h-5 text-blue-600" />
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Saved Delivery Addresses</h3>
+                <p className="text-xs text-gray-500">Manage your saved shipping addresses for faster checkout</p>
+              </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <IconClose className="w-5 h-5" />
             </button>
           </div>
 
           {error && (
-            <div className="p-3 bg-red-950/60 border border-red-800/80 rounded-xl text-red-300 text-sm flex items-center gap-2">
-              <svg className="w-4 h-4 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
               <span>{error}</span>
             </div>
           )}
@@ -107,17 +106,17 @@ export const AddressesModal: React.FC<AddressesModalProps> = ({ isOpen, onClose 
           {/* List Content */}
           <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-[200px]">
             {loading ? (
-              <div className="flex items-center justify-center py-12 text-slate-400">
-                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2" />
+              <div className="flex items-center justify-center py-12 text-gray-500 text-xs font-medium">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2" />
                 <span>Loading saved addresses...</span>
               </div>
             ) : addresses.length === 0 ? (
-              <div className="text-center py-12 space-y-3">
-                <div className="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center mx-auto text-slate-400">
-                  📍
+              <div className="text-center py-12 space-y-3 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center mx-auto text-gray-400 shadow-xs border border-gray-200">
+                  <IconMapPin className="w-6 h-6 text-gray-400" />
                 </div>
-                <p className="text-sm font-medium text-slate-300">No saved addresses yet</p>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                <p className="text-sm font-bold text-gray-800">No saved addresses yet</p>
+                <p className="text-xs text-gray-500 max-w-xs mx-auto">
                   Add a delivery address to prefill your shipping details during checkout.
                 </p>
               </div>
@@ -127,26 +126,27 @@ export const AddressesModal: React.FC<AddressesModalProps> = ({ isOpen, onClose 
                   key={addr.id}
                   className={`p-4 rounded-xl border transition-all ${
                     addr.is_default
-                      ? 'bg-blue-950/30 border-blue-500/50 shadow-sm'
-                      : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                      ? 'bg-blue-50/50 border-blue-300 shadow-xs'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-slate-100">{addr.full_address}</span>
+                        <span className="font-bold text-sm text-gray-900">{addr.full_address}</span>
                         {addr.is_default && (
-                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-md">
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200 rounded-md">
                             Default
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-gray-600">
                         {addr.state} — {addr.pin_code}
                       </p>
                       {addr.phone && (
-                        <p className="text-xs text-slate-500 flex items-center gap-1">
-                          <span>📞</span> {addr.phone}
+                        <p className="text-xs text-gray-500 flex items-center gap-1.5 pt-0.5">
+                          <IconPhone className="w-3.5 h-3.5" />
+                          <span>{addr.phone}</span>
                         </p>
                       )}
                     </div>
@@ -155,7 +155,7 @@ export const AddressesModal: React.FC<AddressesModalProps> = ({ isOpen, onClose 
                       {!addr.is_default && (
                         <button
                           onClick={(e) => handleSetDefault(addr.id, e)}
-                          className="px-2.5 py-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+                          className="px-2.5 py-1 text-xs text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-semibold"
                         >
                           Make Default
                         </button>
@@ -166,15 +166,16 @@ export const AddressesModal: React.FC<AddressesModalProps> = ({ isOpen, onClose 
                           setEditingAddress(addr);
                           setIsFormOpen(true);
                         }}
-                        className="px-2.5 py-1 text-xs text-blue-400 hover:text-blue-300 bg-blue-950/40 hover:bg-blue-900/60 border border-blue-800/40 rounded-lg transition-colors"
+                        className="px-2.5 py-1 text-xs text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors font-bold"
                       >
                         Edit
                       </button>
                       <button
                         onClick={(e) => handleDelete(addr.id, e)}
-                        className="px-2.5 py-1 text-xs text-red-400 hover:text-red-300 bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 rounded-lg transition-colors"
+                        className="px-2.5 py-1 text-xs text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors font-bold flex items-center gap-1"
                       >
-                        Delete
+                        <IconTrash className="w-3.5 h-3.5" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>
@@ -184,20 +185,21 @@ export const AddressesModal: React.FC<AddressesModalProps> = ({ isOpen, onClose 
           </div>
 
           {/* Footer */}
-          <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
+          <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
             <button
               onClick={() => {
                 setEditingAddress(null);
                 setIsFormOpen(true);
               }}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition-all flex items-center gap-1.5"
             >
-              <span>+ Add New Address</span>
+              <IconPlus className="w-4 h-4" />
+              <span>Add New Address</span>
             </button>
 
             <button
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800 rounded-xl transition-colors"
+              className="px-4 py-2 text-xs font-bold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
             >
               Close
             </button>

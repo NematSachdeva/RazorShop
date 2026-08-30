@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ProductDTO } from '@razor/shared';
 import StockBadge, { getStockInfo } from './common/StockBadge';
 import ProductRecommendations from './ProductRecommendations';
+import { IconClose, IconCart } from './common/Icons';
 
 interface Props {
   product: ProductDTO;
@@ -34,7 +35,7 @@ export default function ProductDetailModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fadeIn font-sans"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -46,10 +47,10 @@ export default function ProductDetailModal({
             e.stopPropagation();
             onClose();
           }}
-          className="absolute top-4 right-4 sm:top-5 sm:right-5 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full w-8 h-8 flex items-center justify-center font-bold text-base transition-colors z-10"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full w-8 h-8 flex items-center justify-center transition-colors z-10"
           aria-label="Close detail modal"
         >
-          ✕
+          <IconClose className="w-4 h-4" />
         </button>
 
         {/* Category & Title */}
@@ -98,7 +99,7 @@ export default function ProductDetailModal({
                 : 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'
             }`}
           >
-            <span>🛒</span>
+            <IconCart className="w-5 h-5" />
             <span>{stockInfo.canAddToCart ? 'Add Product to Cart' : 'Out of Stock'}</span>
           </button>
         </div>

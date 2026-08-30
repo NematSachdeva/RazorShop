@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { IconStore, IconPackage, IconMapPin, IconCart, IconUser } from './Icons';
 
 interface Props {
   user: {
@@ -54,11 +55,11 @@ export default function ProfilePopover({
   }, []);
 
   return (
-    <div className="relative inline-block text-left" ref={containerRef}>
+    <div className="relative inline-block text-left font-sans" ref={containerRef}>
       {/* Avatar Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="flex items-center gap-2 rounded-full p-1 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
         aria-expanded={isOpen}
         aria-label="User Profile Menu"
       >
@@ -93,13 +94,13 @@ export default function ProfilePopover({
             <p className="text-xs text-gray-500 truncate">{user.email}</p>
             <div className="mt-2">
               <span
-                className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                   isMerchant
                     ? 'bg-purple-100 text-purple-800 border border-purple-200'
                     : 'bg-blue-100 text-blue-800 border border-blue-200'
                 }`}
               >
-                {isMerchant ? '🏬 Merchant Account' : '🛒 Customer Account'}
+                {isMerchant ? 'Merchant Account' : 'Customer Account'}
               </span>
             </div>
           </div>
@@ -112,9 +113,9 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onNavigateToStore();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
               >
-                <span>🛍️</span>
+                <IconStore className="w-4 h-4 text-blue-600" />
                 <span>Browse Store</span>
               </button>
             )}
@@ -125,9 +126,9 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onNavigateToOrders();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
               >
-                <span>📦</span>
+                <IconPackage className="w-4 h-4 text-blue-600" />
                 <span>My Orders</span>
               </button>
             )}
@@ -138,9 +139,9 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   if (onNavigateToAddresses) onNavigateToAddresses();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
               >
-                <span>📍</span>
+                <IconMapPin className="w-4 h-4 text-blue-600" />
                 <span>Saved Addresses</span>
               </button>
             )}
@@ -151,9 +152,9 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onOpenCart();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
               >
-                <span>🛒</span>
+                <IconCart className="w-4 h-4 text-blue-600" />
                 <span>Shopping Cart</span>
               </button>
             )}
@@ -164,9 +165,9 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onNavigateToMerchant();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
               >
-                <span>📊</span>
+                <IconUser className="w-4 h-4 text-purple-600" />
                 <span>Merchant Portal</span>
               </button>
             )}
@@ -179,9 +180,11 @@ export default function ProfilePopover({
                 setIsOpen(false);
                 onLogout();
               }}
-              className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2"
+              className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2.5"
             >
-              <span>🚪</span>
+              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
               <span>Sign Out</span>
             </button>
           </div>
