@@ -87,15 +87,16 @@ The CD job executes **only** after CI succeeds (`needs: ci`) and is scoped to Gi
 
 ## 3. Automated Rollback Strategy
 
-If database migration, asset compilation, file copying, PM2 restart, or health verification fails during deployment on EC2:
+If asset compilation, file copying, PM2 restart, or health verification fails during deployment on EC2:
 
-1. **Trap Handler Activated**: `trap rollback ERR` catches any failed exit code.
-2. **Git Commit Restore**: Reverts the repository to the previously recorded Git commit (`git reset --hard $PREV_COMMIT`).
+1. **Trap Handler Activated**: `trap rollback ERR` catches any failed exit code without masking the original failure.
+2. **Git Commit Restore**: Reverts the repository application code to the previously recorded Git commit (`git reset --hard $PREV_COMMIT`).
 3. **Re-Install & Rebuild**: Runs `npm ci` and `npm run build` on the previous commit code.
 4. **Restore Web Root**: Re-syncs the previous static frontend bundle to `/var/www/razorshop`.
 5. **Restart PM2**: Restarts the `razor-backend` process with the previous working code.
 6. **Re-Verify Health**: Checks backend health (`http://127.0.0.1:7070/health`).
-7. **Signal Failure**: Exits with non-zero status `1`, causing the GitHub Actions deployment job to report failure cleanly.
+7. **Database Schema Isolation**: Database migrations applied to AWS RDS follow the project's forward-compatible schema migration strategy and are **not** automatically reverted during application code rollback.
+8. **Signal Failure**: Exits with non-zero status `1`, causing the GitHub Actions deployment job to report failure cleanly.
 
 ---
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+TARGET_COMMIT="${1:-master}"
+
 echo "=================================================="
 echo "Starting Razor Production Deployment & Migration"
+echo "Target Commit: $TARGET_COMMIT"
 echo "Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 echo "=================================================="
 
@@ -17,23 +20,25 @@ PUBLIC_SITE_URL="https://razorshop.app"
 echo "[1/8] Navigating to application directory ($APP_DIR)..."
 cd "$APP_DIR" || { echo "ERROR: Application directory $APP_DIR does not exist."; exit 1; }
 
-# Record previous Git commit hash for rollback capability
+# Record previous Git commit hash for application code rollback capability
 PREV_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
 echo "Current deployed commit before update: ${PREV_COMMIT:-unknown}"
 
 # Define automated rollback error handler
 rollback() {
+  local exit_code=$?
   echo "=================================================="
-  echo "DEPLOYMENT FAILED! INITIATING AUTOMATED ROLLBACK"
+  echo "DEPLOYMENT FAILED (exit code: $exit_code)! INITIATING AUTOMATED ROLLBACK"
   echo "=================================================="
+  echo "[Rollback] NOTE: Database schema changes on AWS RDS are forward-compatible and will NOT be automatically reverted."
   if [ -n "${PREV_COMMIT:-}" ]; then
-    echo "[Rollback] Restoring code to previous commit ($PREV_COMMIT)..."
+    echo "[Rollback] Restoring application code to previous commit ($PREV_COMMIT)..."
     git reset --hard "$PREV_COMMIT" || true
     
     echo "[Rollback] Re-installing dependencies..."
     npm ci || true
     
-    echo "[Rollback] Rebuilding production assets..."
+    echo "[Rollback] Rebuilding production workspace bundles..."
     npm run build || true
     
     echo "[Rollback] Restoring frontend static assets to $FRONTEND_WEB_ROOT..."
@@ -42,13 +47,13 @@ rollback() {
     echo "[Rollback] Restarting PM2 process ($PM2_PROCESS_NAME)..."
     pm2 restart "$PM2_PROCESS_NAME" || true
     
-    echo "[Rollback] Checking backend health post-rollback..."
+    echo "[Rollback] Checking internal backend health post-rollback..."
     curl -s -f "$BACKEND_HEALTH_URL" || true
   else
     echo "[Rollback] No previous commit hash recorded; skipping Git rollback."
   fi
   echo "=================================================="
-  echo "Rollback completed. Exiting with error status 1."
+  echo "Application rollback attempt completed. Preserving original deployment failure status (exit 1)."
   echo "=================================================="
   exit 1
 }
@@ -56,11 +61,11 @@ rollback() {
 # Trap any unexpected failure to invoke rollback
 trap rollback ERR
 
-# 2. Fetch and update source code from master
-echo "[2/8] Fetching and updating code to origin/master..."
+# 2. Fetch and update source code to target commit requested by CI
+echo "[2/8] Fetching and updating code to commit $TARGET_COMMIT..."
 git fetch origin master
-git checkout master
-git reset --hard origin/master
+git checkout "$TARGET_COMMIT"
+git reset --hard "$TARGET_COMMIT"
 
 if [ ! -f "$APP_DIR/.env" ]; then
   echo "ERROR: Production .env file missing at $APP_DIR/.env!"
@@ -73,7 +78,7 @@ echo "[3/8] Installing production workspace dependencies..."
 npm ci
 
 # 4. Execute production database migrations against AWS RDS
-echo "[4/8] Running production database migrations on AWS RDS..."
+echo "[4/8] Running production database migrations on AWS RDS (forward-only)..."
 npm run db:migrate --workspace=packages/backend
 
 # 5. Build production frontend and backend bundles
@@ -94,6 +99,11 @@ fi
 
 if grep -rn "127.0.0.1:7070" packages/frontend/dist > /dev/null; then
   echo "ERROR: Found hardcoded '127.0.0.1:7070' in production build!"
+  exit 1
+fi
+
+if grep -rn "localhost" packages/frontend/dist > /dev/null; then
+  echo "ERROR: Found 'localhost' in production build!"
   exit 1
 fi
 echo "✓ Verified: Production bundle contains no local API URLs."
@@ -133,40 +143,55 @@ echo "=================================================="
 echo "Checking PM2 process status..."
 pm2 status "$PM2_PROCESS_NAME"
 
+# Verify PM2 status is online
+if ! pm2 jlist | grep -q '"status":"online"'; then
+  echo "ERROR: PM2 process '$PM2_PROCESS_NAME' is not online!"
+  exit 1
+fi
+
 # Check local internal Express backend health (port 7070)
 echo "Checking internal backend health ($BACKEND_HEALTH_URL)..."
+local_health_passed=false
 for i in {1..10}; do
   if curl -s -f "$BACKEND_HEALTH_URL" > /dev/null; then
     echo "✓ Internal backend health check passed."
+    local_health_passed=true
     break
   fi
-  if [ "$i" -eq 10 ]; then
-    echo "ERROR: Internal backend health check failed after 10 attempts."
-    exit 1
-  fi
-  echo "Waiting for backend service to respond (attempt $i/10)..."
+  echo "Waiting for internal backend service to respond (attempt $i/10)..."
   sleep 2
 done
 
-# Check public HTTPS API health
+if [ "$local_health_passed" = false ]; then
+  echo "ERROR: Internal backend health check failed after 10 attempts."
+  exit 1
+fi
+
+# Check public HTTPS API health (verifying SSL/TLS certificates cleanly)
 echo "Checking public HTTPS API health ($PUBLIC_API_HEALTH_URL)..."
+public_api_passed=false
 for i in {1..5}; do
-  if curl -s -f -k "$PUBLIC_API_HEALTH_URL" > /dev/null; then
+  if curl -s -f "$PUBLIC_API_HEALTH_URL" > /dev/null; then
     echo "✓ Public HTTPS API health check passed."
+    public_api_passed=true
     break
   fi
-  if [ "$i" -eq 5 ]; then
-    echo "WARNING: Public HTTPS API health check returned non-200 status."
-  fi
+  echo "Waiting for public HTTPS API to respond (attempt $i/5)..."
   sleep 2
 done
+
+if [ "$public_api_passed" = false ]; then
+  echo "ERROR: Public HTTPS API health check failed ($PUBLIC_API_HEALTH_URL)."
+  exit 1
+fi
 
 # Check public HTTPS site root headers
 echo "Checking public site HTTP headers ($PUBLIC_SITE_URL)..."
 if curl -fsSI "$PUBLIC_SITE_URL" > /dev/null; then
   echo "✓ Public website ($PUBLIC_SITE_URL) returned HTTP 200 OK."
 else
-  echo "WARNING: Public site check returned error status."
+  echo "ERROR: Public site check failed ($PUBLIC_SITE_URL)."
+  exit 1
 fi
 
 # Disable error trap upon successful completion
