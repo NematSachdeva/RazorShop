@@ -1,0 +1,93 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  ci:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Backend Typecheck
+        run: npm run typecheck --workspace=packages/backend
+
+      - name: Frontend Typecheck
+        run: npm run typecheck --workspace=packages/frontend
+
+      - name: Run Test Suite
+        run: npm run test --workspace=packages/backend
+
+      - name: Build Application
+        run: npm run build
+
+  deploy:
+    name: Continuous Deployment
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Execute EC2 Deployment via AWS SSM
+        run: |
+          echo "Triggering production deployment on EC2 via AWS SSM..."
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.AWS_EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Automated CI/CD deployment for Razor" \
+            --parameters 'commands=["bash /home/ubuntu/razor/scripts/deploy-production.sh"]' \
+            --query "Command.CommandId" \
+            --output text)
+          
+          echo "SSM Command sent successfully with Command ID: $COMMAND_ID"
+          echo "Waiting for deployment execution to complete..."
+          
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.AWS_EC2_INSTANCE_ID }}"
+          
+          STATUS=$(aws ssm list-command-invocations \
+            --command-id "$COMMAND_ID" \
+            --details \
+            --query "CommandInvocations[0].Status" \
+            --output text)
+          
+          if [ "$STATUS" != "Success" ]; then
+            echo "Deployment failed with status: $STATUS"
+            aws ssm list-command-invocations \
+              --command-id "$COMMAND_ID" \
+              --details \
+              --query "CommandInvocations[0].CommandPlugins[0].Output" \
+              --output text
+            exit 1
+          fi
+          
+          echo "Production deployment completed successfully."
