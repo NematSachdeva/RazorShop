@@ -23,13 +23,15 @@ import { CustomerInteraction } from '../models/CustomerInteraction.js';
 import { PromiseToPay } from '../models/PromiseToPay.js';
 import { MerchantInsight } from '../models/MerchantInsight.js';
 import { OrderFeedback } from '../models/OrderFeedback.js';
+import { MerchantApplication } from '../models/MerchantApplication.js';
+import { MerchantApplicationTimeline } from '../models/MerchantApplicationTimeline.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: env.DATABASE_URL,
   synchronize: false, // Use migrations instead
   logging: env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
-  entities: [Customer, Merchant, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent, Recommendation, RecommendationEvent, PaymentFailure, RecoveryCase, RecoveryAction, MerchantConfig, AgentDecision, AuditLog, CustomerInteraction, PromiseToPay, MerchantInsight, OrderFeedback],
+  entities: [Customer, Merchant, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent, Recommendation, RecommendationEvent, PaymentFailure, RecoveryCase, RecoveryAction, MerchantConfig, AgentDecision, AuditLog, CustomerInteraction, PromiseToPay, MerchantInsight, OrderFeedback, MerchantApplication, MerchantApplicationTimeline],
   migrations: ['src/migrations/*.ts'],
   subscribers: [],
   ssl: env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,

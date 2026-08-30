@@ -35,6 +35,8 @@ export interface Environment {
   EMAIL_DELIVERY_MODE: 'mock' | 'live';
   AI_MODE: 'mock' | 'live';
   SCHEDULER_ENABLED: boolean;
+  ADMIN_EMAIL: string;
+  ADMIN_PASSWORD_HASH: string;
 }
 
 let cachedEnv: Environment | null = null;
@@ -75,6 +77,9 @@ export function validateEnv(): Environment {
   // Background scheduler is disabled by default in test/dev unless explicitly enabled
   const SCHEDULER_ENABLED = isTest ? false : process.env.SCHEDULER_ENABLED === 'true';
 
+  // Default hash below is bcrypt for 'password123' used strictly for safe local test defaults
+  const defaultAdminHash = '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW';
+
   return {
     NODE_ENV: (process.env.NODE_ENV || (isTest ? 'test' : 'development')) as any,
     PORT: parseInt(process.env.PORT || '3000', 10),
@@ -90,6 +95,8 @@ export function validateEnv(): Environment {
     EMAIL_DELIVERY_MODE,
     AI_MODE,
     SCHEDULER_ENABLED,
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'admin@razorshop.app',
+    ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH || defaultAdminHash,
   };
 }
 

@@ -30,6 +30,16 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     if (product) {
       setName(product.name || '');
       setCategory(product.category || '');
@@ -40,6 +50,8 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     if (!name.trim()) {
       setError('Product name is required');
       return;
@@ -104,28 +116,37 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-5 sm:p-6 relative my-auto max-h-[90vh] overflow-y-auto border border-gray-100"
+      >
         <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-lg"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-lg p-1 rounded-full hover:bg-gray-100 transition"
         >
           ✕
         </button>
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">
+        <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-6">
           {isEditing ? '✏️ Edit Catalog Product' : '➕ Add New Catalog Product'}
         </h2>
 
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-800 p-3 rounded text-sm">
-            {error}
+          <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-xl text-xs font-semibold">
+            ⚠️ {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
               Product Name *
             </label>
             <input
@@ -134,13 +155,13 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Ergonomic Wireless Keyboard"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
                 Category
               </label>
               <input
@@ -148,11 +169,11 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="e.g. Electronics"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
                 Price (INR ₹) *
               </label>
               <input
@@ -163,14 +184,14 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                 value={priceInr}
                 onChange={(e) => setPriceInr(e.target.value)}
                 placeholder="2999.00"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
           </div>
 
           {!isEditing && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
                 Initial Stock Inventory *
               </label>
               <input
@@ -180,13 +201,13 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                 value={initialQuantity}
                 onChange={(e) => setInitialQuantity(e.target.value)}
                 placeholder="50"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
               Description
             </label>
             <textarea
@@ -194,22 +215,25 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Product features and specifications..."
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="px-4 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs transition"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
+              className="px-5 py-2.5 bg-blue-600 text-white font-extrabold text-xs rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow transition active:scale-98"
             >
               {loading ? 'Saving...' : isEditing ? 'Update Product' : 'Create Product'}
             </button>

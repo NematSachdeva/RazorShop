@@ -258,6 +258,6 @@ describe('Merchant Identity UUID, Email Safety & Data Isolation Regression Suite
     });
 
     expect(demoMerchant).not.toBeNull();
-    expect(demoMerchant?.email).toBe('merchant@example.com');
+    expect(demoMerchant?.email).toBe('nnnnsachdeva@gmail.com');
   });
 });

@@ -6,6 +6,7 @@ import { WebhookEvent } from '../models/WebhookEvent.js';
 import { Payment } from '../models/Payment.js';
 import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { Order } from '../models/Order.js';
+import { RecoveryCase } from '../models/RecoveryCase.js';
 import { env } from '../config/env.js';
 import { PaymentFailureService } from '../services/PaymentFailureService.js';
 
@@ -188,6 +189,22 @@ export function createWebhooksRouter(dataSource: DataSource = AppDataSource) {
               if (order) {
                 order.status = 'confirmed';
                 await orderRepo.save(order);
+
+                // Resolve any open recovery cases for this order
+                const recoveryCaseRepo = dataSource.getRepository(RecoveryCase);
+                const openCases = await recoveryCaseRepo.find({
+                  where: { order_id: order.id },
+                });
+                for (const rc of openCases) {
+                  if (rc.status !== 'resolved') {
+                    rc.status = 'resolved';
+                    rc.resolved_at = new Date();
+                    rc.recovery_notes = rc.recovery_notes
+                      ? `${rc.recovery_notes}; Payment captured via webhook`
+                      : 'Payment captured via webhook';
+                    await recoveryCaseRepo.save(rc);
+                  }
+                }
 
                 // Trigger payment confirmation email (idempotency prevents duplicates)
                 const { paymentService } = await import('../services/PaymentService.js');

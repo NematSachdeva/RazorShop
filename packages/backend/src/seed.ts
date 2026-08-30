@@ -312,43 +312,48 @@ export async function seedDatabase(ds: any = AppDataSource) {
     // 1. Seed demo merchant in Merchant table
     const merchantRepo = ds.getRepository(Merchant);
     let demoMerchant = await merchantRepo.findOne({
-      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'merchant@example.com' }],
+      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'nnnnsachdeva@gmail.com' }],
     });
     if (!demoMerchant) {
       demoMerchant = await merchantRepo.save(
         merchantRepo.create({
           id: DEMO_MERCHANT_UUID,
-          email: 'merchant@example.com',
+          email: 'nnnnsachdeva@gmail.com',
           name: 'Demo Merchant',
           contact_phone: '+919876543200',
           status: 'active',
         })
       );
+    } else {
+      demoMerchant.email = 'nnnnsachdeva@gmail.com';
+      demoMerchant.status = 'active';
+      await merchantRepo.save(demoMerchant);
     }
 
     // 2. Seed demo merchant in Customer table for auth login
     const customerRepo = ds.getRepository(Customer);
     let merchantAuthUser = await customerRepo.findOne({
-      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'merchant@example.com' }],
+      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'nnnnsachdeva@gmail.com' }],
     });
     if (!merchantAuthUser) {
-      await customerRepo.save(
+      merchantAuthUser = await customerRepo.save(
         customerRepo.create({
           id: DEMO_MERCHANT_UUID,
-          email: 'merchant@example.com',
+          email: 'nnnnsachdeva@gmail.com',
           name: 'Demo Merchant',
           password_hash: demoCustomerPassword,
           role: 'merchant',
         })
       );
     } else {
+      merchantAuthUser.email = 'nnnnsachdeva@gmail.com';
       merchantAuthUser.password_hash = demoCustomerPassword;
       merchantAuthUser.role = 'merchant';
       if (merchantAuthUser.id !== DEMO_MERCHANT_UUID) {
         try {
           await customerRepo.query('UPDATE customers SET id = $1 WHERE email = $2', [
             DEMO_MERCHANT_UUID,
-            'merchant@example.com',
+            'nnnnsachdeva@gmail.com',
           ]);
           merchantAuthUser.id = DEMO_MERCHANT_UUID;
         } catch {
@@ -356,6 +361,65 @@ export async function seedDatabase(ds: any = AppDataSource) {
         }
       }
       await customerRepo.save(merchantAuthUser);
+    }
+
+    // 2b. Seed approved MerchantApplication and Timeline for demo merchant
+    const appRepo = ds.getRepository('MerchantApplication');
+    const timelineRepo = ds.getRepository('MerchantApplicationTimeline');
+    if (appRepo && timelineRepo) {
+      let demoApp = await appRepo.findOne({
+        where: [{ customer_id: DEMO_MERCHANT_UUID }, { email: 'nnnnsachdeva@gmail.com' }],
+      });
+      if (!demoApp) {
+        demoApp = await appRepo.save(
+          appRepo.create({
+            customer_id: DEMO_MERCHANT_UUID,
+            merchant_id: DEMO_MERCHANT_UUID,
+            email: 'nnnnsachdeva@gmail.com',
+            name: 'Demo Merchant',
+            business_name: 'Razor Demo Store',
+            reason: 'Seeded verified demo merchant account for Razor platform',
+            status: 'approved',
+            submitted_at: new Date(Date.now() - 86400000),
+            reviewed_at: new Date(),
+            reviewer_id: 'admin',
+          })
+        );
+      } else {
+        demoApp.email = 'nnnnsachdeva@gmail.com';
+        demoApp.status = 'approved';
+        await appRepo.save(demoApp);
+      }
+
+      const existingSubmitted = await timelineRepo.findOne({
+        where: { application_id: demoApp.id, event_type: 'APPLICATION_SUBMITTED' },
+      });
+      if (!existingSubmitted) {
+        await timelineRepo.save(
+          timelineRepo.create({
+            application_id: demoApp.id,
+            event_type: 'APPLICATION_SUBMITTED',
+            actor_id: DEMO_MERCHANT_UUID,
+            actor_role: 'applicant',
+            description: 'Application submitted for demo merchant account',
+          })
+        );
+      }
+
+      const existingApproved = await timelineRepo.findOne({
+        where: { application_id: demoApp.id, event_type: 'APPROVED' },
+      });
+      if (!existingApproved) {
+        await timelineRepo.save(
+          timelineRepo.create({
+            application_id: demoApp.id,
+            event_type: 'APPROVED',
+            actor_id: 'admin',
+            actor_role: 'admin',
+            description: 'Application pre-approved for platform demonstration',
+          })
+        );
+      }
     }
 
     // 3. Seed demo customers

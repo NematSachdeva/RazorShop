@@ -14,10 +14,14 @@ export function createAuthRouter(service: AuthService = defaultAuthService): Rou
   router.post(
     '/register',
     asyncHandler(async (req: Request, res: Response) => {
-      const { email, password, name, role } = req.body;
+      const { email, password, name, role, business_name, phone, reason } = req.body;
 
       if (!email || !password) {
         return res.status(400).json({ error: 'Email and password are required' });
+      }
+
+      if (role === 'admin') {
+        return res.status(403).json({ error: 'Public administrator registration is prohibited' });
       }
 
       try {
@@ -26,6 +30,9 @@ export function createAuthRouter(service: AuthService = defaultAuthService): Rou
           password,
           name,
           role: role || 'customer',
+          business_name,
+          phone,
+          reason,
         });
 
         res.status(201).json(result);
@@ -82,6 +89,15 @@ export function createAuthRouter(service: AuthService = defaultAuthService): Rou
     asyncHandler(async (req: Request, res: Response) => {
       if (!req.user) {
         return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      if (req.user.role === 'admin') {
+        return res.json({
+          id: req.user.id,
+          email: req.user.email,
+          name: 'System Administrator',
+          role: 'admin',
+        });
       }
 
       const customer = await service.getCustomerById(req.user.id);

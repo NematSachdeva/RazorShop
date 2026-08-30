@@ -4,6 +4,7 @@ import { AppDataSource } from '../config/database.js';
 import { Payment, PaymentStatus } from '../models/Payment.js';
 import { PaymentAttempt } from '../models/PaymentAttempt.js';
 import { Order } from '../models/Order.js';
+import { RecoveryCase } from '../models/RecoveryCase.js';
 import crypto from 'crypto';
 
 // Razorpay client abstraction
@@ -530,6 +531,21 @@ export class PaymentService {
       if (order) {
         order.status = 'confirmed';
         await qr.manager.save(order);
+      }
+
+      // 8. Resolve any open recovery cases for this order
+      const openCases = await qr.manager.find(RecoveryCase, {
+        where: { order_id: request.order_id },
+      });
+      for (const rc of openCases) {
+        if (rc.status !== 'resolved') {
+          rc.status = 'resolved';
+          rc.resolved_at = new Date();
+          rc.recovery_notes = rc.recovery_notes
+            ? `${rc.recovery_notes}; Payment verified and captured`
+            : 'Payment verified and captured';
+          await qr.manager.save(rc);
+        }
       }
 
       await qr.commitTransaction();

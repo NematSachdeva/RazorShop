@@ -9,6 +9,7 @@ import { AuditLog } from '../models/AuditLog.js';
 import { Order } from '../models/Order.js';
 import { RecoveryEmailGenerator } from './RecoveryEmailGenerator.js';
 import { EmailService } from './EmailService.js';
+import { DEMO_MERCHANT_UUID } from '../seed.js';
 
 export class PaymentFailureService {
   private dataSource: DataSource;
@@ -114,7 +115,7 @@ export class PaymentFailureService {
     }
 
     // Use provided merchantId override (for tests), otherwise use default
-    const merchantId = merchantIdOverride || '00000000-0000-0000-0000-000000000000';
+    const merchantId = merchantIdOverride || DEMO_MERCHANT_UUID;
     let merchantConfig = await this.getMerchantConfig(merchantId);
 
     // Create recovery case
@@ -252,18 +253,21 @@ export class PaymentFailureService {
 
     // 6. Record interaction & AuditLog entry
     const interactionRepo = this.dataSource.getRepository('CustomerInteraction');
-    await interactionRepo.save({
-      recovery_case_id: recoveryCase.id,
-      customer_id: customer.id,
-      channel: 'email',
-      intent: 'unclear',
-      message: emailContent.body,
-      metadata: {
-        subject: emailContent.subject,
-        messageId: result.messageId,
-        success: result.success,
-      },
-    });
+    const caseExists = await this.getRecoveryCaseRepository().findOne({ where: { id: recoveryCase.id } });
+    if (caseExists) {
+      await interactionRepo.save({
+        recovery_case_id: recoveryCase.id,
+        customer_id: customer.id,
+        channel: 'email',
+        intent: 'unclear',
+        message: emailContent.body,
+        metadata: {
+          subject: emailContent.subject,
+          messageId: result.messageId,
+          success: result.success,
+        },
+      });
+    }
 
     await this.getAuditLogRepository().save({
       event_type: result.success ? 'email_sent' : 'email_failed',
@@ -495,7 +499,7 @@ export class PaymentFailureService {
    */
   async getMerchantConfig(merchantId: string): Promise<MerchantConfig> {
     const isUuid = Boolean(merchantId && merchantId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));
-    const targetMerchantId = isUuid ? merchantId : '00000000-0000-0000-0000-000000000000';
+    const targetMerchantId = isUuid ? merchantId : DEMO_MERCHANT_UUID;
 
     let config = await this.getMerchantConfigRepository().findOne({
       where: { merchant_id: targetMerchantId },
@@ -505,7 +509,7 @@ export class PaymentFailureService {
       const merchantRepo = this.dataSource.getRepository('Merchant');
       let merchant: any = await merchantRepo.findOne({ where: { id: targetMerchantId } });
       if (!merchant) {
-        merchant = await merchantRepo.save(merchantRepo.create({ id: targetMerchantId, name: 'Default Store', email: 'store@example.com' }));
+        merchant = await merchantRepo.save(merchantRepo.create({ id: targetMerchantId, name: 'Default Store', email: `store-${targetMerchantId}@example.com` }));
       }
 
       config = this.getMerchantConfigRepository().create({

@@ -35,26 +35,26 @@ describe('Catalog Consistency, Recovery UX & Merchant Identity Test Suite', () =
     const customerRepo = TestDataSource.getRepository(Customer);
 
     let testMerchant = await merchantRepo.findOne({
-      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'merchant@example.com' }],
+      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'nnnnsachdeva@gmail.com' }],
     });
     if (!testMerchant) {
       testMerchant = await merchantRepo.save(
         merchantRepo.create({
           id: DEMO_MERCHANT_UUID,
-          email: 'merchant@example.com',
+          email: 'nnnnsachdeva@gmail.com',
           name: 'Demo Merchant',
         } as any) as any
       );
     }
 
     let testMerchantCustomer = await customerRepo.findOne({
-      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'merchant@example.com' }],
+      where: [{ id: DEMO_MERCHANT_UUID }, { email: 'nnnnsachdeva@gmail.com' }],
     });
     if (!testMerchantCustomer) {
       testMerchantCustomer = await customerRepo.save(
         customerRepo.create({
           id: DEMO_MERCHANT_UUID,
-          email: 'merchant@example.com',
+          email: 'nnnnsachdeva@gmail.com',
           name: 'Demo Merchant',
           role: 'merchant',
         } as any) as any

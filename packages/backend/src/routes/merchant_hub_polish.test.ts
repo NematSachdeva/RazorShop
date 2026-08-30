@@ -39,7 +39,7 @@ describe('Merchant Hub Polish & Correctness Regression Suite', () => {
     const testMerchant = await merchantRepo.save(
       merchantRepo.create({
         id: DEMO_MERCHANT_UUID,
-        email: 'merchant@example.com',
+        email: 'nnnnsachdeva@gmail.com',
         name: 'Demo Merchant',
       } as any) as any
     );
@@ -47,7 +47,7 @@ describe('Merchant Hub Polish & Correctness Regression Suite', () => {
     await customerRepo.save(
       customerRepo.create({
         id: DEMO_MERCHANT_UUID,
-        email: 'merchant@example.com',
+        email: 'nnnnsachdeva@gmail.com',
         name: 'Demo Merchant',
         role: 'merchant',
       } as any) as any

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService, JWTPayload } from '../services/AuthService.js';
+import { MerchantApplication } from '../models/MerchantApplication.js';
 
 // Extend Express Request to include user info
 declare global {
@@ -30,6 +31,11 @@ export function createAuthenticate(service: AuthService = authService) {
 
       if (!decoded || !decoded.id) {
         return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+
+      if (decoded.role === 'admin') {
+        req.user = decoded;
+        return next();
       }
 
       // Verify user exists in database (Customer or Merchant) before proceeding to downstream handlers
@@ -94,9 +100,80 @@ export function requireMerchant(req: Request, res: Response, next: NextFunction)
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  if (req.user.role !== 'merchant') {
+  if (req.user.role !== 'merchant' && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Only merchants can perform this action' });
   }
 
   next();
 }
+
+/**
+ * Middleware to check if user is admin
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Administrator access required' });
+  }
+
+  next();
+}
+
+/**
+ * Factory for requireApprovedMerchant middleware with customizable AuthService / DataSource
+ */
+export function createRequireApprovedMerchant(service: AuthService = authService) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (req.user.role === 'admin') {
+      return next();
+    }
+
+    if (req.user.role !== 'merchant') {
+      return res.status(403).json({ error: 'Only merchants can perform this action' });
+    }
+
+    try {
+      const dataSource = (service as any)['dataSource'];
+      if (!dataSource || !dataSource.isInitialized) {
+        return next();
+      }
+
+      const appRepo = dataSource.getRepository(MerchantApplication);
+      const app = await appRepo.findOne({
+        where: [{ customer_id: req.user.id }, { email: req.user.email }],
+        order: { created_at: 'DESC' },
+      });
+
+      if (app) {
+        if (app.status === 'pending') {
+          return res.status(403).json({
+            error: 'Merchant application is pending administrator approval',
+            application_id: app.id,
+            status: 'pending',
+          });
+        }
+        if (app.status === 'rejected') {
+          return res.status(403).json({
+            error: 'Merchant application has been rejected',
+            application_id: app.id,
+            status: 'rejected',
+            rejection_reason: app.rejection_reason || 'Application did not meet criteria',
+          });
+        }
+      }
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+export const requireApprovedMerchant = createRequireApprovedMerchant();

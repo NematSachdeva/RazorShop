@@ -43,7 +43,7 @@ describe('Merchant Manual Recovery Email & Architecture Test Suite', () => {
       merchant = await merchantRepo.save(
         merchantRepo.create({
           id: DEMO_MERCHANT_UUID,
-          email: 'merchant@example.com',
+          email: 'nnnnsachdeva@gmail.com',
           name: 'Demo Merchant',
         } as any) as any
       );
@@ -51,7 +51,7 @@ describe('Merchant Manual Recovery Email & Architecture Test Suite', () => {
 
     merchantToken = authService.generateToken({
       id: DEMO_MERCHANT_UUID,
-      email: 'merchant@example.com',
+      email: 'nnnnsachdeva@gmail.com',
       role: 'merchant',
     });
 

@@ -7,6 +7,8 @@
 
 import { DataSource, Repository } from 'typeorm';
 import { Order } from '../models/Order.js';
+import { OrderItem } from '../models/OrderItem.js';
+import { Product } from '../models/Product.js';
 import { Payment } from '../models/Payment.js';
 import { PaymentFailure } from '../models/PaymentFailure.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
@@ -139,41 +141,84 @@ export class AnalyticsService {
       .where("order.status IN ('confirmed', 'shipped', 'delivered')");
     if (hasMerchant) {
       totalRevQuery = totalRevQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
     const totalRevenueResult = await totalRevQuery.getRawOne();
     const total_revenue_cents = totalRevenueResult?.total ? parseInt(totalRevenueResult.total, 10) : 0;
 
     // Revenue at risk
-    let atRiskQuery = this.dataSource
-      .createQueryBuilder()
-      .select('SUM(DISTINCT order.total_cents)', 'total')
-      .from(Order, 'order')
-      .innerJoin('order.payments', 'payment', "payment.status = 'failed'")
-      .where("order.status = 'pending'");
+    let atRiskQuery = this.getOrderRepository()
+      .createQueryBuilder('order')
+      .select('SUM(order.total_cents)', 'total')
+      .where("order.status = 'pending'")
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('1')
+          .from(Payment, 'p')
+          .where('p.order_id = order.id')
+          .andWhere("p.status = 'failed'")
+          .getQuery();
+        return `EXISTS ${subQuery}`;
+      });
     if (hasMerchant) {
       atRiskQuery = atRiskQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
     const atRiskResult = await atRiskQuery.getRawOne();
     const revenue_at_risk_cents = atRiskResult?.total ? parseInt(atRiskResult.total, 10) : 0;
 
     // Revenue recovered
-    let recoveredQuery = this.dataSource
-      .createQueryBuilder()
-      .select('SUM(DISTINCT order.total_cents)', 'total')
-      .from(Order, 'order')
-      .innerJoin('order.payments', 'payment', "payment.status = 'failed' OR payment.failure_reason IS NOT NULL")
-      .where("order.status IN ('confirmed', 'shipped', 'delivered')");
+    let recoveredQuery = this.getOrderRepository()
+      .createQueryBuilder('order')
+      .select('SUM(order.total_cents)', 'total')
+      .where("order.status IN ('confirmed', 'shipped', 'delivered')")
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('1')
+          .from(Payment, 'p')
+          .where('p.order_id = order.id')
+          .andWhere("(p.status = 'failed' OR p.failure_reason IS NOT NULL)")
+          .getQuery();
+        return `EXISTS ${subQuery}`;
+      });
     if (hasMerchant) {
       recoveredQuery = recoveredQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
     const recoveredResult = await recoveredQuery.getRawOne();
     const revenue_recovered_cents = recoveredResult?.total ? parseInt(recoveredResult.total, 10) : 0;
@@ -185,31 +230,34 @@ export class AnalyticsService {
       .select('COUNT(pf.id)', 'count')
       .addSelect('SUM(payment.amount_cents)', 'total_amount')
       .innerJoin('pf.payment', 'payment')
-      .leftJoin('payment.order', 'order');
+      .innerJoin('payment.order', 'order');
     if (hasMerchant) {
       failureStatsQuery = failureStatsQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
     const failureStats = await failureStatsQuery.getRawOne();
 
     let failed_payments_count = failureStats?.count ? parseInt(failureStats.count, 10) : 0;
     let failed_payments_total_cents = failureStats?.total_amount ? parseInt(failureStats.total_amount, 10) : 0;
 
-    if (failed_payments_count === 0) {
+    if (failed_payments_count === 0 && !hasMerchant) {
       let fallbackQuery = this.getPaymentRepository()
         .createQueryBuilder('payment')
         .select('COUNT(payment.id)', 'count')
         .addSelect('SUM(payment.amount_cents)', 'total_amount')
         .leftJoin('payment.order', 'order')
         .where("payment.status = 'failed' OR payment.failure_reason IS NOT NULL");
-      if (hasMerchant) {
-        fallbackQuery = fallbackQuery
-          .leftJoin('order.items', 'item')
-          .leftJoin('item.product', 'product')
-          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
-      }
       const fallbackStats = await fallbackQuery.getRawOne();
       failed_payments_count = fallbackStats?.count ? parseInt(fallbackStats.count, 10) : 0;
       failed_payments_total_cents = fallbackStats?.total_amount ? parseInt(fallbackStats.total_amount, 10) : 0;
@@ -231,44 +279,87 @@ export class AnalyticsService {
 
     // Recovery Rate Calculation
     let recovery_rate_percent = 0;
-    let rcCountQuery = this.getRecoveryCaseRepository().createQueryBuilder('rc').leftJoin('rc.order', 'order');
+    let rcCountQuery = this.getRecoveryCaseRepository()
+      .createQueryBuilder('rc')
+      .select('COUNT(rc.id)', 'count')
+      .innerJoin('rc.order', 'order');
     if (hasMerchant) {
       rcCountQuery = rcCountQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
-    const totalCases = await rcCountQuery.getCount();
+    const rcCountResult = await rcCountQuery.getRawOne();
+    const totalCases = rcCountResult?.count ? parseInt(rcCountResult.count, 10) : 0;
 
     if (totalCases > 0) {
       let rcResolvedQuery = this.getRecoveryCaseRepository()
         .createQueryBuilder('rc')
-        .leftJoin('rc.order', 'order')
-        .where("rc.status = 'resolved'");
+        .select('COUNT(rc.id)', 'count')
+        .innerJoin('rc.order', 'order')
+        .where("(rc.status = 'resolved' OR order.status IN ('confirmed', 'shipped', 'delivered'))");
       if (hasMerchant) {
         rcResolvedQuery = rcResolvedQuery
-          .leftJoin('order.items', 'item')
-          .leftJoin('item.product', 'product')
-          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+          .andWhere((qb) => {
+            const subQuery = qb
+              .subQuery()
+              .select('1')
+              .from(OrderItem, 'item')
+              .innerJoin('item.product', 'product')
+              .where('item.order_id = order.id')
+              .andWhere('product.merchant_id = :merchantId')
+              .getQuery();
+            return `EXISTS ${subQuery}`;
+          })
+          .setParameter('merchantId', merchantId);
       }
-      const resolvedCases = await rcResolvedQuery.getCount();
-      recovery_rate_percent = Math.round((resolvedCases / totalCases) * 100);
+      const rcResolvedResult = await rcResolvedQuery.getRawOne();
+      const resolvedCases = rcResolvedResult?.count ? parseInt(rcResolvedResult.count, 10) : 0;
+      recovery_rate_percent = Math.min(100, Math.max(0, Math.round((resolvedCases / totalCases) * 100)));
     } else if (failed_payments_count > 0) {
-      let recoveredCountQuery = this.dataSource
-        .createQueryBuilder()
-        .select('COUNT(DISTINCT order.id)', 'count')
-        .from(Order, 'order')
-        .innerJoin('order.payments', 'payment', "payment.status = 'failed' OR payment.failure_reason IS NOT NULL")
-        .where("order.status IN ('confirmed', 'shipped', 'delivered')");
+      let recoveredCountQuery = this.getOrderRepository()
+        .createQueryBuilder('order')
+        .select('COUNT(order.id)', 'count')
+        .where("order.status IN ('confirmed', 'shipped', 'delivered')")
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(Payment, 'p')
+            .where('p.order_id = order.id')
+            .andWhere("(p.status = 'failed' OR p.failure_reason IS NOT NULL)")
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        });
       if (hasMerchant) {
         recoveredCountQuery = recoveredCountQuery
-          .leftJoin('order.items', 'item')
-          .leftJoin('item.product', 'product')
-          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+          .andWhere((qb) => {
+            const subQuery = qb
+              .subQuery()
+              .select('1')
+              .from(OrderItem, 'item')
+              .innerJoin('item.product', 'product')
+              .where('item.order_id = order.id')
+              .andWhere('product.merchant_id = :merchantId')
+              .getQuery();
+            return `EXISTS ${subQuery}`;
+          })
+          .setParameter('merchantId', merchantId);
       }
       const recoveredCountResult = await recoveredCountQuery.getRawOne();
       const recoveredOrders = recoveredCountResult?.count ? parseInt(recoveredCountResult.count, 10) : 0;
-      recovery_rate_percent = Math.min(100, Math.round((recoveredOrders / failed_payments_count) * 100));
+      recovery_rate_percent = Math.min(100, Math.max(0, Math.round((recoveredOrders / failed_payments_count) * 100)));
+    } else {
+      recovery_rate_percent = 0;
     }
 
     const now = new Date();
@@ -299,13 +390,22 @@ export class AnalyticsService {
       .createQueryBuilder('rc')
       .select('rc.status', 'status')
       .addSelect('COUNT(rc.id)', 'count')
-      .leftJoin('rc.order', 'order');
+      .innerJoin('rc.order', 'order');
 
     if (hasMerchant) {
       query = query
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
 
     const statusCounts = await query.groupBy('rc.status').getRawMany();
@@ -356,14 +456,23 @@ export class AnalyticsService {
       .createQueryBuilder('ci')
       .select('ci.intent', 'intent')
       .addSelect('COUNT(ci.id)', 'count')
-      .leftJoin('ci.recovery_case', 'rc')
-      .leftJoin('rc.order', 'order');
+      .innerJoin('ci.recovery_case', 'rc')
+      .innerJoin('rc.order', 'order');
 
     if (hasMerchant) {
       query = query
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
 
     const intentCounts = await query.groupBy('ci.intent').getRawMany();
@@ -414,13 +523,22 @@ export class AnalyticsService {
       .addSelect('COUNT(pf.id)', 'count')
       .addSelect('SUM(payment.amount_cents)', 'total_amount')
       .innerJoin('pf.payment', 'payment')
-      .leftJoin('payment.order', 'order');
+      .innerJoin('payment.order', 'order');
 
     if (hasMerchant) {
       query = query
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
 
     const failureGroups = await query.groupBy('pf.reason').orderBy('count', 'DESC').getRawMany();
@@ -439,20 +557,31 @@ export class AnalyticsService {
 
       let recQuery = this.getRecoveryCaseRepository()
         .createQueryBuilder('rc')
+        .select('COUNT(rc.id)', 'count')
         .innerJoin('rc.payment_failure', 'pf')
         .innerJoin('rc.order', 'order')
         .where('pf.reason = :reason', { reason })
-        .andWhere("rc.status = 'resolved'");
+        .andWhere("(rc.status = 'resolved' OR order.status IN ('confirmed', 'shipped', 'delivered'))");
 
       if (hasMerchant) {
         recQuery = recQuery
-          .leftJoin('order.items', 'item')
-          .leftJoin('item.product', 'product')
-          .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+          .andWhere((qb) => {
+            const subQuery = qb
+              .subQuery()
+              .select('1')
+              .from(OrderItem, 'item')
+              .innerJoin('item.product', 'product')
+              .where('item.order_id = order.id')
+              .andWhere('product.merchant_id = :merchantId')
+              .getQuery();
+            return `EXISTS ${subQuery}`;
+          })
+          .setParameter('merchantId', merchantId);
       }
 
-      const recoveryCount = await recQuery.getCount();
-      const recoveryRate = count > 0 ? Math.round((recoveryCount / count) * 100) : 0;
+      const recResult = await recQuery.getRawOne();
+      const recoveryCount = recResult?.count ? parseInt(recResult.count, 10) : 0;
+      const recoveryRate = count > 0 ? Math.min(100, Math.max(0, Math.round((recoveryCount / count) * 100))) : 0;
 
       reasons.push({
         reason,
@@ -489,9 +618,18 @@ export class AnalyticsService {
 
     if (hasMerchant) {
       ordersQuery = ordersQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
 
     const orders = await ordersQuery.getMany();
@@ -499,14 +637,23 @@ export class AnalyticsService {
     let failuresQuery = this.getPaymentFailureRepository()
       .createQueryBuilder('pf')
       .innerJoinAndSelect('pf.payment', 'payment')
-      .leftJoin('payment.order', 'order')
+      .innerJoin('payment.order', 'order')
       .where('pf.detected_at >= :start AND pf.detected_at <= :end', { start, end });
 
     if (hasMerchant) {
       failuresQuery = failuresQuery
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
     }
 
     const failures = await failuresQuery.getMany();
@@ -592,9 +739,18 @@ export class AnalyticsService {
 
     if (hasMerchant) {
       query = query
-        .leftJoin('order.items', 'item')
-        .leftJoin('item.product', 'product')
-        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL OR fb.id IS NOT NULL)', { merchantId });
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = fb.order_id')
+            .andWhere('product.merchant_id = :merchantId')
+            .getQuery();
+          return `(EXISTS ${subQuery} OR NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = fb.order_id))`;
+        })
+        .setParameter('merchantId', merchantId);
     }
 
     if (rating !== undefined) {

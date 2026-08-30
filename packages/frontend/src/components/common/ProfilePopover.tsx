@@ -5,7 +5,7 @@ interface Props {
     id?: string;
     name?: string;
     email: string;
-    role: 'customer' | 'merchant';
+    role: 'customer' | 'merchant' | 'admin';
   };
   onLogout: () => void;
   onNavigateToOrders?: () => void;

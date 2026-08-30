@@ -14,7 +14,7 @@ import { MerchantConfig } from '../models/MerchantConfig.js';
 import { MerchantInsight } from '../models/MerchantInsight.js';
 import { Merchant } from '../models/Merchant.js';
 import { AppDataSource } from '../config/database.js';
-import { createAuthenticate, requireMerchant } from '../middleware/auth.js';
+import { createAuthenticate, createRequireApprovedMerchant } from '../middleware/auth.js';
 import { AuthService, authService as defaultAuthService } from '../services/AuthService.js';
 import { DEMO_MERCHANT_UUID } from '../seed.js';
 
@@ -24,6 +24,7 @@ export function createMerchantRouter(
 ): Router {
   const router = Router();
   const authenticate = createAuthenticate(authService);
+  const requireApprovedMerchant = createRequireApprovedMerchant(authService);
 
   const analyticsService = new AnalyticsService(dataSource);
   const paymentFailureService = new PaymentFailureService(dataSource);
@@ -32,7 +33,7 @@ export function createMerchantRouter(
   async function getAuthenticatedMerchantId(req: Request): Promise<string> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-    if (req.user?.email === 'merchant@example.com') {
+    if (req.user?.email === 'nnnnsachdeva@gmail.com') {
       return DEMO_MERCHANT_UUID;
     }
 
@@ -62,10 +63,36 @@ export function createMerchantRouter(
   }
 
   /**
+   * GET /api/merchant/application-status
+   * Returns current applicant's merchant application details and full timeline
+   */
+  router.get('/application-status', authenticate, async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      let status = await authService.getMerchantApplicationStatus(req.user.id);
+      if (!status && req.user.email) {
+        status = await authService.getMerchantApplicationStatus(req.user.email);
+      }
+
+      if (!status) {
+        return res.status(404).json({ error: 'No merchant application found for user' });
+      }
+
+      res.json(status);
+    } catch (err: any) {
+      console.error('Error fetching application status:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
    * GET /api/merchant/dashboard
    * Returns comprehensive dashboard metrics for the merchant
    */
-  router.get('/dashboard', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/dashboard', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       let startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       let endDate = new Date();
@@ -183,7 +210,7 @@ export function createMerchantRouter(
    * GET /api/merchant/feedback
    * Returns order feedback analytics and customer reviews
    */
-  router.get('/feedback', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/feedback', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const rating = req.query.rating ? parseInt(req.query.rating as string, 10) : undefined;
@@ -201,7 +228,7 @@ export function createMerchantRouter(
    * GET /api/merchant/recovery-cases
    * List all recovery cases for the merchant
    */
-  router.get('/recovery-cases', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/recovery-cases', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const status = req.query.status as string | undefined;
@@ -262,7 +289,7 @@ export function createMerchantRouter(
    * GET /api/merchant/recovery-cases/:id
    * Get detailed information about a specific recovery case
    */
-  router.get('/recovery-cases/:id', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/recovery-cases/:id', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const recoveryCase = await paymentFailureService.getRecoveryCase(id);
@@ -282,7 +309,7 @@ export function createMerchantRouter(
    * POST /api/merchant/recovery-cases/:id/trigger-email
    * Manually trigger/re-send recovery email to the customer (explicit merchant action)
    */
-  router.post('/recovery-cases/:id/trigger-email', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.post('/recovery-cases/:id/trigger-email', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const merchantId = await getAuthenticatedMerchantId(req);
@@ -315,7 +342,7 @@ export function createMerchantRouter(
    * GET /api/merchant/insights
    * Get daily merchant AI insights
    */
-  router.get('/insights', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/insights', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const insightType = req.query.type as string | undefined;
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
@@ -384,7 +411,7 @@ export function createMerchantRouter(
    * GET /api/merchant/config
    * Retrieve merchant configuration
    */
-  router.get('/config', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/config', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const ConfigRepo = dataSource.getRepository(MerchantConfig);
@@ -420,7 +447,7 @@ export function createMerchantRouter(
    * PUT /api/merchant/config
    * Update merchant configuration
    */
-  router.put('/config', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.put('/config', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
 
@@ -513,7 +540,7 @@ export function createMerchantRouter(
    * GET /api/merchant/products
    * List all products for authenticated merchant
    */
-  router.get('/products', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.get('/products', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const productRepo = dataSource.getRepository('Product');
@@ -569,7 +596,7 @@ export function createMerchantRouter(
    * POST /api/merchant/products
    * Create a new merchant product and corresponding inventory record
    */
-  router.post('/products', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.post('/products', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const { name, description, price_cents, price, category, initial_quantity } = req.body;
@@ -624,7 +651,7 @@ export function createMerchantRouter(
    * PUT /api/merchant/products/:id
    * Update a merchant product
    */
-  router.put('/products/:id', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.put('/products/:id', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const { id } = req.params;
@@ -667,7 +694,7 @@ export function createMerchantRouter(
    * PUT /api/merchant/products/:id/inventory
    * Adjust stock inventory for a product
    */
-  router.put('/products/:id/inventory', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.put('/products/:id/inventory', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const { id } = req.params;
@@ -728,7 +755,7 @@ export function createMerchantRouter(
    * DELETE /api/merchant/products/:id
    * Delete or archive a merchant product
    */
-  router.delete('/products/:id', authenticate, requireMerchant, async (req: Request, res: Response) => {
+  router.delete('/products/:id', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
       const { id } = req.params;

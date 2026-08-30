@@ -48,9 +48,6 @@ interface RazorpayResponse {
   razorpay_signature: string;
 }
 
-/**
- * Load Razorpay Checkout script dynamically
- */
 function loadRazorpayScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.Razorpay) {
@@ -92,16 +89,22 @@ export default function PaymentPage({
   const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
   const [scriptLoaded, setScriptLoaded] = useState(false);
 
-  // Synchronous refs to prevent duplicate calls / StrictMode double-execution
   const initStartedRef = useRef(false);
   const hasReportedFailureRef = useRef(false);
   const reportedPaymentIdsRef = useRef<Set<string>>(new Set());
 
-  // Initialize payment details on mount
   useEffect(() => {
-    if (initStartedRef.current) {
-      return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && paymentStatus !== 'processing' && paymentStatus !== 'verifying') {
+        onCancel();
+      }
     }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [paymentStatus, onCancel]);
+
+  useEffect(() => {
+    if (initStartedRef.current) return;
     initStartedRef.current = true;
 
     const initPayment = async () => {
@@ -135,7 +138,6 @@ export default function PaymentPage({
     initPayment();
   }, [orderId]);
 
-  // Auto-open Razorpay once ready and script loaded
   useEffect(() => {
     if (paymentStatus === 'ready' && scriptLoaded && razorpayOrderId && razorpayKeyId) {
       handleOpenRazorpay();
@@ -151,13 +153,6 @@ export default function PaymentPage({
     setPaymentStatus('processing');
     setError(null);
 
-    // Debug log event
-    console.log('[Razorpay] event=checkout_opening', {
-      orderId,
-      razorpayOrderId,
-      amountCents,
-    });
-
     try {
       const options: RazorpayOptions = {
         key: razorpayKeyId,
@@ -167,12 +162,6 @@ export default function PaymentPage({
         amount: amountCents,
         currency: 'INR',
         handler: async (response: RazorpayResponse) => {
-          console.log('[Razorpay] event=payment_success', {
-            orderId,
-            razorpayOrderId: response.razorpay_order_id,
-            razorpayPaymentId: response.razorpay_payment_id,
-          });
-
           setPaymentStatus('verifying');
           try {
             const verifyResponse = await fetch(getApiUrl('/payments/verify'), {
@@ -201,9 +190,6 @@ export default function PaymentPage({
         },
         modal: {
           ondismiss: () => {
-            console.log('[Razorpay] event=modal_dismissed', { orderId });
-            // Modal dismissal is user cancellation, NOT a payment failure!
-            // Keeps order in pending state without invoking /payments/fail.
             setPaymentStatus('cancelled');
             setError('Payment cancelled by user. Your order is saved under Orders.');
             onPaymentComplete('cancelled');
@@ -222,34 +208,16 @@ export default function PaymentPage({
           const reason = errorObj?.description || errorObj?.reason || 'Payment failed';
           const razorpayPaymentId = errorObj?.metadata?.payment_id;
 
-          // Guard 1: Ignore cancellations or modal dismissal events
-          if (errorObj?.reason === 'payment_cancelled') {
-            console.log('[Razorpay] Ignoring payment_cancelled event', { orderId });
-            return;
-          }
+          if (errorObj?.reason === 'payment_cancelled') return;
 
-          // Guard 2: Prevent duplicate failure reporting for the same attempt / payment_id
           if (hasReportedFailureRef.current || (razorpayPaymentId && reportedPaymentIdsRef.current.has(razorpayPaymentId))) {
-            console.log('[Razorpay] Duplicate payment.failed callback ignored', {
-              orderId,
-              razorpayPaymentId,
-              reason,
-            });
             return;
           }
 
-          // Mark failure reported
           hasReportedFailureRef.current = true;
           if (razorpayPaymentId) {
             reportedPaymentIdsRef.current.add(razorpayPaymentId);
           }
-
-          console.warn('[Razorpay] event=payment_failed', {
-            orderId,
-            razorpayOrderId,
-            razorpayPaymentId,
-            reason,
-          });
 
           setPaymentStatus('failed');
           setError(reason);
@@ -280,13 +248,13 @@ export default function PaymentPage({
     }
   };
 
-  const handleRetryPayment = async () => {
+  const handleRetryPayment = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     setError(null);
     setPaymentStatus('loading');
-    hasReportedFailureRef.current = false; // Reset failure flag for fresh attempt
+    hasReportedFailureRef.current = false;
 
     try {
-      // Create a fresh Razorpay order attempt for the same application order ID
       const response = await fetch(getApiUrl('/payments/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -309,21 +277,38 @@ export default function PaymentPage({
     }
   };
 
+  const handleDismissBackdrop = () => {
+    if (paymentStatus !== 'processing' && paymentStatus !== 'verifying') {
+      onCancel();
+    }
+  };
+
   const formatPrice = (cents: number) => {
     return `₹${(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   if (paymentStatus === 'complete') {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
-          <div className="text-5xl mb-4 text-green-600">✓</div>
-          <h2 className="text-2xl font-bold text-green-600 mb-2">Payment Successful!</h2>
-          <p className="text-gray-600 mb-6">Your order has been confirmed.</p>
-          <p className="text-sm text-gray-500 mb-6 font-mono">Order ID: {orderId}</p>
+      <div
+        onClick={onCancel}
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-gray-100"
+        >
+          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-4">
+            ✓
+          </div>
+          <h2 className="text-2xl font-black text-green-700 mb-2">Payment Successful!</h2>
+          <p className="text-xs text-gray-600 mb-4">Your order has been confirmed.</p>
+          <p className="text-xs text-gray-400 font-mono mb-6 truncate">Order ID: {orderId}</p>
           <button
-            onClick={() => onPaymentComplete('success')}
-            className="w-full px-4 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPaymentComplete('success');
+            }}
+            className="w-full py-3.5 px-6 bg-green-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-green-700 shadow-md transition"
           >
             Continue to Order
           </button>
@@ -334,22 +319,33 @@ export default function PaymentPage({
 
   if (paymentStatus === 'failed') {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
-          <div className="text-5xl mb-4 text-red-600">✕</div>
-          <h2 className="text-2xl font-bold text-red-600 mb-2">Payment Failed</h2>
-          <p className="text-gray-600 mb-4">{error || 'An error occurred during payment.'}</p>
-          <p className="text-sm text-gray-500 mb-6 font-mono">Order ID: {orderId.slice(0, 8)}...</p>
+      <div
+        onClick={handleDismissBackdrop}
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-gray-100"
+        >
+          <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-4">
+            ✕
+          </div>
+          <h2 className="text-2xl font-black text-rose-600 mb-2">Payment Failed</h2>
+          <p className="text-xs text-gray-600 mb-4 break-words">{error || 'An error occurred during payment.'}</p>
+          <p className="text-xs text-gray-400 font-mono mb-6 truncate">Order ID: {orderId.slice(0, 12)}...</p>
           <div className="flex gap-3">
             <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded font-medium hover:bg-gray-300"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancel();
+              }}
+              className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-gray-200 transition"
             >
               Back to Orders
             </button>
             <button
               onClick={handleRetryPayment}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700"
+              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-md transition"
             >
               Retry Payment
             </button>
@@ -361,21 +357,32 @@ export default function PaymentPage({
 
   if (paymentStatus === 'cancelled') {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
-          <div className="text-4xl mb-4 text-amber-500">⏸</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Cancelled</h2>
-          <p className="text-gray-600 mb-6">{error || 'Your order is saved and remains pending.'}</p>
+      <div
+        onClick={handleDismissBackdrop}
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-gray-100"
+        >
+          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-4">
+            ⏸
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Payment Cancelled</h2>
+          <p className="text-xs text-gray-600 mb-6 break-words">{error || 'Your order is saved and remains pending.'}</p>
           <div className="flex gap-3">
             <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded font-medium hover:bg-gray-300"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancel();
+              }}
+              className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-gray-200 transition"
             >
               View Orders
             </button>
             <button
               onClick={handleRetryPayment}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700"
+              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-md transition"
             >
               Continue Payment
             </button>
@@ -386,19 +393,38 @@ export default function PaymentPage({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <h2 className="text-2xl font-bold mb-6 text-gray-900">Payment</h2>
+    <div
+      onClick={handleDismissBackdrop}
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 relative border border-gray-100"
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-black text-gray-900">Payment Gateway</h2>
+          {paymentStatus !== 'processing' && paymentStatus !== 'verifying' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancel();
+              }}
+              className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1 rounded-full hover:bg-gray-100 transition"
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
         {/* Payment Summary */}
-        <div className="bg-gray-50 p-4 rounded-lg mb-6 border border-gray-100">
-          <div className="flex justify-between mb-2">
-            <p className="text-gray-600">Order Amount:</p>
-            <p className="font-semibold text-gray-900">{formatPrice(amountCents)}</p>
+        <div className="bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100 text-xs sm:text-sm space-y-2">
+          <div className="flex justify-between">
+            <p className="text-gray-500 font-medium">Order Amount:</p>
+            <p className="font-extrabold text-gray-900">{formatPrice(amountCents)}</p>
           </div>
           <div className="flex justify-between">
-            <p className="text-gray-600">Order ID:</p>
-            <p className="font-mono text-sm text-gray-700">{orderId.slice(0, 8)}...</p>
+            <p className="text-gray-500 font-medium">Order ID:</p>
+            <p className="font-mono text-xs text-gray-700 truncate max-w-[180px]">{orderId}</p>
           </div>
         </div>
 
@@ -407,31 +433,37 @@ export default function PaymentPage({
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-            {error}
+          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold">
+            ⚠️ {error}
           </div>
         )}
 
         {/* Security Info */}
-        <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-6 text-sm text-blue-800">
-          <p className="font-medium mb-1">Secure Payment:</p>
-          <p>Your payment will be processed securely through Razorpay.</p>
+        <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 mb-6 text-xs text-blue-900">
+          <p className="font-bold mb-0.5">🔒 Secure Checkout:</p>
+          <p className="text-blue-800">Your payment will be processed securely through Razorpay SSL encryption.</p>
         </div>
 
         {/* Actions */}
         <div className="flex gap-3">
           <button
-            onClick={onCancel}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancel();
+            }}
             disabled={paymentStatus === 'processing' || paymentStatus === 'verifying'}
-            className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded font-medium hover:bg-gray-300 disabled:opacity-50"
+            className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-gray-200 transition disabled:opacity-50"
           >
             Cancel
           </button>
           {paymentStatus === 'ready' && (
             <button
-              onClick={handleOpenRazorpay}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenRazorpay();
+              }}
               disabled={!scriptLoaded}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-md transition disabled:opacity-50 active:scale-98"
             >
               Pay Now
             </button>

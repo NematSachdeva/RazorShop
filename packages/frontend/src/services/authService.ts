@@ -4,15 +4,19 @@ export interface AuthResponse {
   id: string;
   email: string;
   name?: string;
-  role: 'customer' | 'merchant';
+  role: 'customer' | 'merchant' | 'admin';
   token: string;
+  application_id?: string;
+  application_status?: string;
 }
 
 export interface User {
   id: string;
   email: string;
   name?: string;
-  role: 'customer' | 'merchant';
+  role: 'customer' | 'merchant' | 'admin';
+  application_id?: string;
+  application_status?: string;
 }
 
 class AuthService {
@@ -22,11 +26,18 @@ class AuthService {
   /**
    * Register a new user
    */
-  async register(email: string, password: string, name?: string, role: 'customer' | 'merchant' = 'customer'): Promise<AuthResponse> {
+  async register(
+    email: string,
+    password: string,
+    name?: string,
+    role: 'customer' | 'merchant' = 'customer',
+    business_name?: string,
+    reason?: string
+  ): Promise<AuthResponse> {
     const response = await fetch(getApiUrl('/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name, role }),
+      body: JSON.stringify({ email, password, name, role, business_name, reason }),
     });
 
     if (!response.ok) {
@@ -36,7 +47,14 @@ class AuthService {
 
     const data: AuthResponse = await response.json();
     this.storeToken(data.token);
-    this.storeUser({ id: data.id, email: data.email, name: data.name, role: data.role });
+    this.storeUser({
+      id: data.id,
+      email: data.email,
+      name: data.name,
+      role: data.role,
+      application_id: data.application_id,
+      application_status: data.application_status,
+    });
     return data;
   }
 
@@ -57,7 +75,14 @@ class AuthService {
 
     const data: AuthResponse = await response.json();
     this.storeToken(data.token);
-    this.storeUser({ id: data.id, email: data.email, name: data.name, role: data.role });
+    this.storeUser({
+      id: data.id,
+      email: data.email,
+      name: data.name,
+      role: data.role,
+      application_id: data.application_id,
+      application_status: data.application_status,
+    });
     return data;
   }
 

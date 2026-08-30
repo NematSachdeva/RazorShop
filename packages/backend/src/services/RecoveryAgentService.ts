@@ -83,6 +83,17 @@ export class RecoveryAgentService {
     });
 
     if (!merchantConfig) {
+      const merchantRepo = this.dataSource.getRepository('Merchant');
+      let merchant: any = await merchantRepo.findOne({ where: { id: targetMerchantId } });
+      if (!merchant) {
+        merchant = await merchantRepo.save(
+          merchantRepo.create({
+            id: targetMerchantId,
+            name: 'Default Store',
+            email: `store-${targetMerchantId}@example.com`,
+          })
+        );
+      }
       merchantConfig = this.getMerchantConfigRepository().create({
         merchant_id: targetMerchantId,
       });

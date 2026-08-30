@@ -36,6 +36,7 @@ interface CartRecommendationsProps {
   currentProductIds: string[];
   onAddToCart?: (productId: string) => void;
   onAddBundleToCart?: (recommendationId: string) => void;
+  onSelectProduct?: (product: Product) => void;
 }
 
 export default function CartRecommendations({
@@ -43,6 +44,7 @@ export default function CartRecommendations({
   currentProductIds,
   onAddToCart,
   onAddBundleToCart,
+  onSelectProduct,
 }: CartRecommendationsProps) {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -53,6 +55,7 @@ export default function CartRecommendations({
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
+        setLoading(true);
         const response = await fetch(getApiUrl(`/recommendations/carts/${cartId}/recommendations`));
         const data = await response.json();
 
@@ -91,7 +94,7 @@ export default function CartRecommendations({
   }, [cartId]);
 
   const formatPrice = (cents: number) => {
-    return `₹${(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+    return `₹${(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const handleTrackClick = async (recommendationId: string) => {
@@ -107,7 +110,8 @@ export default function CartRecommendations({
     }
   };
 
-  const handleAddToCart = async (product: Product, recommendationId: string) => {
+  const handleAddToCart = async (product: Product, recommendationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     try {
       if (recommendationId) {
         await fetch(getApiUrl(`/recommendations/${recommendationId}/events`), {
@@ -122,17 +126,25 @@ export default function CartRecommendations({
     }
   };
 
+  const handleViewProduct = (product: Product, e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleTrackClick(recommendations[0]?.id || '');
+    if (onSelectProduct) {
+      onSelectProduct(product);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <div className="flex items-center justify-center py-4">
+      <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+        <div className="flex items-center justify-center py-3 text-xs text-gray-600 font-semibold">
           <div className="animate-spin mr-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           </div>
-          <span className="text-gray-600">Checking complementary deals...</span>
+          <span>Checking complementary deals...</span>
         </div>
       </div>
     );
@@ -140,51 +152,52 @@ export default function CartRecommendations({
 
   if (error) {
     return (
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <p className="text-sm text-gray-600">Recommendations temporarily unavailable.</p>
+      <div className="bg-gray-50 p-4 rounded-xl">
+        <p className="text-xs text-gray-500">Recommendations temporarily unavailable.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-50 p-4 rounded-lg">
+    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">
       {/* AI Bundle Deal */}
       {bundle && bundle.products && bundle.products.length > 0 && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 shadow-sm">
-          <div className="flex justify-between items-center mb-2">
-            <h4 className="font-bold text-purple-900 text-sm flex items-center gap-1.5">
+        <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 shadow-sm space-y-3">
+          <div className="flex justify-between items-center">
+            <h4 className="font-extrabold text-purple-900 text-xs flex items-center gap-1.5">
               <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">BUNDLE DEAL</span>
               🎁 AI Recommended Combo
             </h4>
-            <span className="text-xs bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded">
+            <span className="text-[11px] bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded">
               SAVE {formatPrice(bundle.savings_cents)}
             </span>
           </div>
 
-          <div className="space-y-1.5 my-3">
+          <div className="space-y-1.5">
             {bundle.products.map((item: any, idx: number) => (
-              <div key={item.id || idx} className="flex justify-between items-center text-xs bg-white p-2 rounded border border-gray-100">
-                <span className="font-medium text-gray-800">➕ {item.name}</span>
-                <span className="text-gray-600 font-semibold">{formatPrice(item.price_cents)}</span>
+              <div key={item.id || idx} className="flex justify-between items-center text-xs bg-white p-2 rounded-lg border border-gray-100">
+                <span className="font-medium text-gray-800 truncate max-w-[180px]">➕ {item.name}</span>
+                <span className="text-gray-600 font-bold shrink-0">{formatPrice(item.price_cents)}</span>
               </div>
             ))}
           </div>
 
           <div className="flex items-center justify-between pt-2.5 border-t border-purple-200">
             <div>
-              <span className="text-[11px] text-gray-500 block">Combo Total:</span>
-              <span className="line-through text-gray-400 text-xs mr-1.5">{formatPrice(bundle.original_total_cents)}</span>
-              <span className="text-base font-extrabold text-green-700">{formatPrice(bundle.final_total_cents)}</span>
+              <span className="text-[10px] text-gray-500 block">Combo Total:</span>
+              <span className="line-through text-gray-400 text-xs mr-1">{formatPrice(bundle.original_total_cents)}</span>
+              <span className="text-sm font-extrabold text-green-700">{formatPrice(bundle.final_total_cents)}</span>
             </div>
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (recommendations[0]?.id && onAddBundleToCart) {
                   onAddBundleToCart(recommendations[0].id);
                 } else {
                   bundle.products.forEach((p: any) => onAddToCart?.(p.id));
                 }
               }}
-              className="px-3.5 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-md hover:bg-purple-700 shadow"
+              className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow transition active:scale-95"
             >
               Add Bundle
             </button>
@@ -194,46 +207,43 @@ export default function CartRecommendations({
 
       {products.length > 0 && (
         <>
-          <h3 className="text-sm font-bold mb-3 text-gray-900">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-900">
             Complementary Items
           </h3>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {products.map((product) => {
               const alreadyInCart = currentProductIds.includes(product.id);
               return (
                 <div
                   key={product.id}
-                  className={`flex items-start p-3 rounded-lg border ${
-                    alreadyInCart ? 'bg-gray-100 border-gray-200' : 'bg-white border-gray-200'
+                  onClick={(e) => !alreadyInCart && handleViewProduct(product, e)}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    alreadyInCart
+                      ? 'bg-gray-100 border-gray-200 opacity-60'
+                      : 'bg-white border-gray-200 hover:border-blue-300 cursor-pointer'
                   }`}
                 >
-                  <div className="flex-1">
-                    <h4 className={`font-medium text-sm ${alreadyInCart ? 'text-gray-500' : 'text-gray-900'}`}>
+                  <div className="flex-1 min-w-0 pr-2">
+                    <h4 className={`font-bold text-xs truncate ${alreadyInCart ? 'text-gray-500' : 'text-gray-900'}`}>
                       {product.name}
                     </h4>
-                    {alreadyInCart && (
-                      <span className="text-xs text-gray-500">Already in cart</span>
-                    )}
-                    <p className="text-xs text-gray-600 mt-1">{product.description?.substring(0, 80)}...</p>
-                    <p className="text-sm font-bold text-blue-600 mt-1.5">{formatPrice(product.price_cents)}</p>
+                    <p className="text-[11px] font-extrabold text-blue-600 mt-0.5">{formatPrice(product.price_cents)}</p>
                   </div>
 
                   {!alreadyInCart && (
-                    <div className="flex gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
-                        onClick={() => handleTrackClick(recommendations[0]?.id || '')}
-                        className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                        onClick={(e) => handleViewProduct(product, e)}
+                        className="px-2.5 py-1 text-[11px] font-bold bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition"
                       >
                         View
                       </button>
                       <button
-                        onClick={() => {
-                          handleAddToCart(product, recommendations[0]?.id || '');
-                        }}
-                        className="px-2.5 py-1 text-xs bg-blue-600 text-white font-semibold rounded hover:bg-blue-700"
+                        onClick={(e) => handleAddToCart(product, recommendations[0]?.id || '', e)}
+                        className="px-3 py-1 text-[11px] font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition active:scale-95"
                       >
-                        Add
+                        + Add
                       </button>
                     </div>
                   )}
@@ -245,9 +255,9 @@ export default function CartRecommendations({
       )}
 
       {recommendations[0]?.reasoning && (
-        <div className="mt-3 text-[11px] text-gray-500">
-          <p className="font-medium mb-0.5">AI Reasoning:</p>
-          <p>{recommendations[0].reasoning.explanation}</p>
+        <div className="text-[10px] text-gray-500 bg-white p-2.5 rounded-lg border border-gray-200">
+          <p className="font-bold text-gray-700 mb-0.5">AI Reasoning:</p>
+          <p className="italic">{recommendations[0].reasoning.explanation}</p>
         </div>
       )}
     </div>

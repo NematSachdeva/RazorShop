@@ -11,6 +11,8 @@ import ProductDetailModal from './components/ProductDetailModal';
 import CartDrawer from './components/CartDrawer';
 import StockBadge from './components/common/StockBadge';
 import ProfilePopover from './components/common/ProfilePopover';
+import ApplicationStatusPage from './components/ApplicationStatusPage';
+import AdminDashboard from './components/AdminDashboard';
 import { authService } from './services/authService';
 
 type ViewState = 'browse' | 'checkout' | 'payment' | 'confirmation';
@@ -51,6 +53,9 @@ export default function App() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [orderAmount, setOrderAmount] = useState(0);
 
+  // Merchant Application View state
+  const [showApplicationStatusView, setShowApplicationStatusView] = useState(false);
+
   // Check authentication & recovery deep-links on mount
   useEffect(() => {
     const authenticated = authService.isAuthenticated();
@@ -66,6 +71,9 @@ export default function App() {
     if (params.get('payment') || params.get('order')) {
       setActiveTab('orders');
       setViewState('browse');
+    }
+    if (window.location.pathname === '/admin') {
+      // route view
     }
   }, []);
 
@@ -118,6 +126,7 @@ export default function App() {
     authService.logout();
     setIsAuthenticated(false);
     setUser(null);
+    setShowApplicationStatusView(false);
     setCart({
       id: '',
       customer_id: '',
@@ -326,6 +335,7 @@ export default function App() {
     authService.logout();
     setIsAuthenticated(false);
     setUser(null);
+    setShowApplicationStatusView(false);
     setCart({
       id: '',
       customer_id: '',
@@ -364,30 +374,50 @@ export default function App() {
 
       {isAuthenticated && user && (
         <>
-          {/* Merchant Navigation Header & Dashboard */}
+          {/* Admin Dashboard */}
+          {user.role === 'admin' && (
+            <AdminDashboard onLogout={handleLogout} />
+          )}
+
+          {/* Merchant Views */}
           {user.role === 'merchant' && (
-            <div>
-              <header className="bg-purple-950 text-white shadow-md sticky top-0 z-30 border-b border-purple-800">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">🏬</span>
-                    <div>
-                      <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                        RAZOR <span className="bg-purple-800 text-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Merchant Hub</span>
-                      </h1>
+            <>
+              {showApplicationStatusView || user.application_status === 'pending' || user.application_status === 'rejected' ? (
+                <ApplicationStatusPage
+                  onGoToDashboard={() => setShowApplicationStatusView(false)}
+                  onLogout={handleLogout}
+                />
+              ) : (
+                <div>
+                  <header className="bg-purple-950 text-white shadow-md sticky top-0 z-30 border-b border-purple-800">
+                    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">🏬</span>
+                        <div>
+                          <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                            RAZOR <span className="bg-purple-800 text-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Merchant Hub</span>
+                          </h1>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => setShowApplicationStatusView(true)}
+                          className="text-xs text-purple-300 hover:text-white underline font-semibold"
+                        >
+                          View Application Timeline
+                        </button>
+                        <ProfilePopover
+                          user={user}
+                          onLogout={handleLogout}
+                          onNavigateToMerchant={() => setActiveTab('store')}
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <ProfilePopover
-                      user={user}
-                      onLogout={handleLogout}
-                      onNavigateToMerchant={() => setActiveTab('store')}
-                    />
-                  </div>
+                  </header>
+                  <MerchantDashboard />
                 </div>
-              </header>
-              <MerchantDashboard />
-            </div>
+              )}
+            </>
           )}
 
           {/* Customer Store */}
@@ -560,13 +590,13 @@ export default function App() {
                           return (
                             <div
                               key={product.id}
-                              className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between"
+                              onClick={() => setSelectedProduct(product)}
+                              className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between cursor-pointer group"
                             >
                               <div>
                                 <div className="flex justify-between items-start gap-2 mb-2">
                                   <h3
-                                    onClick={() => setSelectedProduct(product)}
-                                    className="font-bold text-gray-900 text-base line-clamp-2 cursor-pointer hover:text-blue-600 transition-colors"
+                                    className="font-bold text-gray-900 text-base line-clamp-2 group-hover:text-blue-600 transition-colors"
                                   >
                                     {product.name}
                                   </h3>
@@ -590,14 +620,20 @@ export default function App() {
                                 </span>
                                 <div className="flex gap-2">
                                   <button
-                                    onClick={() => setSelectedProduct(product)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedProduct(product);
+                                    }}
                                     className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition"
                                   >
                                     Details
                                   </button>
                                   <button
                                     disabled={!canAdd}
-                                    onClick={() => addToCart(product.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (canAdd) addToCart(product.id);
+                                    }}
                                     className={`px-3.5 py-1.5 text-xs font-bold rounded-lg shadow-sm transition ${
                                       canAdd
                                         ? 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
@@ -649,6 +685,7 @@ export default function App() {
                     addBundleToCart(recId);
                     setSelectedProduct(null);
                   }}
+                  onSelectProduct={(p) => setSelectedProduct(p)}
                 />
               )}
 
@@ -665,6 +702,7 @@ export default function App() {
                   setCartOpen(false);
                   setViewState('checkout');
                 }}
+                onSelectProduct={(p) => setSelectedProduct(p)}
               />
 
               {/* Checkout Modal */}

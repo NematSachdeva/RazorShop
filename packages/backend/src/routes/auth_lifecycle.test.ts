@@ -57,11 +57,11 @@ describe('Auth Lifecycle & Cart Persistence Tests', () => {
   test('B. Seeded merchant can log in with password123', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'merchant@example.com', password: 'password123' });
+      .send({ email: 'nnnnsachdeva@gmail.com', password: 'password123' });
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('token');
-    expect(res.body.email).toBe('merchant@example.com');
+    expect(res.body.email).toBe('nnnnsachdeva@gmail.com');
     expect(res.body.role).toBe('merchant');
 
     const customer = await TestDataSource.getRepository(Customer).findOne({ where: { id: res.body.id } });
@@ -126,7 +126,7 @@ describe('Auth Lifecycle & Cart Persistence Tests', () => {
     const customers = await TestDataSource.getRepository(Customer).find({ where: { email: 'customer@example.com' } });
     expect(customers.length).toBe(1);
 
-    const merchants = await TestDataSource.getRepository(Merchant).find({ where: { email: 'merchant@example.com' } });
+    const merchants = await TestDataSource.getRepository(Merchant).find({ where: { email: 'nnnnsachdeva@gmail.com' } });
     expect(merchants.length).toBe(1);
   });
 });
