@@ -128,7 +128,7 @@ jobs:
             --instance-ids "${{ secrets.AWS_EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --comment "Automated production deployment & RDS migration for Razor" \
-            --parameters 'commands=["bash /home/ubuntu/razor/scripts/deploy-production.sh ${{ github.sha }}"]' \
+            --parameters 'commands=["cd /home/ubuntu/razor && git fetch origin master && git checkout master && git reset --hard ${{ github.sha }} && test -f scripts/deploy-production.sh && bash scripts/deploy-production.sh ${{ github.sha }}"]' \
             --query "Command.CommandId" \
             --output text)
           
