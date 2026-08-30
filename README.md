@@ -57,7 +57,7 @@ For milestone implementation history and audit logs, see [docs/project-history.m
 ### 2. Environment Setup
 ```bash
 # Clone the repository
-git clone https://github.com/NematSachdeva/FINT.git
+git clone https://github.com/NematSachdeva/RazorShop.git
 cd Razor
 
 # Install workspace dependencies

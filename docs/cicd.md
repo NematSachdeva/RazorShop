@@ -88,7 +88,7 @@ The following infrastructure tasks must be completed separately in your AWS Cons
 1. **AWS IAM OIDC Identity Provider**:
    - Create an IAM OIDC Identity Provider for `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
 2. **AWS IAM Deployment Role**:
-   - Create an IAM role with a Trust Policy allowing `repo:NematSachdeva/FINT:environment:production` to assume the role.
+   - Create an IAM role with a Trust Policy allowing `repo:NematSachdeva/RazorShop:environment:production` to assume the role.
    - Attach permissions to grant `ssm:SendCommand`, `ssm:GetCommandInvocation`, `ssm:ListCommandInvocations` for the target EC2 instance.
 3. **AWS Systems Manager (SSM) Agent on EC2**:
    - Ensure `amazon-ssm-agent` is running on the Ubuntu EC2 instance.
