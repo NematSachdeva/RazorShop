@@ -4,7 +4,9 @@
 
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api');
+  (import.meta.env.PROD || import.meta.env.MODE === 'production'
+    ? '/api'
+    : 'http://localhost:3000/api');
 
 export const getApiUrl = (path: string): string => {
   const basePath = API_BASE_URL.replace(/\/+$/, '');

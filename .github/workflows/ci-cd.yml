@@ -30,19 +30,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    env:
-      NODE_ENV: test
-      PORT: 3000
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/razor_test
-      FRONTEND_URL: http://localhost:5173
-      RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_TEST_KEY_ID || 'rzp_test_placeholder' }}
-      RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_TEST_KEY_SECRET || 'test_key_secret_placeholder' }}
-      RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET || 'test_webhook_secret' }}
-      GROQ_API_KEY: ${{ secrets.GROQ_TEST_API_KEY || 'gsk_placeholder' }}
-      JWT_SECRET: ${{ secrets.JWT_TEST_SECRET || 'ci_test_jwt_secret_for_validation_only' }}
-      EMAIL_DELIVERY_MODE: mock
-      AI_MODE: mock
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -64,12 +51,38 @@ jobs:
 
       - name: Initialize CI Test Database Schema
         run: npm run db:migrate --workspace=packages/backend
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/razor_test
+          FRONTEND_URL: http://localhost:5173
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_TEST_KEY_ID || 'rzp_test_placeholder' }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_TEST_KEY_SECRET || 'test_key_secret_placeholder' }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET || 'test_webhook_secret' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_TEST_API_KEY || 'gsk_placeholder' }}
+          JWT_SECRET: ${{ secrets.JWT_TEST_SECRET || 'ci_test_jwt_secret_for_validation_only' }}
+          EMAIL_DELIVERY_MODE: mock
+          AI_MODE: mock
 
       - name: Run Backend Test Suite (Isolated Unit & Integration Tests)
         run: npm run test:unit --workspace=packages/backend
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/razor_test
+          FRONTEND_URL: http://localhost:5173
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_TEST_KEY_ID || 'rzp_test_placeholder' }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_TEST_KEY_SECRET || 'test_key_secret_placeholder' }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET || 'test_webhook_secret' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_TEST_API_KEY || 'gsk_placeholder' }}
+          JWT_SECRET: ${{ secrets.JWT_TEST_SECRET || 'ci_test_jwt_secret_for_validation_only' }}
+          EMAIL_DELIVERY_MODE: mock
+          AI_MODE: mock
 
       - name: Build Production Workspace Bundles
         run: npm run build
+        env:
+          NODE_ENV: production
 
       - name: Verify Frontend Production Bundle
         run: |
@@ -84,6 +97,10 @@ jobs:
           fi
           if grep -rn "127.0.0.1:7070" packages/frontend/dist > /dev/null; then
             echo "ERROR: Found hardcoded '127.0.0.1:7070' in production build!"
+            exit 1
+          fi
+          if grep -rn "localhost" packages/frontend/dist > /dev/null; then
+            echo "ERROR: Found 'localhost' in production build!"
             exit 1
           fi
           echo "✓ Frontend bundle verified: pure same-origin /api paths."
