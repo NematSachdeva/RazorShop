@@ -55,10 +55,10 @@ export default function ProductDetailModal({
 
         {/* Category & Title */}
         <div className="mb-4 pr-8">
-          <span className="bg-blue-50 text-blue-700 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+          <span className="bg-blue-50 text-blue-700 text-[11px] font-medium px-3 py-1 rounded-full uppercase tracking-wider font-body">
             {product.category || 'General'}
           </span>
-          <h2 className="text-xl sm:text-3xl font-extrabold text-gray-900 mt-2 break-words">
+          <h2 className="text-xl sm:text-3xl font-bold font-heading tracking-tight text-gray-900 mt-2 break-words">
             {product.name}
           </h2>
         </div>
@@ -66,7 +66,7 @@ export default function ProductDetailModal({
         {/* Price & Stock Badge */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
           <div>
-            <span className="text-2xl sm:text-3xl font-black text-blue-700">
+            <span className="text-2xl sm:text-3xl font-bold font-price text-blue-700">
               ₹{(product.price_cents / 100).toFixed(2)}
             </span>
           </div>
@@ -77,10 +77,10 @@ export default function ProductDetailModal({
 
         {/* Description */}
         <div className="mb-6">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+          <h4 className="text-xs font-semibold font-heading text-gray-400 uppercase tracking-wider mb-1">
             Product Overview
           </h4>
-          <p className="text-gray-700 leading-relaxed text-xs sm:text-sm break-words">
+          <p className="text-gray-700 leading-relaxed text-xs sm:text-sm break-words font-normal font-body">
             {product.description || 'High quality product carefully inspected for maximum value.'}
           </p>
         </div>
@@ -93,7 +93,7 @@ export default function ProductDetailModal({
               e.stopPropagation();
               onAddToCart(product.id);
             }}
-            className={`w-full py-3.5 px-6 rounded-xl font-bold text-sm sm:text-base shadow-md flex items-center justify-center gap-2 transition-all ${
+            className={`w-full py-3.5 px-6 rounded-xl font-semibold text-sm sm:text-base shadow-md flex items-center justify-center gap-2 transition-all font-body ${
               stockInfo.canAddToCart
                 ? 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-lg active:scale-[0.99]'
                 : 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'

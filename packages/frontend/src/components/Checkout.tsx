@@ -122,7 +122,7 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
           className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 relative my-auto max-h-[90vh] overflow-y-auto border border-gray-100 space-y-5"
         >
           <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-            <h2 className="text-xl sm:text-2xl font-black text-gray-900">Checkout</h2>
+            <h2 className="text-xl sm:text-2xl font-bold font-heading tracking-tight text-gray-900">Checkout</h2>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -210,7 +210,7 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
                     <p className="font-bold text-gray-900 truncate">{item.product.name}</p>
                     <p className="text-gray-500 font-medium">Qty: {item.quantity}</p>
                   </div>
-                  <p className="font-extrabold text-gray-900 shrink-0">{formatPrice(item.line_total_cents)}</p>
+                  <p className="font-bold font-price text-gray-900 shrink-0">{formatPrice(item.line_total_cents)}</p>
                 </div>
               ))}
             </div>
@@ -220,19 +220,19 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
           <div className="border-t border-gray-100 pt-3 space-y-2 text-xs sm:text-sm">
             <div className="flex justify-between text-gray-600">
               <p>Subtotal:</p>
-              <p className="font-semibold">{formatPrice(cart.subtotal_cents || cart.total_cents)}</p>
+              <p className="font-semibold font-price">{formatPrice(cart.subtotal_cents || cart.total_cents)}</p>
             </div>
 
             {((cart.discount_cents && cart.discount_cents > 0) || (cart.discount_percent && cart.discount_percent > 0)) && (
               <div className="flex justify-between text-xs text-green-700 bg-green-50 p-2.5 rounded-xl border border-green-200 font-medium">
                 <p>🎁 Combo Discount ({cart.discount_percent}% OFF):</p>
-                <p className="font-bold">-{formatPrice(cart.discount_cents || 0)}</p>
+                <p className="font-bold font-price">-{formatPrice(cart.discount_cents || 0)}</p>
               </div>
             )}
 
             <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t border-gray-100">
               <p>Total Amount:</p>
-              <p className="text-blue-700">{formatPrice(cart.total_cents)}</p>
+              <p className="text-blue-700 font-price font-bold">{formatPrice(cart.total_cents)}</p>
             </div>
           </div>
 

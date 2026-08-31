@@ -128,54 +128,75 @@ export const OrderTimelineView: React.FC<OrderTimelineViewProps> = ({ timeline, 
       </div>
 
       {/* Steps List */}
-      <div className="flex flex-wrap items-center justify-between gap-3 py-2">
-        {stepsToRender.map((step) => {
-          const state = getStepState(step.key);
-          const ev = getEventForStep(step.event);
-          const isCompleted = state === 'completed';
-          const isCurrentTarget = normStatus === step.key;
-          const isFailedStep = step.key === 'cancelled' || step.key === 'return_rejected';
+      <div className="relative w-full overflow-x-auto pb-3 pt-1">
+        <div className="flex items-start justify-between min-w-[320px] sm:min-w-full relative px-2">
+          {stepsToRender.map((step, index) => {
+            const state = getStepState(step.key);
+            const ev = getEventForStep(step.event);
+            const isCompleted = state === 'completed';
+            const isCurrentTarget = normStatus === step.key;
+            const isFailedStep = step.key === 'cancelled' || step.key === 'return_rejected';
 
-          return (
-            <div key={step.key} className="flex-1 min-w-[90px] flex flex-col items-center text-center group">
-              <div
-                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-extrabold text-xs transition-all shadow-sm ${
-                  isFailedStep && isCompleted
-                    ? 'bg-rose-600 text-white ring-4 ring-rose-100'
-                    : isCompleted
-                    ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md'
-                    : 'bg-white border-2 border-gray-300 text-gray-400'
-                }`}
-              >
-                {isFailedStep && isCompleted ? (
-                  <span className="text-sm font-black">✕</span>
-                ) : isCompleted ? (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <span>○</span>
+            const nextStep = stepsToRender[index + 1];
+            const nextState = nextStep ? getStepState(nextStep.key) : null;
+            const isNextFailed = nextStep && (nextStep.key === 'cancelled' || nextStep.key === 'return_rejected');
+            const isLineActive = isCompleted && nextState === 'completed';
+
+            return (
+              <div key={step.key} className="flex-1 relative flex flex-col items-center text-center group min-w-[75px] sm:min-w-[90px]">
+                {/* Horizontal Connecting Line to Next Step */}
+                {index < stepsToRender.length - 1 && (
+                  <div
+                    className={`absolute top-[18px] sm:top-[20px] left-[50%] w-full h-[3px] -translate-y-1/2 z-0 transition-colors duration-300 ${
+                      isLineActive
+                        ? isNextFailed
+                          ? 'bg-rose-600'
+                          : 'bg-blue-600'
+                        : 'bg-gray-200'
+                    }`}
+                  />
+                )}
+
+                {/* Circle Indicator */}
+                <div
+                  className={`relative z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-extrabold text-xs transition-all shadow-sm ${
+                    isFailedStep && isCompleted
+                      ? 'bg-rose-600 text-white ring-4 ring-rose-100'
+                      : isCompleted
+                      ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md'
+                      : 'bg-white border-2 border-gray-300 text-gray-400'
+                  }`}
+                >
+                  {isFailedStep && isCompleted ? (
+                    <span className="text-sm font-black">✕</span>
+                  ) : isCompleted ? (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <span>○</span>
+                  )}
+                </div>
+                <span
+                  className={`mt-2 text-[11px] font-bold text-center leading-tight ${
+                    isCurrentTarget
+                      ? 'text-blue-700 font-black'
+                      : isCompleted
+                      ? 'text-gray-900'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  {step.label}
+                </span>
+                {ev && (
+                  <span className="text-[9px] text-gray-500 mt-0.5 font-mono">
+                    {new Date(ev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 )}
               </div>
-              <span
-                className={`mt-2 text-[11px] font-bold text-center leading-tight ${
-                  isCurrentTarget
-                    ? 'text-blue-700 font-black'
-                    : isCompleted
-                    ? 'text-gray-900'
-                    : 'text-gray-400'
-                }`}
-              >
-                {step.label}
-              </span>
-              {ev && (
-                <span className="text-[9px] text-gray-500 mt-0.5 font-mono">
-                  {new Date(ev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* History Log */}

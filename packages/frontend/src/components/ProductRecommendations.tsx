@@ -202,7 +202,7 @@ export default function ProductRecommendations({
 
       {products.length > 0 && (
         <>
-          <h3 className="text-xs font-bold mb-3 text-gray-900 uppercase tracking-wider">
+          <h3 className="text-xs font-semibold font-heading mb-3 text-gray-900 uppercase tracking-wider">
             Frequently Bought Together / Complementary
           </h3>
 
@@ -214,15 +214,15 @@ export default function ProductRecommendations({
                 className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 bg-white rounded-xl border border-gray-200 hover:border-blue-300 shadow-xs transition-all gap-3 cursor-pointer group"
               >
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-gray-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors truncate">
+                  <h4 className="font-semibold font-heading text-gray-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors truncate">
                     {product.name}
                   </h4>
                   {product.description && (
-                    <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1 break-words">
+                    <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1 break-words font-body font-normal">
                       {product.description}
                     </p>
                   )}
-                  <p className="text-xs font-black text-blue-700 mt-1">{formatPrice(product.price_cents)}</p>
+                  <p className="text-xs font-bold font-price text-blue-700 mt-1">{formatPrice(product.price_cents)}</p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">

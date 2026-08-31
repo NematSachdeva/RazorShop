@@ -152,14 +152,14 @@ export default function CartDrawer({
                     >
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-gray-900 text-sm sm:text-base break-words">
+                          <h4 className="font-semibold font-heading text-gray-900 text-sm sm:text-base break-words">
                             {product.name || 'Product'}
                           </h4>
-                          <span className="text-[11px] font-semibold text-gray-500 block mt-0.5">
+                          <span className="text-[11px] font-medium text-gray-500 block mt-0.5 font-body">
                             {product.category || 'General'}
                           </span>
                         </div>
-                        <span className="font-extrabold text-blue-700 text-sm sm:text-base shrink-0">
+                        <span className="font-bold font-price text-blue-700 text-sm sm:text-base shrink-0">
                           {formatPrice(item.line_total_cents || item.price_cents * item.quantity)}
                         </span>
                       </div>
@@ -249,7 +249,7 @@ export default function CartDrawer({
 
               <div className="flex justify-between text-sm sm:text-base font-black text-gray-900 pt-2 border-t border-gray-200">
                 <span>Total Amount</span>
-                <span className="text-lg sm:text-xl text-blue-700">{formatPrice(totalCents)}</span>
+                <span className="text-lg sm:text-xl text-blue-700 font-price font-bold">{formatPrice(totalCents)}</span>
               </div>
 
               <button

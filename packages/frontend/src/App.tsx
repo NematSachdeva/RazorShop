@@ -731,7 +731,7 @@ export default function App() {
                           <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">
                             RazorShop Store
                           </span>
-                          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">
+                          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mt-1 font-heading tracking-tight">
                             {selectedCategory || 'Collection Catalog'}
                           </h1>
                         </div>
@@ -824,11 +824,11 @@ export default function App() {
                                     </span>
                                   </div>
 
-                                  <h3 className="font-extrabold text-gray-900 text-base mb-1.5 group-hover:text-blue-600 transition-colors line-clamp-2">
+                                  <h3 className="font-semibold font-heading text-gray-900 text-base mb-1.5 group-hover:text-blue-600 transition-colors line-clamp-2">
                                     {product.name}
                                   </h3>
 
-                                  <p className="text-xs text-gray-600 mb-4 line-clamp-3 leading-relaxed">
+                                  <p className="text-xs text-gray-600 mb-4 line-clamp-3 leading-relaxed font-normal">
                                     {product.description || 'High quality product carefully inspected for maximum value.'}
                                   </p>
                                 </div>
@@ -839,7 +839,7 @@ export default function App() {
                                   </div>
 
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xl font-black text-gray-900">
+                                    <span className="text-xl font-bold font-price text-gray-900">
                                       {formatPrice(product.price_cents)}
                                     </span>
                                     <div className="flex gap-2">

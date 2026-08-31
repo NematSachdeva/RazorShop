@@ -323,7 +323,7 @@ export default function CustomerOrders({ onContinuePayment, onRetryPayment, targ
       <div className="flex justify-between items-center pb-2">
         <div className="flex items-center gap-2.5">
           <IconPackage className="w-6 h-6 text-blue-600" />
-          <h2 className="text-2xl font-black text-gray-900">Your Orders & Tracking</h2>
+          <h2 className="text-2xl font-bold font-heading tracking-tight text-gray-900">Your Orders & Tracking</h2>
         </div>
         <button
           onClick={fetchOrders}

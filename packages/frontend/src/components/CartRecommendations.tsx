@@ -209,7 +209,7 @@ export default function CartRecommendations({
 
       {products.length > 0 && (
         <>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-900">
+          <h3 className="text-xs font-semibold font-heading uppercase tracking-wider text-gray-900">
             Complementary Items
           </h3>
 
@@ -227,10 +227,10 @@ export default function CartRecommendations({
                   }`}
                 >
                   <div className="flex-1 min-w-0 pr-2">
-                    <h4 className={`font-bold text-xs truncate ${alreadyInCart ? 'text-gray-500' : 'text-gray-900'}`}>
+                    <h4 className={`font-semibold font-heading text-xs truncate ${alreadyInCart ? 'text-gray-500' : 'text-gray-900'}`}>
                       {product.name}
                     </h4>
-                    <p className="text-[11px] font-extrabold text-blue-600 mt-0.5">{formatPrice(product.price_cents)}</p>
+                    <p className="text-[11px] font-bold font-price text-blue-600 mt-0.5">{formatPrice(product.price_cents)}</p>
                   </div>
 
                   {!alreadyInCart && (
