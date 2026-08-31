@@ -23,10 +23,13 @@ import { AuthService, authService as defaultAuthService } from '../services/Auth
 import { emailService as defaultEmailService } from '../services/EmailService.js';
 import { DEMO_MERCHANT_UUID } from '../seed.js';
 
+import { OrderService } from '../services/OrderService.js';
+
 export function createMerchantRouter(
   dataSource: DataSource = AppDataSource,
   authService: AuthService = defaultAuthService,
-  emailService = defaultEmailService
+  emailService = defaultEmailService,
+  orderService: OrderService = new OrderService(dataSource)
 ): Router {
   const router = Router();
   const authenticate = createAuthenticate(authService);
@@ -110,7 +113,10 @@ export function createMerchantRouter(
 
       if (req.query.end_date) {
         const parsed = new Date(req.query.end_date as string);
-        if (!isNaN(parsed.getTime())) endDate = parsed;
+        if (!isNaN(parsed.getTime())) {
+          parsed.setHours(23, 59, 59, 999);
+          endDate = parsed;
+        }
       }
 
       if (startDate > endDate) {
@@ -120,7 +126,7 @@ export function createMerchantRouter(
       const merchantId = await getAuthenticatedMerchantId(req);
 
       const [metrics, funnel, responseBreakdown, failureReasons, revenueTimeline] = await Promise.all([
-        analyticsService.getDashboardMetrics(merchantId),
+        analyticsService.getDashboardMetrics(merchantId, startDate, endDate),
         analyticsService.getRecoveryFunnel(merchantId),
         analyticsService.getCustomerResponseBreakdown(merchantId),
         analyticsService.getPaymentFailureReasons(merchantId),
@@ -148,8 +154,11 @@ export function createMerchantRouter(
         const inv: any = await inventoryRepo.findOne({ where: { product_id: p.id } });
         const soldRaw = await orderItemRepo
           .createQueryBuilder('oi')
+          .innerJoin('orders', 'o', 'o.id = oi.order_id')
           .select('SUM(oi.quantity)', 'sold')
           .where('oi.product_id = :pId', { pId: p.id })
+          .andWhere("o.status NOT IN ('cancelled', 'order_returned_to_seller', 'refund_initiated')")
+          .andWhere("(o.return_status IS NULL OR o.return_status NOT IN ('order_returned_to_seller', 'refund_initiated'))")
           .getRawOne();
         const unitsSold = parseInt(soldRaw?.sold || '0', 10);
         totalSold += unitsSold;
@@ -840,6 +849,7 @@ export function createMerchantRouter(
           order_number: order.order_number,
           status: order.status,
           created_at: order.created_at,
+          updated_at: order.updated_at,
           customer: {
             id: order.customer?.id,
             name: order.customer?.name || 'Customer',
@@ -857,6 +867,22 @@ export function createMerchantRouter(
           })),
           merchant_total_cents: merchantSubtotalCents,
           total_cents: Number(order.total_cents),
+          cancellation_reason: order.cancellation_reason || null,
+          cancellation_timestamp: order.cancellation_timestamp || null,
+          cancelled_by: order.cancelled_by || null,
+          refund_amount_cents: order.refund_amount_cents ? Number(order.refund_amount_cents) : null,
+          refund_status: order.refund_status || null,
+          return_status: order.return_status || null,
+          return_reason: order.return_reason || null,
+          return_requested_at: order.return_requested_at || null,
+          return_approved_at: order.return_approved_at || null,
+          return_rejected_at: order.return_rejected_at || null,
+          return_rejection_reason: order.return_rejection_reason || null,
+          pickup_scheduled_at: order.pickup_scheduled_at || null,
+          pickup_notes: order.pickup_notes || null,
+          picked_up_at: order.picked_up_at || null,
+          return_in_transit_at: order.return_in_transit_at || null,
+          returned_to_seller_at: order.returned_to_seller_at || null,
         };
       });
 
@@ -941,11 +967,107 @@ export function createMerchantRouter(
         items: mappedMerchantItems,
         merchant_total_cents: merchantSubtotalCents,
         order_total_cents: Number(order.total_cents),
+        cancellation_reason: order.cancellation_reason || null,
+        cancellation_timestamp: order.cancellation_timestamp || null,
+        cancelled_by: order.cancelled_by || null,
+        refund_amount_cents: order.refund_amount_cents ? Number(order.refund_amount_cents) : null,
+        refund_status: order.refund_status || null,
+        return_status: order.return_status || null,
+        return_reason: order.return_reason || null,
+        return_requested_at: order.return_requested_at || null,
+        return_approved_at: order.return_approved_at || null,
+        return_rejected_at: order.return_rejected_at || null,
+        return_rejection_reason: order.return_rejection_reason || null,
+        pickup_scheduled_at: order.pickup_scheduled_at || null,
+        pickup_notes: order.pickup_notes || null,
+        picked_up_at: order.picked_up_at || null,
+        return_in_transit_at: order.return_in_transit_at || null,
+        returned_to_seller_at: order.returned_to_seller_at || null,
+        refund_initiated_at: order.refund_initiated_at || null,
         timeline,
       });
     } catch (err: any) {
       console.error('Error fetching merchant order details:', err);
       res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * POST /api/merchant/orders/:id/approve-return
+   */
+  router.post('/orders/:id/approve-return', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { id } = req.params;
+
+      const order = await orderService.approveReturn(id, merchantId);
+      res.json(order);
+    } catch (err: any) {
+      console.error('Error approving return:', err);
+      const msg = err?.message || 'Failed to approve return';
+      if (msg === 'Order not found') return res.status(404).json({ error: msg });
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  /**
+   * POST /api/merchant/orders/:id/reject-return
+   */
+  router.post('/orders/:id/reject-return', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      const order = await orderService.rejectReturn(id, merchantId, reason);
+      res.json(order);
+    } catch (err: any) {
+      console.error('Error rejecting return:', err);
+      const msg = err?.message || 'Failed to reject return';
+      if (msg === 'Order not found') return res.status(404).json({ error: msg });
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  /**
+   * PATCH /api/merchant/orders/:id/return-logistics
+   */
+  router.patch('/orders/:id/return-logistics', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { id } = req.params;
+      const { status, pickup_notes } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ error: 'Logistics target status is required' });
+      }
+
+      const order = await orderService.updateReturnLogistics(id, merchantId, status, { pickupNotes: pickup_notes });
+      res.json(order);
+    } catch (err: any) {
+      console.error('Error updating return logistics:', err);
+      const msg = err?.message || 'Failed to update return logistics';
+      if (msg === 'Order not found') return res.status(404).json({ error: msg });
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  /**
+   * POST /api/merchant/orders/:id/initiate-refund
+   * Merchant action: Initiate refund for order returned to seller
+   */
+  router.post('/orders/:id/initiate-refund', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { id } = req.params;
+
+      const order = await orderService.initiateRefund(id, merchantId);
+      res.json(order);
+    } catch (err: any) {
+      console.error('Error initiating refund:', err);
+      const msg = err?.message || 'Failed to initiate refund';
+      if (msg === 'Order not found') return res.status(404).json({ error: msg });
+      res.status(400).json({ error: msg });
     }
   });
 

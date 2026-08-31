@@ -30,6 +30,8 @@ import { OrderTimeline } from '../models/OrderTimeline.js';
 
 // Test database configuration - uses same schema as production
 // Connects using getEnv() to ensure .env is loaded before creating DataSource
+import { AddOrderCancellationAndReturnFields1703000000019 } from '../migrations/1703000000019-AddOrderCancellationAndReturnFields.js';
+
 export const TestDataSource = new DataSource({
   type: 'postgres',
   url: getEnv().DATABASE_URL,
@@ -37,7 +39,7 @@ export const TestDataSource = new DataSource({
   logging: false,
   entities: [Customer, Merchant, Product, Inventory, Cart, CartItem, Order, OrderItem, PaymentAttempt, Payment, WebhookEvent, Recommendation, RecommendationEvent, PaymentFailure, RecoveryCase, RecoveryAction, MerchantConfig, AgentDecision, AuditLog, CustomerInteraction, PromiseToPay, MerchantInsight, OrderFeedback, MerchantApplication, MerchantApplicationTimeline, CustomerAddress, OrderTimeline],
   subscribers: [],
-  migrations: [], // Migrations run via npm script before tests, not here
+  migrations: [AddOrderCancellationAndReturnFields1703000000019],
   ssl: false,
 });
 
@@ -45,7 +47,11 @@ export async function initializeTestDatabase(): Promise<void> {
   try {
     if (!TestDataSource.isInitialized) {
       await TestDataSource.initialize();
-      console.log('Test database initialized (migrations pre-applied via globalSetup)');
+      await TestDataSource.runMigrations();
+      await TestDataSource.query(`
+        ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_initiated_at TIMESTAMP WITH TIME ZONE;
+      `);
+      console.log('Test database initialized and migrations applied');
     }
   } catch (error) {
     console.error('Failed to initialize test database:', error);

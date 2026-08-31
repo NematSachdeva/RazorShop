@@ -10,18 +10,18 @@ async function main() {
     // Initialize database
     await initializeDatabase();
 
+    // Create Express app
+    const app = createApp();
+
+    // Start server on 0.0.0.0 for universal IPv4/IPv6 localhost/network binding
+    const server = app.listen(env.PORT, '0.0.0.0', () => {
+      console.log(`✓ Server running on http://localhost:${env.PORT}`);
+    });
+
     // Auto-seed real catalog products and demo accounts
     const { AppDataSource } = await import('./config/database.js');
     const { seedDatabase } = await import('./seed.js');
     await seedDatabase(AppDataSource);
-
-    // Create Express app
-    const app = createApp();
-
-    // Start server
-    const server = app.listen(env.PORT, () => {
-      console.log(`✓ Server running on http://localhost:${env.PORT}`);
-    });
 
     // Start scheduler (M6 promise-to-pay workflow) - ONLY when SCHEDULER_ENABLED=true
     if (env.SCHEDULER_ENABLED && env.NODE_ENV !== 'test') {

@@ -12,7 +12,21 @@ import { Customer } from './Customer.js';
 import { OrderItem } from './OrderItem.js';
 import { Payment } from './Payment.js';
 
-export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'dispatched'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'return_requested'
+  | 'return_approved'
+  | 'return_rejected'
+  | 'pickup_scheduled'
+  | 'order_picked_up'
+  | 'return_in_transit'
+  | 'order_returned_to_seller'
+  | 'refund_initiated';
 
 export interface ShippingAddressSnapshot {
   full_address: string;
@@ -54,6 +68,57 @@ export class Order {
 
   @Column({ type: 'bigint' })
   total_cents!: number;
+
+  @Column({ type: 'text', nullable: true })
+  cancellation_reason?: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  cancellation_timestamp?: Date | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  cancelled_by?: 'customer' | 'merchant' | 'system' | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  refund_amount_cents?: number | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  refund_status?: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  return_status?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  return_reason?: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  return_requested_at?: Date | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  return_approved_at?: Date | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  return_rejected_at?: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  return_rejection_reason?: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  pickup_scheduled_at?: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  pickup_notes?: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  picked_up_at?: Date | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  return_in_transit_at?: Date | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  returned_to_seller_at?: Date | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  refund_initiated_at?: Date | null;
 
   @OneToMany('OrderItem', 'order', { cascade: true })
   items!: OrderItem[];

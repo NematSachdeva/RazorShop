@@ -42,9 +42,24 @@ export function createApp(
 
   // Middleware
   app.use(cors({
-    origin: env.FRONTEND_URL,
+    origin: true,
     credentials: true,
   }));
+
+  // Robust CORS preflight and header middleware for all browsers/environments
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    }
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
 
   // For Razorpay webhooks, capture raw body and parse as JSON
   // This must come before express.json() so we can access the raw body

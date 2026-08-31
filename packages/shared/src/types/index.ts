@@ -78,7 +78,21 @@ export interface ProductListResponse {
 }
 
 // M3 Order Models
-export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'dispatched'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'return_requested'
+  | 'return_approved'
+  | 'return_rejected'
+  | 'pickup_scheduled'
+  | 'order_picked_up'
+  | 'return_in_transit'
+  | 'order_returned_to_seller'
+  | 'refund_initiated';
 
 export interface ShippingAddressSnapshot {
   full_address: string;
@@ -109,6 +123,23 @@ export interface OrderDTO {
   tax_cents: number;
   discount_cents?: number;
   total_cents: number;
+  cancellation_reason?: string | null;
+  cancellation_timestamp?: Date | string | null;
+  cancelled_by?: 'customer' | 'merchant' | 'system' | null;
+  refund_amount_cents?: number | null;
+  refund_status?: string | null;
+  return_status?: string | null;
+  return_reason?: string | null;
+  return_requested_at?: Date | string | null;
+  return_approved_at?: Date | string | null;
+  return_rejected_at?: Date | string | null;
+  return_rejection_reason?: string | null;
+  pickup_scheduled_at?: Date | string | null;
+  pickup_notes?: string | null;
+  picked_up_at?: Date | string | null;
+  return_in_transit_at?: Date | string | null;
+  returned_to_seller_at?: Date | string | null;
+  refund_initiated_at?: Date | string | null;
   created_at: Date;
   updated_at: Date;
 }

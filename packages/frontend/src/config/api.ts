@@ -6,6 +6,8 @@ export const API_BASE_URL: string =
   import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD || import.meta.env.MODE === 'production'
     ? '/api'
+    : typeof window !== 'undefined'
+    ? `http://${window.location.hostname || 'localhost'}:3000/api`
     : 'http://localhost:3000/api');
 
 export const getApiUrl = (path: string): string => {

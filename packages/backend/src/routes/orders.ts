@@ -295,6 +295,82 @@ export function createOrdersRouter(
     })
   );
 
+  // POST /api/orders/:id/cancel
+  // Cancel an order (customer action)
+  router.post(
+    '/:id/cancel',
+    optionalAuthenticate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const { reason, customer_id } = req.body;
+
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid order ID format' });
+      }
+
+      if (!reason || typeof reason !== 'string' || !reason.trim()) {
+        return res.status(400).json({ error: 'Cancellation reason is required' });
+      }
+
+      const activeCustomerId = req.user?.id || customer_id;
+      if (!activeCustomerId || !UUID_REGEX.test(activeCustomerId)) {
+        return res.status(400).json({ error: 'Valid customer_id is required' });
+      }
+
+      if (req.user && req.user.role === 'customer' && req.user.id !== activeCustomerId) {
+        return res.status(403).json({ error: 'You do not have permission to cancel this order' });
+      }
+
+      try {
+        const order = await orderService.cancelOrder(id, activeCustomerId, reason);
+        res.status(200).json(order);
+      } catch (error: any) {
+        const msg = error?.message || 'Failed to cancel order';
+        if (msg === 'Order not found') return res.status(404).json({ error: msg });
+        if (msg === 'Order does not belong to this customer') return res.status(403).json({ error: msg });
+        return res.status(400).json({ error: msg });
+      }
+    })
+  );
+
+  // POST /api/orders/:id/return
+  // Request a return for a delivered order (customer action)
+  router.post(
+    '/:id/return',
+    optionalAuthenticate,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const { reason, customer_id } = req.body;
+
+      if (!UUID_REGEX.test(id)) {
+        return res.status(400).json({ error: 'Invalid order ID format' });
+      }
+
+      if (!reason || typeof reason !== 'string' || !reason.trim()) {
+        return res.status(400).json({ error: 'Return reason is required' });
+      }
+
+      const activeCustomerId = req.user?.id || customer_id;
+      if (!activeCustomerId || !UUID_REGEX.test(activeCustomerId)) {
+        return res.status(400).json({ error: 'Valid customer_id is required' });
+      }
+
+      if (req.user && req.user.role === 'customer' && req.user.id !== activeCustomerId) {
+        return res.status(403).json({ error: 'You do not have permission to request return for this order' });
+      }
+
+      try {
+        const order = await orderService.requestReturn(id, activeCustomerId, reason);
+        res.status(200).json(order);
+      } catch (error: any) {
+        const msg = error?.message || 'Failed to request return';
+        if (msg === 'Order not found') return res.status(404).json({ error: msg });
+        if (msg === 'Order does not belong to this customer') return res.status(403).json({ error: msg });
+        return res.status(400).json({ error: msg });
+      }
+    })
+  );
+
   return router;
 }
 

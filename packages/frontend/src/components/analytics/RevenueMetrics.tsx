@@ -11,6 +11,8 @@ interface MetricsData {
   failed_payments_total_cents: number;
   abandoned_carts_count: number;
   recovery_rate_percent: number;
+  orders_cancelled_count?: number;
+  orders_returned_count?: number;
   period: {
     start_date: string;
     end_date: string;
@@ -49,11 +51,25 @@ export default function RevenueMetrics({ metrics }: RevenueMetricsProps) {
       badgeColor: 'text-blue-700 bg-blue-100',
     },
     {
+      label: 'Orders Cancelled',
+      value: (metrics.orders_cancelled_count || 0).toString(),
+      subtext: 'Customer cancellations',
+      accent: 'border-rose-500 bg-rose-50/70',
+      badgeColor: 'text-rose-700 bg-rose-100',
+    },
+    {
+      label: 'Orders Returned',
+      value: (metrics.orders_returned_count || 0).toString(),
+      subtext: 'Returned to seller',
+      accent: 'border-purple-500 bg-purple-50/70',
+      badgeColor: 'text-purple-700 bg-purple-100',
+    },
+    {
       label: 'Failed Payments',
       value: metrics.failed_payments_count.toString(),
       subtext: formatPrice(metrics.failed_payments_total_cents),
-      accent: 'border-rose-500 bg-rose-50/70',
-      badgeColor: 'text-rose-700 bg-rose-100',
+      accent: 'border-red-500 bg-red-50/70',
+      badgeColor: 'text-red-700 bg-red-100',
     },
     {
       label: 'Abandoned Carts',
@@ -74,11 +90,11 @@ export default function RevenueMetrics({ metrics }: RevenueMetricsProps) {
       <div className="flex justify-between items-center mb-4">
         <div>
           <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">Financial Overview</span>
-          <h2 className="text-xl sm:text-2xl font-black text-gray-900">Revenue Metrics</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900">Revenue & Order Metrics</h2>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {metricCards.map((card, idx) => (
           <div
             key={idx}

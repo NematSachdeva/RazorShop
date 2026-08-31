@@ -34,6 +34,8 @@ interface DashboardData {
     failed_payments_total_cents: number;
     abandoned_carts_count: number;
     recovery_rate_percent: number;
+    orders_cancelled_count?: number;
+    orders_returned_count?: number;
     period: {
       start_date: string;
       end_date: string;

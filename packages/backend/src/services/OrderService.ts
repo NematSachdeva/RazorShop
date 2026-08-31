@@ -33,6 +33,23 @@ export interface OrderDTO {
   tax_cents: number;
   discount_cents?: number;
   total_cents: number;
+  cancellation_reason?: string | null;
+  cancellation_timestamp?: Date | string | null;
+  cancelled_by?: 'customer' | 'merchant' | 'system' | null;
+  refund_amount_cents?: number | null;
+  refund_status?: string | null;
+  return_status?: string | null;
+  return_reason?: string | null;
+  return_requested_at?: Date | string | null;
+  return_approved_at?: Date | string | null;
+  return_rejected_at?: Date | string | null;
+  return_rejection_reason?: string | null;
+  pickup_scheduled_at?: Date | string | null;
+  pickup_notes?: string | null;
+  picked_up_at?: Date | string | null;
+  return_in_transit_at?: Date | string | null;
+  returned_to_seller_at?: Date | string | null;
+  refund_initiated_at?: Date | string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -462,6 +479,475 @@ export class OrderService {
   }
 
   /**
+   * Cancel an order (customer action)
+   */
+  async cancelOrder(orderId: string, customerId: string, reason: string): Promise<OrderDTO> {
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      throw new Error('Cancellation reason is required');
+    }
+
+    const order = await this.getOrderRepository().findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (order.customer_id !== customerId) {
+      throw new Error('Order does not belong to this customer');
+    }
+
+    const currentStatus = order.status;
+
+    if (currentStatus === 'cancelled') {
+      throw new Error('Order is already cancelled');
+    }
+
+    if (currentStatus === 'dispatched' || currentStatus === 'shipped') {
+      throw new Error('Order cannot be cancelled after dispatch');
+    }
+
+    if (currentStatus === 'delivered') {
+      throw new Error('Order cannot be cancelled after delivery');
+    }
+
+    if (currentStatus !== 'confirmed') {
+      throw new Error(`Order cannot be cancelled in '${currentStatus}' status`);
+    }
+
+    order.status = 'cancelled';
+    order.cancellation_reason = reason.trim();
+    order.cancellation_timestamp = new Date();
+    order.cancelled_by = 'customer';
+    order.refund_amount_cents = Number(order.total_cents);
+    order.refund_status = 'completed';
+
+    // Restore inventory (idempotent: restore stock when cancellation is saved for the first time)
+    if (order.items && order.items.length > 0) {
+      const inventoryRepo = this.dataSource.getRepository(Inventory);
+      for (const item of order.items) {
+        const inv = await inventoryRepo.findOne({ where: { product_id: item.product_id } });
+        if (inv) {
+          inv.quantity_on_hand += item.quantity;
+          if (inv.reserved > 0) {
+            inv.reserved = Math.max(0, inv.reserved - item.quantity);
+          }
+          inv.last_updated = new Date();
+          await inventoryRepo.save(inv);
+        }
+      }
+    }
+
+    const savedOrder = await this.getOrderRepository().save(order);
+
+    const existingTimeline = await this.getTimelineRepository().findOne({
+      where: { order_id: orderId, event_type: 'ORDER_CANCELLED' },
+    });
+
+    if (!existingTimeline) {
+      await this.addTimelineEvent(
+        orderId,
+        'ORDER_CANCELLED',
+        'customer',
+        customerId,
+        `Order cancelled by customer: ${reason.trim()}`
+      );
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendOrderCancelledNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              amountCents: Number(order.total_cents),
+              reason: reason.trim(),
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send cancellation email:', emailErr);
+        }
+      }
+    }
+
+    return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
+   * Request a return for a delivered order (customer action)
+   */
+  async requestReturn(orderId: string, customerId: string, reason: string): Promise<OrderDTO> {
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      throw new Error('Return reason is required');
+    }
+
+    const order = await this.getOrderRepository().findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (order.customer_id !== customerId) {
+      throw new Error('Order does not belong to this customer');
+    }
+
+    if (order.status !== 'delivered') {
+      throw new Error('Return can only be requested for delivered orders');
+    }
+
+    if (order.return_status && order.return_status !== 'none') {
+      throw new Error(`Return request already exists with status '${order.return_status}'`);
+    }
+
+    order.status = 'return_requested';
+    order.return_status = 'return_requested';
+    order.return_reason = reason.trim();
+    order.return_requested_at = new Date();
+
+    const savedOrder = await this.getOrderRepository().save(order);
+
+    const existingTimeline = await this.getTimelineRepository().findOne({
+      where: { order_id: orderId, event_type: 'RETURN_REQUESTED' },
+    });
+
+    if (!existingTimeline) {
+      await this.addTimelineEvent(
+        orderId,
+        'RETURN_REQUESTED',
+        'customer',
+        customerId,
+        `Return requested by customer: ${reason.trim()}`
+      );
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendReturnStatusNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              status: 'RETURN_REQUESTED',
+              reason: reason.trim(),
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send return requested email:', emailErr);
+        }
+      }
+    }
+
+    return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
+   * Approve a return request (merchant action)
+   */
+  async approveReturn(orderId: string, merchantId: string): Promise<OrderDTO> {
+    const order = await this.getOrderRepository().findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (order.return_status !== 'return_requested') {
+      throw new Error(`Cannot approve return in '${order.return_status || order.status}' status`);
+    }
+
+    order.status = 'return_approved';
+    order.return_status = 'return_approved';
+    order.return_approved_at = new Date();
+
+    const savedOrder = await this.getOrderRepository().save(order);
+
+    const existingTimeline = await this.getTimelineRepository().findOne({
+      where: { order_id: orderId, event_type: 'RETURN_APPROVED' },
+    });
+
+    if (!existingTimeline) {
+      await this.addTimelineEvent(
+        orderId,
+        'RETURN_APPROVED',
+        'merchant',
+        merchantId,
+        'Return request approved by merchant'
+      );
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendReturnStatusNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              status: 'RETURN_APPROVED',
+              reason: order.return_reason || undefined,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send return approved email:', emailErr);
+        }
+      }
+    }
+
+    return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
+   * Reject a return request (merchant action)
+   */
+  async rejectReturn(orderId: string, merchantId: string, reason?: string): Promise<OrderDTO> {
+    const order = await this.getOrderRepository().findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (order.return_status !== 'return_requested') {
+      throw new Error(`Cannot reject return in '${order.return_status || order.status}' status`);
+    }
+
+    order.status = 'return_rejected';
+    order.return_status = 'return_rejected';
+    order.return_rejected_at = new Date();
+    order.return_rejection_reason = reason ? reason.trim() : null;
+
+    const savedOrder = await this.getOrderRepository().save(order);
+
+    const existingTimeline = await this.getTimelineRepository().findOne({
+      where: { order_id: orderId, event_type: 'RETURN_REJECTED' },
+    });
+
+    if (!existingTimeline) {
+      await this.addTimelineEvent(
+        orderId,
+        'RETURN_REJECTED',
+        'merchant',
+        merchantId,
+        `Return request rejected by merchant${reason ? `: ${reason.trim()}` : ''}`
+      );
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendReturnStatusNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              status: 'RETURN_REJECTED',
+              rejectionReason: reason ? reason.trim() : undefined,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send return rejected email:', emailErr);
+        }
+      }
+    }
+
+    return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
+   * Update return logistics progression (merchant action)
+   */
+  async updateReturnLogistics(
+    orderId: string,
+    merchantId: string,
+    targetStatus: 'pickup_scheduled' | 'order_picked_up' | 'return_in_transit' | 'order_returned_to_seller',
+    details?: { pickupNotes?: string }
+  ): Promise<OrderDTO> {
+    const order = await this.getOrderRepository().findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    const currentReturnStatus = order.return_status || order.status;
+
+    if (targetStatus === 'pickup_scheduled') {
+      if (currentReturnStatus !== 'return_approved') {
+        throw new Error(`Cannot schedule pickup before return approval. Current status is '${currentReturnStatus}'`);
+      }
+      order.status = 'pickup_scheduled';
+      order.return_status = 'pickup_scheduled';
+      order.pickup_scheduled_at = new Date();
+      if (details?.pickupNotes) {
+        order.pickup_notes = details.pickupNotes.trim();
+      }
+    } else if (targetStatus === 'order_picked_up') {
+      if (currentReturnStatus !== 'pickup_scheduled') {
+        throw new Error(`Cannot mark picked up before pickup is scheduled. Current status is '${currentReturnStatus}'`);
+      }
+      order.status = 'order_picked_up';
+      order.return_status = 'order_picked_up';
+      order.picked_up_at = new Date();
+    } else if (targetStatus === 'return_in_transit') {
+      if (currentReturnStatus !== 'order_picked_up') {
+        throw new Error(`Cannot mark return in transit before item is picked up. Current status is '${currentReturnStatus}'`);
+      }
+      order.status = 'return_in_transit';
+      order.return_status = 'return_in_transit';
+      order.return_in_transit_at = new Date();
+    } else if (targetStatus === 'order_returned_to_seller') {
+      if (currentReturnStatus !== 'return_in_transit') {
+        throw new Error(`Cannot mark returned to seller before return is in transit. Current status is '${currentReturnStatus}'`);
+      }
+      const isFirstTimeReturnedToSeller =
+        order.return_status !== 'order_returned_to_seller' && order.return_status !== 'refund_initiated';
+
+      order.status = 'order_returned_to_seller';
+      order.return_status = 'order_returned_to_seller';
+      order.returned_to_seller_at = new Date();
+
+      if (isFirstTimeReturnedToSeller && order.items && order.items.length > 0) {
+        const inventoryRepo = this.dataSource.getRepository(Inventory);
+        for (const item of order.items) {
+          const inv = await inventoryRepo.findOne({ where: { product_id: item.product_id } });
+          if (inv) {
+            inv.quantity_on_hand += item.quantity;
+            inv.last_updated = new Date();
+            await inventoryRepo.save(inv);
+          }
+        }
+      }
+    } else {
+      throw new Error(`Invalid return logistics status: '${targetStatus}'`);
+    }
+
+    const savedOrder = await this.getOrderRepository().save(order);
+
+    const eventTypeMap: Record<string, OrderTimelineEventType> = {
+      pickup_scheduled: 'PICKUP_SCHEDULED',
+      order_picked_up: 'ORDER_PICKED_UP',
+      return_in_transit: 'RETURN_IN_TRANSIT',
+      order_returned_to_seller: 'ORDER_RETURNED_TO_SELLER',
+    };
+
+    const eventType = eventTypeMap[targetStatus];
+    const existingTimeline = await this.getTimelineRepository().findOne({
+      where: { order_id: orderId, event_type: eventType },
+    });
+
+    if (!existingTimeline) {
+      await this.addTimelineEvent(
+        orderId,
+        eventType,
+        'merchant',
+        merchantId,
+        `Return logistics updated to ${targetStatus.replace(/_/g, ' ')}`
+      );
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendReturnStatusNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              status: eventType,
+              notes: details?.pickupNotes || undefined,
+            }
+          );
+        } catch (emailErr) {
+          console.error(`[OrderService] Failed to send ${eventType} email:`, emailErr);
+        }
+      }
+    }
+
+    return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
+   * Merchant action: Initiate refund after order is returned to seller
+   */
+  async initiateRefund(orderId: string, merchantId: string): Promise<OrderDTO> {
+    const order = await this.getOrderRepository().findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    const currentReturnStatus = order.return_status || order.status;
+
+    if (currentReturnStatus === 'refund_initiated' || order.refund_initiated_at) {
+      throw new Error('Refund has already been initiated for this order');
+    }
+
+    if (currentReturnStatus !== 'order_returned_to_seller') {
+      throw new Error(`Cannot initiate refund before order is returned to seller. Current status is '${currentReturnStatus}'`);
+    }
+
+    order.status = 'refund_initiated';
+    order.return_status = 'refund_initiated';
+    order.refund_status = 'initiated';
+    order.refund_amount_cents = order.total_cents;
+    order.refund_initiated_at = new Date();
+
+    const savedOrder = await this.getOrderRepository().save(order);
+
+    const existingTimeline = await this.getTimelineRepository().findOne({
+      where: { order_id: orderId, event_type: 'REFUND_INITIATED' },
+    });
+
+    if (!existingTimeline) {
+      const formattedAmount = (Number(savedOrder.total_cents) / 100).toFixed(2);
+      await this.addTimelineEvent(
+        orderId,
+        'REFUND_INITIATED',
+        'merchant',
+        merchantId,
+        `Refund of ₹${formattedAmount} initiated to original payment source`
+      );
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendRefundInitiatedNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              refundAmountCents: Number(order.total_cents),
+              paymentSource: 'Original payment method',
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send refund initiated email:', emailErr);
+        }
+      }
+    }
+
+    return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
    * Convert Order entity to OrderDTO
    */
   private orderToDTO(order: Order, items: OrderItem[]): OrderDTO {
@@ -486,6 +972,23 @@ export class OrderService {
       tax_cents: Number(order.tax_cents),
       discount_cents: Number(order.discount_cents || 0),
       total_cents: Number(order.total_cents),
+      cancellation_reason: order.cancellation_reason || null,
+      cancellation_timestamp: order.cancellation_timestamp || null,
+      cancelled_by: order.cancelled_by || null,
+      refund_amount_cents: order.refund_amount_cents ? Number(order.refund_amount_cents) : null,
+      refund_status: order.refund_status || null,
+      return_status: order.return_status || null,
+      return_reason: order.return_reason || null,
+      return_requested_at: order.return_requested_at || null,
+      return_approved_at: order.return_approved_at || null,
+      return_rejected_at: order.return_rejected_at || null,
+      return_rejection_reason: order.return_rejection_reason || null,
+      pickup_scheduled_at: order.pickup_scheduled_at || null,
+      pickup_notes: order.pickup_notes || null,
+      picked_up_at: order.picked_up_at || null,
+      return_in_transit_at: order.return_in_transit_at || null,
+      returned_to_seller_at: order.returned_to_seller_at || null,
+      refund_initiated_at: order.refund_initiated_at || null,
       created_at: order.created_at,
       updated_at: order.updated_at,
     };

@@ -20,7 +20,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@razor/shared": ["../shared/src/index.ts"],
+      "@razor/shared": ["../shared/src/types/index.ts"],
       "@razor/shared/*": ["../shared/src/*"]
     }
   },

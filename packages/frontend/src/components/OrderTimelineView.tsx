@@ -18,13 +18,75 @@ interface OrderTimelineViewProps {
 export const OrderTimelineView: React.FC<OrderTimelineViewProps> = ({ timeline, currentStatus }) => {
   const normStatus = (currentStatus || 'pending').toLowerCase();
 
-  const steps = [
-    { key: 'confirmed', label: 'Order Confirmed', event: 'ORDER_CONFIRMED' },
+  const isCancelled = normStatus === 'cancelled';
+  const isRejected = normStatus === 'return_rejected';
+  const isReturnFlow =
+    normStatus.startsWith('return_') ||
+    normStatus.startsWith('pickup_') ||
+    normStatus.startsWith('order_picked_') ||
+    normStatus === 'order_returned_to_seller' ||
+    normStatus === 'refund_initiated';
+
+  // Standard steps
+  const standardSteps = [
+    { key: 'confirmed', label: 'Confirmed', event: 'ORDER_CONFIRMED' },
     { key: 'dispatched', label: 'Dispatched', event: 'ORDER_DISPATCHED' },
     { key: 'delivered', label: 'Delivered', event: 'ORDER_DELIVERED' },
   ];
 
+  // Full return steps
+  const fullReturnSteps = [
+    { key: 'return_requested', label: 'Return Requested', event: 'RETURN_REQUESTED' },
+    { key: 'return_approved', label: 'Return Approved', event: 'RETURN_APPROVED' },
+    { key: 'pickup_scheduled', label: 'Pickup Scheduled', event: 'PICKUP_SCHEDULED' },
+    { key: 'order_picked_up', label: 'Picked Up', event: 'ORDER_PICKED_UP' },
+    { key: 'return_in_transit', label: 'In Transit', event: 'RETURN_IN_TRANSIT' },
+    { key: 'order_returned_to_seller', label: 'Returned to Seller', event: 'ORDER_RETURNED_TO_SELLER' },
+    { key: 'refund_initiated', label: 'Refund Initiated', event: 'REFUND_INITIATED' },
+  ];
+
+  // Rejected return steps
+  const rejectedReturnSteps = [
+    { key: 'return_requested', label: 'Return Requested', event: 'RETURN_REQUESTED' },
+    { key: 'return_rejected', label: 'Return Rejected', event: 'RETURN_REJECTED' },
+  ];
+
+  const getEventForStep = (stepEvent: string) => {
+    return (timeline || []).find((e) => e.event_type === stepEvent);
+  };
+
+  const returnSequence = [
+    'return_requested',
+    'return_approved',
+    'pickup_scheduled',
+    'order_picked_up',
+    'return_in_transit',
+    'order_returned_to_seller',
+    'refund_initiated',
+  ];
+
+  const currentReturnIndex = returnSequence.indexOf(normStatus);
+
   const getStepState = (stepKey: string) => {
+    if (isCancelled) {
+      if (stepKey === 'confirmed' || stepKey === 'cancelled') return 'completed';
+      return 'upcoming';
+    }
+
+    if (isRejected) {
+      if (['confirmed', 'dispatched', 'delivered', 'return_requested', 'return_rejected'].includes(stepKey)) {
+        return 'completed';
+      }
+      return 'upcoming';
+    }
+
+    if (isReturnFlow) {
+      if (['confirmed', 'dispatched', 'delivered'].includes(stepKey)) return 'completed';
+      const stepIdx = returnSequence.indexOf(stepKey);
+      if (stepIdx !== -1 && stepIdx <= currentReturnIndex) return 'completed';
+      return 'upcoming';
+    }
+
     if (normStatus === 'delivered') return 'completed';
     if (normStatus === 'dispatched' || normStatus === 'shipped') {
       if (stepKey === 'confirmed' || stepKey === 'dispatched') return 'completed';
@@ -37,55 +99,57 @@ export const OrderTimelineView: React.FC<OrderTimelineViewProps> = ({ timeline, 
     return 'upcoming';
   };
 
-  const getEventForStep = (stepEvent: string) => {
-    return (timeline || []).find((e) => e.event_type === stepEvent);
-  };
+  const stepsToRender = isCancelled
+    ? [
+        { key: 'confirmed', label: 'Order Confirmed', event: 'ORDER_CONFIRMED' },
+        { key: 'cancelled', label: 'Cancelled', event: 'ORDER_CANCELLED' },
+      ]
+    : isRejected
+    ? [...standardSteps, ...rejectedReturnSteps]
+    : isReturnFlow
+    ? [...standardSteps, ...fullReturnSteps]
+    : standardSteps;
 
   return (
-    <div className="bg-gray-50/80 border border-gray-200/80 rounded-xl p-4 sm:p-5 space-y-5">
+    <div className="bg-gray-50/80 border border-gray-200/80 rounded-xl p-4 sm:p-5 space-y-5 font-sans">
       <div className="flex items-center justify-between">
         <h4 className="text-xs sm:text-sm font-extrabold text-gray-900 uppercase tracking-wider">
-          Fulfillment Status Timeline
+          Fulfillment & Return Timeline
         </h4>
-        <span className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-lg bg-blue-100 text-blue-800 border border-blue-200">
-          Status: {currentStatus}
+        <span className={`px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-lg border ${
+          isCancelled || isRejected
+            ? 'bg-rose-100 text-rose-800 border-rose-200'
+            : isReturnFlow
+            ? 'bg-amber-100 text-amber-800 border-amber-200'
+            : 'bg-blue-100 text-blue-800 border-blue-200'
+        }`}>
+          Status: {currentStatus.replace(/_/g, ' ')}
         </span>
       </div>
 
-      {/* Progress Bar / Steps */}
-      <div className="relative flex items-center justify-between max-w-md mx-auto py-2">
-        {/* Connecting Line */}
-        <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-1 bg-gray-200 -z-0">
-          <div
-            className="h-full bg-blue-600 transition-all duration-500"
-            style={{
-              width:
-                normStatus === 'delivered'
-                  ? '100%'
-                  : normStatus === 'dispatched' || normStatus === 'shipped'
-                  ? '50%'
-                  : normStatus === 'confirmed'
-                  ? '0%'
-                  : '0%',
-            }}
-          />
-        </div>
-
-        {steps.map((step) => {
+      {/* Steps List */}
+      <div className="flex flex-wrap items-center justify-between gap-3 py-2">
+        {stepsToRender.map((step) => {
           const state = getStepState(step.key);
           const ev = getEventForStep(step.event);
           const isCompleted = state === 'completed';
+          const isCurrentTarget = normStatus === step.key;
+          const isFailedStep = step.key === 'cancelled' || step.key === 'return_rejected';
 
           return (
-            <div key={step.key} className="relative z-10 flex flex-col items-center group">
+            <div key={step.key} className="flex-1 min-w-[90px] flex flex-col items-center text-center group">
               <div
                 className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-extrabold text-xs transition-all shadow-sm ${
-                  isCompleted
+                  isFailedStep && isCompleted
+                    ? 'bg-rose-600 text-white ring-4 ring-rose-100'
+                    : isCompleted
                     ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md'
                     : 'bg-white border-2 border-gray-300 text-gray-400'
                 }`}
               >
-                {isCompleted ? (
+                {isFailedStep && isCompleted ? (
+                  <span className="text-sm font-black">✕</span>
+                ) : isCompleted ? (
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
@@ -94,14 +158,18 @@ export const OrderTimelineView: React.FC<OrderTimelineViewProps> = ({ timeline, 
                 )}
               </div>
               <span
-                className={`mt-2 text-xs font-bold text-center ${
-                  isCompleted ? 'text-gray-900' : 'text-gray-500'
+                className={`mt-2 text-[11px] font-bold text-center leading-tight ${
+                  isCurrentTarget
+                    ? 'text-blue-700 font-black'
+                    : isCompleted
+                    ? 'text-gray-900'
+                    : 'text-gray-400'
                 }`}
               >
                 {step.label}
               </span>
               {ev && (
-                <span className="text-[10px] text-gray-500 mt-0.5 font-medium">
+                <span className="text-[9px] text-gray-500 mt-0.5 font-mono">
                   {new Date(ev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               )}
@@ -114,7 +182,7 @@ export const OrderTimelineView: React.FC<OrderTimelineViewProps> = ({ timeline, 
       {timeline && timeline.length > 0 && (
         <div className="pt-3 border-t border-gray-200/80 space-y-2.5">
           <h5 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Activity Log</h5>
-          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+          <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
             {timeline.map((item) => (
               <div
                 key={item.id}

@@ -28,6 +28,8 @@ export interface DashboardMetrics {
   failed_payments_total_cents: number;
   abandoned_carts_count: number;
   recovery_rate_percent: number;
+  orders_cancelled_count: number;
+  orders_returned_count: number;
   period: {
     start_date: Date;
     end_date: Date;
@@ -131,14 +133,20 @@ export class AnalyticsService {
   /**
    * Get comprehensive dashboard metrics
    */
-  async getDashboardMetrics(merchantId?: string): Promise<DashboardMetrics> {
+  async getDashboardMetrics(merchantId?: string, startDate?: Date, endDate?: Date): Promise<DashboardMetrics> {
     const hasMerchant = isUuid(merchantId);
+    const end = endDate || new Date();
+    const start = startDate || new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     // Total revenue
     let totalRevQuery = this.getOrderRepository()
       .createQueryBuilder('order')
       .select('SUM(order.total_cents)', 'total')
-      .where("order.status IN ('confirmed', 'shipped', 'delivered')");
+      .where("order.status NOT IN ('cancelled', 'pending', 'order_returned_to_seller', 'refund_initiated')")
+      .andWhere("(order.return_status IS NULL OR order.return_status NOT IN ('order_returned_to_seller', 'refund_initiated'))");
+    if (startDate && endDate) {
+      totalRevQuery = totalRevQuery.andWhere('order.created_at >= :start AND order.created_at <= :end', { start, end });
+    }
     if (hasMerchant) {
       totalRevQuery = totalRevQuery
         .andWhere((qb) => {
@@ -148,7 +156,7 @@ export class AnalyticsService {
             .from(OrderItem, 'item')
             .innerJoin('item.product', 'product')
             .where('item.order_id = order.id')
-            .andWhere('product.merchant_id = :merchantId')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
             .getQuery();
           return `EXISTS ${subQuery}`;
         })
@@ -172,6 +180,9 @@ export class AnalyticsService {
           .getQuery();
         return `EXISTS ${subQuery}`;
       });
+    if (startDate && endDate) {
+      atRiskQuery = atRiskQuery.andWhere('order.created_at >= :start AND order.created_at <= :end', { start, end });
+    }
     if (hasMerchant) {
       atRiskQuery = atRiskQuery
         .andWhere((qb) => {
@@ -181,7 +192,7 @@ export class AnalyticsService {
             .from(OrderItem, 'item')
             .innerJoin('item.product', 'product')
             .where('item.order_id = order.id')
-            .andWhere('product.merchant_id = :merchantId')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
             .getQuery();
           return `EXISTS ${subQuery}`;
         })
@@ -194,7 +205,8 @@ export class AnalyticsService {
     let recoveredQuery = this.getOrderRepository()
       .createQueryBuilder('order')
       .select('SUM(order.total_cents)', 'total')
-      .where("order.status IN ('confirmed', 'shipped', 'delivered')")
+      .where("order.status NOT IN ('cancelled', 'pending', 'order_returned_to_seller', 'refund_initiated')")
+      .andWhere("(order.return_status IS NULL OR order.return_status NOT IN ('order_returned_to_seller', 'refund_initiated'))")
       .andWhere((qb) => {
         const subQuery = qb
           .subQuery()
@@ -205,6 +217,9 @@ export class AnalyticsService {
           .getQuery();
         return `EXISTS ${subQuery}`;
       });
+    if (startDate && endDate) {
+      recoveredQuery = recoveredQuery.andWhere('order.created_at >= :start AND order.created_at <= :end', { start, end });
+    }
     if (hasMerchant) {
       recoveredQuery = recoveredQuery
         .andWhere((qb) => {
@@ -214,7 +229,7 @@ export class AnalyticsService {
             .from(OrderItem, 'item')
             .innerJoin('item.product', 'product')
             .where('item.order_id = order.id')
-            .andWhere('product.merchant_id = :merchantId')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
             .getQuery();
           return `EXISTS ${subQuery}`;
         })
@@ -231,6 +246,9 @@ export class AnalyticsService {
       .addSelect('SUM(payment.amount_cents)', 'total_amount')
       .innerJoin('pf.payment', 'payment')
       .innerJoin('payment.order', 'order');
+    if (startDate && endDate) {
+      failureStatsQuery = failureStatsQuery.andWhere('pf.detected_at >= :start AND pf.detected_at <= :end', { start, end });
+    }
     if (hasMerchant) {
       failureStatsQuery = failureStatsQuery
         .andWhere((qb) => {
@@ -240,7 +258,7 @@ export class AnalyticsService {
             .from(OrderItem, 'item')
             .innerJoin('item.product', 'product')
             .where('item.order_id = order.id')
-            .andWhere('product.merchant_id = :merchantId')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
             .getQuery();
           return `EXISTS ${subQuery}`;
         })
@@ -258,6 +276,9 @@ export class AnalyticsService {
         .addSelect('SUM(payment.amount_cents)', 'total_amount')
         .leftJoin('payment.order', 'order')
         .where("payment.status = 'failed' OR payment.failure_reason IS NOT NULL");
+      if (startDate && endDate) {
+        fallbackQuery = fallbackQuery.andWhere('payment.created_at >= :start AND payment.created_at <= :end', { start, end });
+      }
       const fallbackStats = await fallbackQuery.getRawOne();
       failed_payments_count = fallbackStats?.count ? parseInt(fallbackStats.count, 10) : 0;
       failed_payments_total_cents = fallbackStats?.total_amount ? parseInt(fallbackStats.total_amount, 10) : 0;
@@ -266,12 +287,15 @@ export class AnalyticsService {
     // Abandoned Carts Count
     let abandonedCartsCount = 0;
     try {
-      const cartResult = await this.dataSource
+      let cartQb = this.dataSource
         .createQueryBuilder()
         .select('COUNT(c.id)', 'count')
         .from('carts', 'c')
-        .where("c.status = 'pending'")
-        .getRawOne();
+        .where("c.status = 'pending'");
+      if (startDate && endDate) {
+        cartQb = cartQb.andWhere('c.created_at >= :start AND c.created_at <= :end', { start, end });
+      }
+      const cartResult = await cartQb.getRawOne();
       abandonedCartsCount = cartResult?.count ? parseInt(cartResult.count, 10) : 0;
     } catch {
       abandonedCartsCount = 0;
@@ -283,6 +307,9 @@ export class AnalyticsService {
       .createQueryBuilder('rc')
       .select('COUNT(rc.id)', 'count')
       .innerJoin('rc.order', 'order');
+    if (startDate && endDate) {
+      rcCountQuery = rcCountQuery.andWhere('rc.created_at >= :start AND rc.created_at <= :end', { start, end });
+    }
     if (hasMerchant) {
       rcCountQuery = rcCountQuery
         .andWhere((qb) => {
@@ -292,7 +319,7 @@ export class AnalyticsService {
             .from(OrderItem, 'item')
             .innerJoin('item.product', 'product')
             .where('item.order_id = order.id')
-            .andWhere('product.merchant_id = :merchantId')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
             .getQuery();
           return `EXISTS ${subQuery}`;
         })
@@ -306,7 +333,10 @@ export class AnalyticsService {
         .createQueryBuilder('rc')
         .select('COUNT(rc.id)', 'count')
         .innerJoin('rc.order', 'order')
-        .where("(rc.status = 'resolved' OR order.status IN ('confirmed', 'shipped', 'delivered'))");
+        .where("(rc.status = 'resolved' OR order.status NOT IN ('cancelled', 'pending', 'order_returned_to_seller', 'refund_initiated'))");
+      if (startDate && endDate) {
+        rcResolvedQuery = rcResolvedQuery.andWhere('rc.created_at >= :start AND rc.created_at <= :end', { start, end });
+      }
       if (hasMerchant) {
         rcResolvedQuery = rcResolvedQuery
           .andWhere((qb) => {
@@ -316,7 +346,7 @@ export class AnalyticsService {
               .from(OrderItem, 'item')
               .innerJoin('item.product', 'product')
               .where('item.order_id = order.id')
-              .andWhere('product.merchant_id = :merchantId')
+              .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
               .getQuery();
             return `EXISTS ${subQuery}`;
           })
@@ -329,7 +359,7 @@ export class AnalyticsService {
       let recoveredCountQuery = this.getOrderRepository()
         .createQueryBuilder('order')
         .select('COUNT(order.id)', 'count')
-        .where("order.status IN ('confirmed', 'shipped', 'delivered')")
+        .where("order.status NOT IN ('cancelled', 'pending', 'order_returned_to_seller', 'refund_initiated')")
         .andWhere((qb) => {
           const subQuery = qb
             .subQuery()
@@ -340,6 +370,9 @@ export class AnalyticsService {
             .getQuery();
           return `EXISTS ${subQuery}`;
         });
+      if (startDate && endDate) {
+        recoveredCountQuery = recoveredCountQuery.andWhere('order.created_at >= :start AND order.created_at <= :end', { start, end });
+      }
       if (hasMerchant) {
         recoveredCountQuery = recoveredCountQuery
           .andWhere((qb) => {
@@ -349,7 +382,7 @@ export class AnalyticsService {
               .from(OrderItem, 'item')
               .innerJoin('item.product', 'product')
               .where('item.order_id = order.id')
-              .andWhere('product.merchant_id = :merchantId')
+              .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
               .getQuery();
             return `EXISTS ${subQuery}`;
           })
@@ -362,8 +395,63 @@ export class AnalyticsService {
       recovery_rate_percent = 0;
     }
 
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    // Orders Cancelled Count
+    let cancelledQuery = this.getOrderRepository()
+      .createQueryBuilder('order')
+      .select('COUNT(order.id)', 'count')
+      .where("order.status = 'cancelled'");
+    if (startDate && endDate) {
+      cancelledQuery = cancelledQuery.andWhere(
+        '((order.cancellation_timestamp >= :start AND order.cancellation_timestamp <= :end) OR (order.cancellation_timestamp IS NULL AND order.created_at >= :start AND order.created_at <= :end))',
+        { start, end }
+      );
+    }
+    if (hasMerchant) {
+      cancelledQuery = cancelledQuery
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
+    }
+    const cancelledResult = await cancelledQuery.getRawOne();
+    const orders_cancelled_count = cancelledResult?.count ? parseInt(cancelledResult.count, 10) : 0;
+
+    // Orders Returned Count: Authoritative check - ONLY orders that have reached 'order_returned_to_seller' or 'refund_initiated'
+    let returnedQuery = this.getOrderRepository()
+      .createQueryBuilder('order')
+      .select('COUNT(order.id)', 'count')
+      .where("(order.return_status IN ('order_returned_to_seller', 'refund_initiated') OR order.status IN ('order_returned_to_seller', 'refund_initiated'))");
+    if (startDate && endDate) {
+      returnedQuery = returnedQuery.andWhere(
+        '((order.returned_to_seller_at >= :start AND order.returned_to_seller_at <= :end) OR (order.returned_to_seller_at IS NULL AND order.created_at >= :start AND order.created_at <= :end))',
+        { start, end }
+      );
+    }
+    if (hasMerchant) {
+      returnedQuery = returnedQuery
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = order.id')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
+    }
+    const returnedResult = await returnedQuery.getRawOne();
+    const orders_returned_count = returnedResult?.count ? parseInt(returnedResult.count, 10) : 0;
 
     return {
       total_revenue_cents,
@@ -373,9 +461,11 @@ export class AnalyticsService {
       failed_payments_total_cents,
       abandoned_carts_count: abandonedCartsCount,
       recovery_rate_percent,
+      orders_cancelled_count,
+      orders_returned_count,
       period: {
-        start_date: thirtyDaysAgo,
-        end_date: now,
+        start_date: start,
+        end_date: end,
       },
     };
   }

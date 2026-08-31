@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { env } from '../config/env.js';
+import { groqEmailGenerator } from './GroqEmailGenerator.js';
 
 export interface EmailOptions {
   source?: 'customer' | 'system' | 'merchant';
@@ -857,6 +858,300 @@ We look forward to serving you again.
 © 2026 RazorShop. All rights reserved.
       `,
     };
+  }
+
+  /**
+   * Send notification when an order is cancelled
+   */
+  async sendOrderCancelledNotification(
+    customerEmail: string,
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      amountCents: number;
+      reason: string;
+      orderLink?: string;
+    },
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const formattedAmount = (details.amountCents / 100).toFixed(2);
+    
+    // Generate AI natural-language content strictly using authoritative facts
+    const aiContent = await groqEmailGenerator.generateEmail({
+      customerName,
+      orderNumber,
+      orderAmountDisplay: formattedAmount,
+      status: 'CANCELLED',
+      eventType: 'cancellation',
+      reason: details.reason,
+      refundAmountDisplay: formattedAmount,
+      paymentMethodWording: 'Original source payment method',
+    });
+
+    const template: EmailTemplate = {
+      subject: aiContent.subject,
+      html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+      .header { background: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; }
+      .content { padding: 20px; }
+      .badge { display: inline-block; background: #ef4444; color: white; padding: 4px 12px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
+      .info-box { background: #fef2f2; border: 1px solid #fca5a5; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      .footer { font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 15px; margin-top: 25px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin:0; font-size:24px;">Order Cancelled</h1>
+        <p style="margin:5px 0 0 0; opacity: 0.9;">Order #${orderNumber}</p>
+      </div>
+
+      <div class="content">
+        <p>${aiContent.greeting}</p>
+        <p>${aiContent.body}</p>
+
+        <div class="info-box">
+          <span class="badge">Status: CANCELLED</span>
+          <p style="margin: 10px 0 0 0; font-size: 14px; color: #991b1b;">
+            <strong>Cancellation Reason:</strong> ${details.reason}<br/>
+            <strong>Refund Amount:</strong> ₹${formattedAmount}<br/>
+            <strong>Refund Destination:</strong> Original payment method<br/>
+            <strong>Expected Timeline:</strong> 5–7 business days
+          </p>
+        </div>
+
+        <p>${aiContent.refund_note || `The amount of ₹${formattedAmount} will be refunded to your original payment method within 5–7 days.`}</p>
+      </div>
+
+      <div class="footer">
+        <p>© 2026 RazorShop. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
+      `,
+      text: `${aiContent.subject}\n\n${aiContent.greeting}\n\n${aiContent.body}\n\nCancellation Reason: ${details.reason}\nRefund Amount: ₹${formattedAmount}\nRefund Destination: Original payment method\nExpected Timeline: 5–7 business days\n\n${aiContent.refund_note || `The amount of ₹${formattedAmount} will be refunded to your original payment method within 5–7 days.`}\n\n© 2026 RazorShop. All rights reserved.`,
+    };
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
+   * Send notification for return status updates
+   */
+  async sendReturnStatusNotification(
+    customerEmail: string,
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      status: string;
+      reason?: string;
+      rejectionReason?: string;
+      notes?: string;
+      orderLink?: string;
+    },
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const statusTitles: Record<string, { title: string; subject: string; color: string }> = {
+      RETURN_REQUESTED: {
+        title: 'Return Requested',
+        subject: `Return Requested for RazorShop Order #${orderNumber}`,
+        color: '#d97706',
+      },
+      RETURN_APPROVED: {
+        title: 'Return Approved',
+        subject: `Return Approved for RazorShop Order #${orderNumber}`,
+        color: '#2563eb',
+      },
+      RETURN_REJECTED: {
+        title: 'Return Rejected',
+        subject: `Return Request Update for RazorShop Order #${orderNumber}`,
+        color: '#dc2626',
+      },
+      PICKUP_SCHEDULED: {
+        title: 'Pickup Scheduled',
+        subject: `Pickup Scheduled for Returned Order #${orderNumber}`,
+        color: '#0284c7',
+      },
+      ORDER_PICKED_UP: {
+        title: 'Order Picked Up',
+        subject: `Returned Order #${orderNumber} Picked Up`,
+        color: '#7c3aed',
+      },
+      RETURN_IN_TRANSIT: {
+        title: 'Return In Transit',
+        subject: `Returned Order #${orderNumber} is In Transit`,
+        color: '#4f46e5',
+      },
+      ORDER_RETURNED_TO_SELLER: {
+        title: 'Returned to Seller',
+        subject: `Return Process Complete for Order #${orderNumber}`,
+        color: '#16a34a',
+      },
+    };
+
+    const statusConfig = statusTitles[details.status] || {
+      title: details.status.replace(/_/g, ' '),
+      subject: `Return Update for Order #${orderNumber}`,
+      color: '#2563eb',
+    };
+
+    const aiContent = await groqEmailGenerator.generateEmail({
+      customerName,
+      orderNumber,
+      orderAmountDisplay: '0.00',
+      status: details.status,
+      eventType: 'return_update',
+      reason: details.reason,
+      rejectionReason: details.rejectionReason,
+      pickupNotes: details.notes,
+    });
+
+    const template: EmailTemplate = {
+      subject: aiContent.subject || statusConfig.subject,
+      html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+      .header { background: ${statusConfig.color}; color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; }
+      .content { padding: 20px; }
+      .badge { display: inline-block; background: ${statusConfig.color}; color: white; padding: 4px 12px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
+      .info-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      .footer { font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 15px; margin-top: 25px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin:0; font-size:24px;">${statusConfig.title}</h1>
+        <p style="margin:5px 0 0 0; opacity: 0.9;">Order #${orderNumber}</p>
+      </div>
+
+      <div class="content">
+        <p>${aiContent.greeting}</p>
+        <p>${aiContent.body}</p>
+
+        <div class="info-box">
+          <span class="badge">Status: ${statusConfig.title}</span>
+          <p style="margin: 10px 0 0 0; font-size: 14px; color: #334155;">
+            ${details.reason ? `<strong>Return Reason:</strong> ${details.reason}<br/>` : ''}
+            ${details.rejectionReason ? `<strong>Rejection Reason:</strong> ${details.rejectionReason}<br/>` : ''}
+            ${details.notes ? `<strong>Notes:</strong> ${details.notes}<br/>` : ''}
+            <strong>Updated Date:</strong> ${new Date().toLocaleString()}
+          </p>
+        </div>
+
+        ${
+          details.status === 'RETURN_REJECTED'
+            ? `<p>If you have any questions regarding your return rejection, please contact customer support.</p>`
+            : details.status === 'ORDER_RETURNED_TO_SELLER'
+            ? `<p>The return process for order #${orderNumber} is now complete. Thank you for your patience!</p>`
+            : `<p>We will keep you updated as your return progresses through logistics.</p>`
+        }
+      </div>
+
+      <div class="footer">
+        <p>© 2026 RazorShop. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
+      `,
+      text: `${aiContent.subject}\n\n${aiContent.greeting}\n\n${aiContent.body}\n\nStatus: ${statusConfig.title}\n${details.reason ? `Reason: ${details.reason}\n` : ''}${details.rejectionReason ? `Rejection Reason: ${details.rejectionReason}\n` : ''}${details.notes ? `Notes: ${details.notes}\n` : ''}\n© 2026 RazorShop. All rights reserved.`,
+    };
+
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
+   * Send notification when a refund is initiated for a returned order
+   */
+  async sendRefundInitiatedNotification(
+    customerEmail: string,
+    customerName: string,
+    orderNumber: string,
+    details: {
+      orderId: string;
+      refundAmountCents: number;
+      paymentSource?: string;
+      orderLink?: string;
+    },
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const formattedAmount = (details.refundAmountCents / 100).toFixed(2);
+
+    const aiContent = await groqEmailGenerator.generateEmail({
+      customerName,
+      orderNumber,
+      orderAmountDisplay: formattedAmount,
+      status: 'REFUND_INITIATED',
+      eventType: 'refund_initiated',
+      refundAmountDisplay: formattedAmount,
+      paymentMethodWording: details.paymentSource || 'Original source payment method',
+    });
+
+    const template: EmailTemplate = {
+      subject: aiContent.subject,
+      html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+      .header { background: #16a34a; color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; }
+      .content { padding: 20px; }
+      .badge { display: inline-block; background: #22c55e; color: white; padding: 4px 12px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
+      .info-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      .footer { font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 15px; margin-top: 25px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin:0; font-size:24px;">Refund Initiated</h1>
+        <p style="margin:5px 0 0 0; opacity: 0.9;">Order #${orderNumber}</p>
+      </div>
+
+      <div class="content">
+        <p>${aiContent.greeting}</p>
+        <p>${aiContent.body}</p>
+
+        <div class="info-box">
+          <span class="badge">Status: REFUND INITIATED</span>
+          <p style="margin: 10px 0 0 0; font-size: 14px; color: #166534;">
+            <strong>Refund Amount:</strong> ₹${formattedAmount}<br/>
+            <strong>Payment Method:</strong> ${details.paymentSource || 'Source payment method'}<br/>
+            <strong>Expected Timeline:</strong> 5–7 business days
+          </p>
+        </div>
+
+        <p>${aiContent.refund_note || `Your refund of ₹${formattedAmount} has been initiated to your source payment method. The amount should reflect in your account within 5–7 days.`}</p>
+      </div>
+
+      <div class="footer">
+        <p>© 2026 RazorShop. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
+      `,
+      text: `${aiContent.subject}\n\n${aiContent.greeting}\n\n${aiContent.body}\n\nRefund Amount: ₹${formattedAmount}\nPayment Method: ${details.paymentSource || 'Source payment method'}\nExpected Timeline: 5–7 business days\n\n${aiContent.refund_note || `Your refund of ₹${formattedAmount} has been initiated to your source payment method. The amount should reflect in your account within 5–7 days.`}\n\n© 2026 RazorShop. All rights reserved.`,
+    };
+
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
   }
 
   /**

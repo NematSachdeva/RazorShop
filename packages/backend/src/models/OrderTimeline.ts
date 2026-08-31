@@ -9,7 +9,19 @@ import {
 } from 'typeorm';
 import { Order } from './Order.js';
 
-export type OrderTimelineEventType = 'ORDER_CONFIRMED' | 'ORDER_DISPATCHED' | 'ORDER_DELIVERED';
+export type OrderTimelineEventType =
+  | 'ORDER_CONFIRMED'
+  | 'ORDER_DISPATCHED'
+  | 'ORDER_DELIVERED'
+  | 'ORDER_CANCELLED'
+  | 'RETURN_REQUESTED'
+  | 'RETURN_APPROVED'
+  | 'RETURN_REJECTED'
+  | 'PICKUP_SCHEDULED'
+  | 'ORDER_PICKED_UP'
+  | 'RETURN_IN_TRANSIT'
+  | 'ORDER_RETURNED_TO_SELLER'
+  | 'REFUND_INITIATED';
 
 @Entity('order_timeline')
 @Index(['order_id'])
