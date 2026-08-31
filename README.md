@@ -1,4 +1,4 @@
-# Razor — AI Revenue Recovery & Growth Manager
+# RazorShop — AI Revenue Recovery & Growth Manager
 
 **Razor** is an intelligent e-commerce revenue recovery and growth platform for high-converting online stores. It combines a modern React storefront and checkout experience with automated payment failure recovery workflows, order cancellation & return/refund lifecycles, Groq AI-powered customer communications, product recommendations, and real-time merchant analytics.
 
