@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../../config/api';
 import { authService } from '../../services/authService';
+import { formatRupees, formatCentsToRupees } from '../../utils/currency';
 
 interface InsightRecommendation {
   title: string;
@@ -47,6 +48,8 @@ export default function InsightsFeed() {
     { value: 'recovery_targeting', label: 'Recovery Targeting' },
   ];
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const fetchInsights = async () => {
     try {
       setLoading(true);
@@ -87,6 +90,32 @@ export default function InsightsFeed() {
       setError(err instanceof Error ? err.message : 'AI insights are temporarily unavailable');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefreshInsights = async () => {
+    try {
+      setRefreshing(true);
+      setError(null);
+
+      const response = await fetch(getApiUrl('/merchant/insights/refresh'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authService.getAuthHeader(),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to recalculate insights');
+      }
+
+      // Re-fetch after recalculating to respect active category filter
+      await fetchInsights();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh AI insights');
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -133,10 +162,17 @@ export default function InsightsFeed() {
           <p className="text-xs text-gray-500 mt-1">Autonomous business optimization and revenue recovery recommendations</p>
         </div>
         <button
-          onClick={fetchInsights}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition"
+          onClick={handleRefreshInsights}
+          disabled={refreshing || loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center gap-2"
         >
-          🔄 Refresh Insights
+          {refreshing ? (
+            <>
+              <span className="animate-spin">🔄</span> Recalculating Analytics...
+            </>
+          ) : (
+            <>🔄 Refresh Insights</>
+          )}
         </button>
       </div>
 
@@ -215,12 +251,24 @@ export default function InsightsFeed() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {Object.entries(insight.data_summary)
                       .slice(0, 4)
-                      .map(([key, value]) => (
-                        <div key={key} className="text-xs text-gray-600">
-                          <span className="font-semibold text-gray-800 capitalize">{key.replace(/_/g, ' ')}:</span>{' '}
-                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                        </div>
-                      ))}
+                      .map(([key, value]) => {
+                        const isMoney = typeof value === 'number' && (key.includes('rupees') || key.includes('revenue') || key.includes('amount') || key.includes('value') || key.includes('cents')) && !key.includes('count') && !key.includes('rate') && !key.includes('percent');
+                        let formattedVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                        if (typeof value === 'number') {
+                          if (key.includes('cents')) {
+                            formattedVal = formatCentsToRupees(value);
+                          } else if (isMoney) {
+                            formattedVal = formatRupees(value);
+                          }
+                        }
+                        const cleanKey = key.replace(/_rupees|_cents/g, '').replace(/_/g, ' ');
+                        return (
+                          <div key={key} className="text-xs text-gray-600">
+                            <span className="font-semibold text-gray-800 capitalize">{cleanKey}:</span>{' '}
+                            {formattedVal}
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               )}

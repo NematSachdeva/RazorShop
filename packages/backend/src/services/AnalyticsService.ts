@@ -99,6 +99,76 @@ export interface RevenueTimeline {
   };
 }
 
+export interface ComprehensiveMerchantAnalytics {
+  merchant_id: string;
+  payments: {
+    total_attempts: number;
+    successful_count: number;
+    failed_count: number;
+    failure_rate_percent: number;
+    total_failed_rupees: number;
+    total_recovered_rupees: number;
+    recovery_rate_percent: number;
+    top_failure_reasons: Array<{
+      reason: string;
+      count: number;
+      amount_rupees: number;
+    }>;
+  };
+  carts: {
+    total_carts: number;
+    active_count: number;
+    abandoned_count: number;
+    carts_reached_checkout: number;
+    abandoned_rate_percent: number;
+    revenue_at_risk_rupees: number;
+    top_abandoned_products: Array<{
+      product_id: string;
+      product_name: string;
+      abandon_count: number;
+    }>;
+  };
+  recovery: {
+    total_cases: number;
+    open: number;
+    in_progress: number;
+    resolved: number;
+    abandoned: number;
+    customer_declined: number;
+    response_breakdown: {
+      accepted: number;
+      refused: number;
+      promised: number;
+      unclear: number;
+    };
+  };
+  orders: {
+    total_orders: number;
+    completed_orders: number;
+    pending_orders: number;
+    cancelled_orders: number;
+    returned_orders: number;
+    total_revenue_rupees: number;
+    average_order_value_rupees: number;
+  };
+  products_and_inventory: {
+    total_listed_products: number;
+    total_units_in_stock: number;
+    low_stock_count: number;
+    out_of_stock_count: number;
+    top_selling_products: Array<{
+      id: string;
+      name: string;
+      units_sold: number;
+      available: number;
+    }>;
+  };
+  customers: {
+    total_unique_customers: number;
+    repeat_customers: number;
+  };
+}
+
 export class AnalyticsService {
   private dataSource: DataSource;
 
@@ -287,16 +357,50 @@ export class AnalyticsService {
     // Abandoned Carts Count
     let abandonedCartsCount = 0;
     try {
+      const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
+        ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
+        : 5;
+      const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
+
       let cartQb = this.dataSource
         .createQueryBuilder()
-        .select('COUNT(c.id)', 'count')
+        .select('COUNT(DISTINCT c.id)', 'count')
         .from('carts', 'c')
-        .where("c.status = 'pending'");
+        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+        .where("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate });
       if (startDate && endDate) {
         cartQb = cartQb.andWhere('c.created_at >= :start AND c.created_at <= :end', { start, end });
       }
       const cartResult = await cartQb.getRawOne();
-      abandonedCartsCount = cartResult?.count ? parseInt(cartResult.count, 10) : 0;
+      const inactiveCount = cartResult?.count ? parseInt(cartResult.count, 10) : 0;
+
+      let pendingOrderQb = this.getOrderRepository()
+        .createQueryBuilder('o')
+        .select('COUNT(o.id)', 'count')
+        .where("o.status = 'pending'")
+        .andWhere('o.created_at <= :cutoffDate', { cutoffDate });
+      if (startDate && endDate) {
+        pendingOrderQb = pendingOrderQb.andWhere('o.created_at >= :start AND o.created_at <= :end', { start, end });
+      }
+      if (hasMerchant) {
+        pendingOrderQb = pendingOrderQb
+          .andWhere((qb) => {
+            const subQuery = qb
+              .subQuery()
+              .select('1')
+              .from(OrderItem, 'item')
+              .innerJoin('item.product', 'product')
+              .where('item.order_id = o.id')
+              .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
+              .getQuery();
+            return `EXISTS ${subQuery}`;
+          })
+          .setParameter('merchantId', merchantId);
+      }
+      const pendingResult = await pendingOrderQb.getRawOne();
+      const pendingCount = pendingResult?.count ? parseInt(pendingResult.count, 10) : 0;
+
+      abandonedCartsCount = inactiveCount + pendingCount;
     } catch {
       abandonedCartsCount = 0;
     }
@@ -885,6 +989,281 @@ export class AnalyticsService {
         comment: fb.comment,
         created_at: fb.created_at,
       })),
+    };
+  }
+
+  /**
+   * Get comprehensive aggregated merchant analytics for AI insight generation
+   */
+  async getComprehensiveMerchantAnalytics(merchantId?: string): Promise<ComprehensiveMerchantAnalytics> {
+    const targetMerchantId = isUuid(merchantId) ? merchantId! : 'default-merchant';
+    const [metrics, funnel, responseBreakdown, failureReasons] = await Promise.all([
+      this.getDashboardMetrics(merchantId),
+      this.getRecoveryFunnel(merchantId),
+      this.getCustomerResponseBreakdown(merchantId),
+      this.getPaymentFailureReasons(merchantId),
+    ]);
+
+    // Abandonment threshold logic (default 5 minutes, configurable via env.CART_ABANDONMENT_MINUTES)
+    const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
+      ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
+      : 5;
+    const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
+
+    // Query Cart & Checkout metrics
+    let totalCarts = 0;
+    let activeCartsCount = 0;
+    let abandonedCartsCount = 0;
+    let cartsReachedCheckoutCount = 0;
+    let revenueAtRiskCents = 0;
+    let topAbandonedProducts: Array<{ product_id: string; product_name: string; abandon_count: number }> = [];
+
+    try {
+      const cartRepo = this.dataSource.getRepository('Cart');
+      const orderRepo = this.getOrderRepository();
+
+      // Total carts with at least 1 item
+      const totalCartsRaw = await this.dataSource
+        .createQueryBuilder()
+        .select('COUNT(DISTINCT c.id)', 'count')
+        .from('carts', 'c')
+        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+        .getRawOne();
+      totalCarts = totalCartsRaw?.count ? parseInt(totalCartsRaw.count, 10) : 0;
+
+      // Carts that reached checkout (converted_to_order_id IS NOT NULL)
+      const checkoutCartsRaw = await cartRepo
+        .createQueryBuilder('c')
+        .select('COUNT(DISTINCT c.id)', 'count')
+        .where('c.converted_to_order_id IS NOT NULL')
+        .getRawOne();
+      cartsReachedCheckoutCount = checkoutCartsRaw?.count ? parseInt(checkoutCartsRaw.count, 10) : 0;
+
+      // Active carts updated within threshold
+      const activeRaw = await cartRepo
+        .createQueryBuilder('c')
+        .select('COUNT(DISTINCT c.id)', 'count')
+        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+        .where("c.status = 'active'")
+        .andWhere('c.updated_at > :cutoffDate', { cutoffDate })
+        .getRawOne();
+      activeCartsCount = activeRaw?.count ? parseInt(activeRaw.count, 10) : 0;
+
+      // 1. Inactive / Abandoned carts (status='abandoned' OR (status='active' AND updated_at <= cutoff))
+      const inactiveCartIdsRaw = await cartRepo
+        .createQueryBuilder('c')
+        .select('c.id', 'id')
+        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+        .where("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
+        .getRawMany();
+      const inactiveCartIds = inactiveCartIdsRaw.map((r: any) => r.id);
+
+      // Value of inactive carts
+      let inactiveCartsValueCents = 0;
+      if (inactiveCartIds.length > 0) {
+        const valRaw = await this.dataSource
+          .createQueryBuilder()
+          .select('SUM(ci.price_cents * ci.quantity)', 'total')
+          .from('cart_items', 'ci')
+          .where('ci.cart_id IN (:...inactiveCartIds)', { inactiveCartIds })
+          .getRawOne();
+        inactiveCartsValueCents = valRaw?.total ? parseInt(valRaw.total, 10) : 0;
+      }
+
+      // 2. Pending Orders (checkout started, payment pending / exited Razorpay, inactive >= 5 mins)
+      const pendingOrdersRaw = await orderRepo
+        .createQueryBuilder('o')
+        .select('COUNT(o.id)', 'count')
+        .addSelect('SUM(o.total_cents)', 'total')
+        .where("o.status = 'pending'")
+        .andWhere('o.created_at <= :cutoffDate', { cutoffDate })
+        .getRawOne();
+      const pendingOrdersCount = pendingOrdersRaw?.count ? parseInt(pendingOrdersRaw.count, 10) : 0;
+      const pendingOrdersValueCents = pendingOrdersRaw?.total ? parseInt(pendingOrdersRaw.total, 10) : 0;
+
+      // Total abandoned/at-risk count = inactive carts + pending orders
+      abandonedCartsCount = inactiveCartIds.length + pendingOrdersCount;
+      revenueAtRiskCents = inactiveCartsValueCents + pendingOrdersValueCents;
+
+      // Top abandoned products (from inactive carts & pending orders)
+      const abandonedRaw = await this.dataSource
+        .createQueryBuilder()
+        .select('ci.product_id', 'product_id')
+        .addSelect('p.name', 'product_name')
+        .addSelect('SUM(ci.quantity)', 'abandon_count')
+        .from('cart_items', 'ci')
+        .innerJoin('carts', 'c', 'c.id = ci.cart_id')
+        .innerJoin('products', 'p', 'p.id = ci.product_id')
+        .leftJoin('orders', 'o', 'o.id = c.converted_to_order_id')
+        .where("(c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate) OR (o.status = 'pending' AND o.created_at <= :cutoffDate))", { cutoffDate })
+        .groupBy('ci.product_id, p.name')
+        .orderBy('SUM(ci.quantity)', 'DESC')
+        .limit(5)
+        .getRawMany();
+
+      topAbandonedProducts = abandonedRaw.map((r: any) => ({
+        product_id: r.product_id,
+        product_name: r.product_name,
+        abandon_count: parseInt(r.abandon_count, 10),
+      }));
+    } catch (err) {
+      console.warn('[AnalyticsService] Error calculating detailed cart abandonment analytics:', err);
+      abandonedCartsCount = metrics.abandoned_carts_count;
+      revenueAtRiskCents = metrics.revenue_at_risk_cents;
+    }
+
+    const abandonedRatePercent = totalCarts > 0 ? Math.round((abandonedCartsCount / totalCarts) * 100) : 0;
+
+    // Query Payment attempts
+    const totalPaymentsCount = metrics.failed_payments_count + funnel.resolved;
+    const failureRatePercent = totalPaymentsCount > 0 ? Math.round((metrics.failed_payments_count / totalPaymentsCount) * 100) : 0;
+
+    // Query Order metrics
+    let totalOrders = 0;
+    let completedOrders = 0;
+    let pendingOrdersCount = 0;
+    try {
+      const orderRepo = this.getOrderRepository();
+      totalOrders = await orderRepo.count();
+      pendingOrdersCount = await orderRepo.count({ where: { status: 'pending' as any } });
+      completedOrders = await orderRepo.count({
+        where: [
+          { status: 'confirmed' as any },
+          { status: 'shipped' as any },
+          { status: 'delivered' as any },
+          { status: 'completed' as any },
+        ],
+      });
+    } catch {
+      totalOrders = 0;
+    }
+
+    const averageOrderValueCents = completedOrders > 0 ? Math.round(metrics.total_revenue_cents / completedOrders) : 0;
+
+    // Query Products and Inventory
+    let totalListedProducts = 0;
+    let totalUnitsInStock = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+    let topSellingProducts: Array<{ id: string; name: string; units_sold: number; available: number }> = [];
+
+    try {
+      const productRepo = this.dataSource.getRepository('Product');
+      const inventoryRepo = this.dataSource.getRepository('Inventory');
+      const orderItemRepo = this.dataSource.getRepository('OrderItem');
+
+      const allProducts: any[] = await productRepo.find({ take: 100 });
+      totalListedProducts = allProducts.length;
+
+      for (const p of allProducts) {
+        const inv: any = await inventoryRepo.findOne({ where: { product_id: p.id } });
+        const available = Math.max(0, (inv?.quantity_on_hand || 0) - (inv?.reserved || 0));
+        totalUnitsInStock += available;
+
+        if (available === 0) outOfStockCount++;
+        else if (available <= 5) lowStockCount++;
+
+        const soldRaw = await orderItemRepo
+          .createQueryBuilder('oi')
+          .select('SUM(oi.quantity)', 'sold')
+          .where('oi.product_id = :pId', { pId: p.id })
+          .getRawOne();
+        const unitsSold = parseInt(soldRaw?.sold || '0', 10);
+
+        topSellingProducts.push({
+          id: p.id,
+          name: p.name,
+          units_sold: unitsSold,
+          available,
+        });
+      }
+
+      topSellingProducts.sort((a, b) => b.units_sold - a.units_sold);
+      topSellingProducts = topSellingProducts.slice(0, 5);
+    } catch {
+      totalListedProducts = 0;
+    }
+
+    // Query Customer metrics
+    let totalUniqueCustomers = 0;
+    let repeatCustomers = 0;
+    try {
+      const customerRepo = this.dataSource.getRepository('Customer');
+      totalUniqueCustomers = await customerRepo.count();
+
+      const repeatRaw = await this.getOrderRepository()
+        .createQueryBuilder('o')
+        .select('o.customer_id', 'customer_id')
+        .addSelect('COUNT(o.id)', 'order_count')
+        .where('o.customer_id IS NOT NULL')
+        .groupBy('o.customer_id')
+        .having('COUNT(o.id) > 1')
+        .getRawMany();
+      repeatCustomers = repeatRaw.length;
+    } catch {
+      totalUniqueCustomers = 0;
+    }
+
+    // Convert minor currency units (cents) to Rupee amounts (/ 100)
+    return {
+      merchant_id: targetMerchantId,
+      payments: {
+        total_attempts: totalPaymentsCount,
+        successful_count: funnel.resolved,
+        failed_count: metrics.failed_payments_count,
+        failure_rate_percent: failureRatePercent,
+        total_failed_rupees: Number((metrics.failed_payments_total_cents / 100).toFixed(2)),
+        total_recovered_rupees: Number((metrics.revenue_recovered_cents / 100).toFixed(2)),
+        recovery_rate_percent: metrics.recovery_rate_percent,
+        top_failure_reasons: failureReasons.reasons.map((r) => ({
+          reason: r.reason,
+          count: r.count,
+          amount_rupees: Number((r.total_amount_cents / 100).toFixed(2)),
+        })),
+      },
+      carts: {
+        total_carts: totalCarts,
+        active_count: activeCartsCount,
+        abandoned_count: abandonedCartsCount,
+        carts_reached_checkout: cartsReachedCheckoutCount,
+        abandoned_rate_percent: abandonedRatePercent,
+        revenue_at_risk_rupees: Number((revenueAtRiskCents / 100).toFixed(2)),
+        top_abandoned_products: topAbandonedProducts,
+      },
+      recovery: {
+        total_cases: funnel.total,
+        open: funnel.open,
+        in_progress: funnel.in_progress,
+        resolved: funnel.resolved,
+        abandoned: funnel.abandoned,
+        customer_declined: funnel.customer_declined,
+        response_breakdown: {
+          accepted: responseBreakdown.accepted,
+          refused: responseBreakdown.refused,
+          promised: responseBreakdown.promised,
+          unclear: responseBreakdown.unclear,
+        },
+      },
+      orders: {
+        total_orders: totalOrders,
+        completed_orders: completedOrders,
+        pending_orders: pendingOrdersCount,
+        cancelled_orders: metrics.orders_cancelled_count,
+        returned_orders: metrics.orders_returned_count,
+        total_revenue_rupees: Number((metrics.total_revenue_cents / 100).toFixed(2)),
+        average_order_value_rupees: Number((averageOrderValueCents / 100).toFixed(2)),
+      },
+      products_and_inventory: {
+        total_listed_products: totalListedProducts,
+        total_units_in_stock: totalUnitsInStock,
+        low_stock_count: lowStockCount,
+        out_of_stock_count: outOfStockCount,
+        top_selling_products: topSellingProducts,
+      },
+      customers: {
+        total_unique_customers: totalUniqueCustomers,
+        repeat_customers: repeatCustomers,
+      },
     };
   }
 }

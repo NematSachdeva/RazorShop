@@ -354,12 +354,42 @@ export function createMerchantRouter(
   });
 
   /**
+   * Helper to regenerate and persist merchant insights cleanly
+   */
+  async function refreshMerchantInsights(merchantId: string): Promise<MerchantInsight[]> {
+    const merchantAgent = new MerchantAgent(dataSource);
+    const generatedInsights = await merchantAgent.generateDailyInsights(merchantId);
+
+    const InsightRepo = dataSource.getRepository(MerchantInsight);
+    // Remove previous insights for this merchant to ensure clean replacement
+    await InsightRepo.delete({ merchant_id: merchantId });
+
+    const savedEntities: MerchantInsight[] = [];
+    for (const gi of generatedInsights) {
+      const entity = InsightRepo.create({
+        merchant_id: merchantId,
+        type: gi.type,
+        title: gi.title,
+        summary: gi.summary,
+        insights: gi.insights,
+        data_summary: gi.data_summary,
+        confidence_percent: gi.confidence_percent,
+        guard_rails_applied: gi.guard_rails_applied,
+      });
+      const saved = await InsightRepo.save(entity);
+      savedEntities.push(saved);
+    }
+    return savedEntities;
+  }
+
+  /**
    * GET /api/merchant/insights
-   * Get daily merchant AI insights
+   * Get daily merchant AI insights with support for dynamic force_refresh
    */
   router.get('/insights', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const insightType = req.query.type as string | undefined;
+      const forceRefresh = req.query.force_refresh === 'true' || req.query.refresh === 'true';
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
       const offset = parseInt(req.query.offset as string) || 0;
 
@@ -376,32 +406,19 @@ export function createMerchantRouter(
 
       let total_count = await query.getCount();
 
-      if (total_count === 0 && offset === 0) {
+      if (forceRefresh || (total_count === 0 && offset === 0 && !insightType)) {
         try {
-          const merchantAgent = new MerchantAgent(dataSource);
-          const generatedInsights = await merchantAgent.generateDailyInsights(merchantId);
-          for (const gi of generatedInsights) {
-            const existing = await InsightRepo.findOne({
-              where: { merchant_id: merchantId, type: gi.type, title: gi.title },
-            });
-            if (!existing) {
-              await InsightRepo.save(
-                InsightRepo.create({
-                  merchant_id: merchantId,
-                  type: gi.type,
-                  title: gi.title,
-                  summary: gi.summary,
-                  insights: gi.insights,
-                  data_summary: gi.data_summary,
-                  confidence_percent: gi.confidence_percent,
-                  guard_rails_applied: gi.guard_rails_applied,
-                })
-              );
-            }
+          await refreshMerchantInsights(merchantId);
+          // Re-build query after refresh
+          query = InsightRepo.createQueryBuilder('insight')
+            .where('insight.merchant_id = :merchantId', { merchantId })
+            .orderBy('insight.created_at', 'DESC');
+          if (insightType) {
+            query = query.andWhere('insight.type = :type', { type: insightType });
           }
           total_count = await query.getCount();
         } catch (agentErr) {
-          console.warn('Failed to generate daily insights automatically:', agentErr);
+          console.warn('Failed to regenerate daily insights automatically:', agentErr);
         }
       }
 
@@ -419,6 +436,27 @@ export function createMerchantRouter(
     } catch (err: any) {
       console.error('Error fetching insights:', err);
       res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * POST /api/merchant/insights/refresh
+   * Explicit merchant action to recalculate business analytics and regenerate AI insights
+   */
+  router.post('/insights/refresh', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const updatedInsights = await refreshMerchantInsights(merchantId);
+
+      res.json({
+        success: true,
+        message: 'AI insights refreshed successfully based on live business analytics',
+        insights: updatedInsights,
+        total_count: updatedInsights.length,
+      });
+    } catch (err: any) {
+      console.error('Error refreshing insights:', err);
+      res.status(500).json({ error: err.message || 'Failed to refresh AI insights' });
     }
   });
 

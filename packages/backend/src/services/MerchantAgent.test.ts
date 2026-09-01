@@ -111,7 +111,31 @@ describe('MerchantAgent', () => {
       const insights = await agent.generateDailyInsights(testMerchant.id);
 
       expect(Array.isArray(insights)).toBe(true);
-      // Should skip disabled types
+      expect(insights.length).toBe(0);
+    });
+
+    test('should NOT fabricate abandoned_cart_patterns when abandoned cart count is 0', async () => {
+      const insights = await agent.generateDailyInsights(testMerchant.id);
+
+      // Verify that no insight has type 'abandoned_cart_patterns' when abandoned count is 0
+      const abandonedCartInsight = insights.find((i) => i.type === 'abandoned_cart_patterns');
+      expect(abandonedCartInsight).toBeUndefined();
+    });
+
+    test('should NOT fabricate payment_failure_patterns when failed payments count is 0', async () => {
+      const insights = await agent.generateDailyInsights(testMerchant.id);
+
+      // Verify that no insight has type 'payment_failure_patterns' when failed payment count is 0
+      const paymentFailureInsight = insights.find((i) => i.type === 'payment_failure_patterns');
+      expect(paymentFailureInsight).toBeUndefined();
+    });
+
+    test('should produce operational or optimization insights when all problem counts are 0', async () => {
+      const insights = await agent.generateDailyInsights(testMerchant.id);
+
+      expect(insights.length).toBeGreaterThan(0);
+      expect(insights.find((i) => i.type === 'abandoned_cart_patterns')).toBeUndefined();
+      expect(insights.find((i) => i.type === 'payment_failure_patterns')).toBeUndefined();
     });
   });
 
