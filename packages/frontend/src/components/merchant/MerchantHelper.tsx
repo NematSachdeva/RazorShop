@@ -127,7 +127,213 @@ export default function MerchantHelper() {
   const [pendingProposal, setPendingProposal] = useState<DealActionProposal | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  // Speech-to-text voice recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  // Text-to-speech audio states
+  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
+  const [loadingTtsMsgId, setLoadingTtsMsgId] = useState<string | null>(null);
+  const [ttsErrorMap, setTtsErrorMap] = useState<Record<string, string>>({});
+
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const cachedAudioMap = useRef<Map<string, { audio: string; mimeType: string }>>(new Map());
+
+  // Cleanup playing audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleToggleTTS = async (msg: ChatMessage) => {
+    // If clicking on currently playing message -> stop audio
+    if (playingMsgId === msg.id) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setPlayingMsgId(null);
+      return;
+    }
+
+    // Stop any previously playing audio first
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setPlayingMsgId(null);
+    }
+
+    // Clear previous error for this message
+    setTtsErrorMap((prev) => {
+      const next = { ...prev };
+      delete next[msg.id];
+      return next;
+    });
+
+    try {
+      let audioData = cachedAudioMap.current.get(msg.id);
+
+      if (!audioData) {
+        setLoadingTtsMsgId(msg.id);
+        const response = await fetch(getApiUrl('/merchant/helper/tts'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authService.getAuthHeader(),
+          },
+          body: JSON.stringify({ text: msg.text }),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to generate voice audio');
+        }
+
+        const data = await response.json();
+        audioData = { audio: data.audio, mimeType: data.mimeType || 'audio/wav' };
+        cachedAudioMap.current.set(msg.id, audioData);
+      }
+
+      const sound = new Audio(`data:${audioData.mimeType};base64,${audioData.audio}`);
+      audioRef.current = sound;
+      setPlayingMsgId(msg.id);
+
+      sound.onended = () => {
+        setPlayingMsgId(null);
+        audioRef.current = null;
+      };
+
+      sound.onerror = () => {
+        setPlayingMsgId(null);
+        audioRef.current = null;
+        setTtsErrorMap((prev) => ({ ...prev, [msg.id]: 'Playback failed' }));
+      };
+
+      await sound.play();
+    } catch (err: any) {
+      console.error('TTS generation error:', err);
+      setTtsErrorMap((prev) => ({ ...prev, [msg.id]: err.message || 'Audio unavailable' }));
+    } finally {
+      setLoadingTtsMsgId(null);
+    }
+  };
+
+  const handleStartRecording = async () => {
+    setVoiceError(null);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof window.MediaRecorder === 'undefined') {
+      setVoiceError('Voice recording is not supported in this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        mimeType = 'audio/ogg';
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size < 100) {
+          setVoiceError('No speech detected in audio. Please try recording again.');
+          return;
+        }
+
+        await processAudioTranscription(audioBlob, mimeType);
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err: any) {
+      console.error('[MerchantHelper] Microphone access error:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setVoiceError('Microphone permission was denied. Please allow microphone access in browser settings.');
+      } else {
+        setVoiceError('Failed to access microphone. Please try typing your message.');
+      }
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const processAudioTranscription = async (blob: Blob, mimeType: string) => {
+    setIsTranscribing(true);
+    setVoiceError(null);
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        try {
+          const base64Data = reader.result as string;
+          const token = authService.getToken();
+          const response = await fetch(getApiUrl('/merchant/helper/transcribe'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              audio: base64Data,
+              mimeType,
+            }),
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Speech transcription failed');
+          }
+
+          const data = await response.json();
+          if (data.text && data.text.trim()) {
+            setInputText((prev) => (prev.trim() ? `${prev.trim()} ${data.text.trim()}` : data.text.trim()));
+          } else {
+            setVoiceError('No speech detected. Please try again.');
+          }
+        } catch (err: any) {
+          console.error('[MerchantHelper] Speech transcription error:', err);
+          setVoiceError(err.message || 'Speech transcription failed. Please try again.');
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+    } catch (err: any) {
+      console.error('[MerchantHelper] Audio processing error:', err);
+      setVoiceError('Failed to process audio recording.');
+      setIsTranscribing(false);
+    }
+  };
 
   const suggestedQuestions = [
     'What were the reasons for returned orders?',
@@ -344,150 +550,190 @@ export default function MerchantHelper() {
             key={msg.id}
             className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
           >
-            <div
-              className={`max-w-2xl rounded-2xl px-5 py-3.5 text-xs leading-relaxed shadow-xs ${
-                msg.sender === 'user'
-                  ? 'bg-blue-600 text-white font-medium rounded-tr-none whitespace-pre-wrap'
-                  : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
-              }`}
-            >
-              {msg.sender === 'user' ? (
-                msg.text
-              ) : (
-                <FormattedMarkdownText content={msg.text} />
-              )}
+            <div className="flex items-start gap-2 max-w-2xl">
+              <div
+                className={`rounded-2xl px-5 py-3.5 text-xs leading-relaxed shadow-xs flex-1 ${
+                  msg.sender === 'user'
+                    ? 'bg-blue-600 text-white font-medium rounded-tr-none whitespace-pre-wrap'
+                    : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
+                }`}
+              >
+                {msg.sender === 'user' ? (
+                  msg.text
+                ) : (
+                  <FormattedMarkdownText content={msg.text} />
+                )}
 
-              {/* Action Result Card */}
-              {msg.actionExecuted && msg.actionResult && (
-                <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-sans">
-                  <div className="flex items-center gap-1.5 font-bold text-emerald-800 mb-1">
-                    <IconCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Action Successfully Executed</span>
-                  </div>
-                  <div className="space-y-1 text-[11px] mt-2">
-                    {/* Order result */}
-                    {msg.actionResult.orderNumber && <div><span className="font-semibold">Order:</span> #{msg.actionResult.orderNumber}</div>}
-                    {msg.actionResult.newStatus && <div><span className="font-semibold">Status:</span> {msg.actionResult.newStatus}</div>}
-                    {msg.actionResult.refundAmountRupees && <div><span className="font-semibold">Refund Initiated:</span> ₹{msg.actionResult.refundAmountRupees.toFixed(2)}</div>}
+                {/* Action Result Card */}
+                {msg.actionExecuted && msg.actionResult && (
+                  <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-sans">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-800 mb-1">
+                      <IconCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Action Successfully Executed</span>
+                    </div>
+                    <div className="space-y-1 text-[11px] mt-2">
+                      {/* Order result */}
+                      {msg.actionResult.orderNumber && <div><span className="font-semibold">Order:</span> #{msg.actionResult.orderNumber}</div>}
+                      {msg.actionResult.newStatus && <div><span className="font-semibold">Status:</span> {msg.actionResult.newStatus}</div>}
+                      {msg.actionResult.refundAmountRupees && <div><span className="font-semibold">Refund Initiated:</span> ₹{msg.actionResult.refundAmountRupees.toFixed(2)}</div>}
 
-                    {/* Deal result — products array takes priority over legacy productName */}
-                    {msg.actionResult.discountPercent && (
-                      <div><span className="font-semibold">Discount:</span> <span className="font-bold text-emerald-700">{msg.actionResult.discountPercent}% OFF</span></div>
-                    )}
-                    {msg.actionResult.cartId && (
-                      <div><span className="font-semibold">Cart ID:</span> <span className="font-mono text-[10px] text-gray-600">{msg.actionResult.cartId}</span></div>
-                    )}
-                    {msg.actionResult.customerEmail && (
-                      <div><span className="font-semibold">Customer:</span> {msg.actionResult.customerName || ''} ({msg.actionResult.customerEmail})</div>
-                    )}
-                    {/* Products list (canonical) */}
-                    {msg.actionResult.products && msg.actionResult.products.length > 0 ? (
-                      <div>
-                        <span className="font-semibold">Products Discounted:</span>
-                        <ul className="ml-3 mt-0.5 list-disc list-inside space-y-0.5">
-                          {msg.actionResult.products.map((p, i) => <li key={i}>{p}</li>)}
-                        </ul>
-                      </div>
-                    ) : (
-                      msg.actionResult.productName && !msg.actionResult.orderNumber && (
-                        <div><span className="font-semibold">Products:</span> {msg.actionResult.productName}</div>
-                      )
-                    )}
-                    {msg.actionResult.originalTotalRupees && (
-                      <div><span className="font-semibold">Original Total:</span> <span className="line-through text-gray-500">₹{msg.actionResult.originalTotalRupees.toFixed(2)}</span></div>
-                    )}
-                    {msg.actionResult.dealTotalRupees && (
-                      <div><span className="font-semibold">Deal Total:</span> <span className="font-extrabold text-emerald-700">₹{msg.actionResult.dealTotalRupees.toFixed(2)}</span></div>
-                    )}
-                    {!msg.actionResult.dealTotalRupees && msg.actionResult.dealPriceRupees && (
-                      <div><span className="font-semibold">Deal Price:</span> ₹{msg.actionResult.dealPriceRupees.toFixed(2)}</div>
-                    )}
-                    {msg.actionResult.expiresAt && (
-                      <div className="text-amber-700 mt-1">
-                        ⏱️ Expires: {new Date(msg.actionResult.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </div>
-                    )}
-                    {/* Product price update */}
-                    {msg.actionResult.newPriceRupees && (
-                      <div><span className="font-semibold">New Price:</span> ₹{msg.actionResult.newPriceRupees.toFixed(2)}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Action Proposal Confirmation Card */}
-              {msg.proposal && (
-                <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 font-sans shadow-xs">
-                  <div className="flex items-center justify-between border-b border-amber-200 pb-2 mb-3">
-                    <span className="font-bold text-amber-900 text-sm">⚡ Action Ready for Double Confirmation</span>
-                    <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded">Action Pending</span>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs mb-4">
-                    {msg.proposal.orderNumber && (
-                      <div><span className="font-bold text-gray-700">Order:</span> #{msg.proposal.orderNumber}</div>
-                    )}
-                    {msg.proposal.customerName && (
-                      <div><span className="font-bold text-gray-700">Customer:</span> {msg.proposal.customerName} ({msg.proposal.customerEmail || 'N/A'})</div>
-                    )}
-                    {msg.proposal.currentOrderStatus && (
-                      <div><span className="font-bold text-gray-700">Current Status:</span> {msg.proposal.currentOrderStatus}</div>
-                    )}
-                    {msg.proposal.newOrderStatus && (
-                      <div><span className="font-bold text-gray-700">Requested Status:</span> <span className="font-bold text-blue-800">{msg.proposal.newOrderStatus}</span></div>
-                    )}
-                    {msg.proposal.currentReturnStatus && !msg.proposal.currentOrderStatus && (
-                      <div><span className="font-bold text-gray-700">Current Return Status:</span> {msg.proposal.currentReturnStatus}</div>
-                    )}
-                    {msg.proposal.newReturnStatus && !msg.proposal.newOrderStatus && (
-                      <div><span className="font-bold text-gray-700">Action:</span> <span className="font-bold text-emerald-800">{msg.proposal.newReturnStatus === 'return_approved' ? 'Approve / Accept Return' : msg.proposal.newReturnStatus === 'return_rejected' ? 'Reject / Decline Return' : msg.proposal.newReturnStatus}</span></div>
-                    )}
-                    {msg.proposal.refundAmountCents && (
-                      <div><span className="font-bold text-gray-700">Refund Amount:</span> <span className="font-bold text-emerald-800">₹{(msg.proposal.refundAmountCents / 100).toFixed(2)}</span></div>
-                    )}
-                    {msg.proposal.scope === 'cart' ? (
-                      <div><span className="font-bold text-gray-700">Scope:</span> <span className="font-bold text-indigo-700">Entire Abandoned Cart</span></div>
-                    ) : (
-                      msg.proposal.productName && <div><span className="font-bold text-gray-700">Product:</span> {msg.proposal.productName}</div>
-                    )}
-                    {msg.proposal.currentPriceCents && (
-                      <div><span className="font-bold text-gray-700">Current Price:</span> ₹{(msg.proposal.currentPriceCents / 100).toFixed(2)}</div>
-                    )}
-                    {msg.proposal.newPriceCents && (
-                      <div><span className="font-bold text-gray-700">New Price:</span> <span className="font-bold text-blue-800">₹{(msg.proposal.newPriceCents / 100).toFixed(2)}</span></div>
-                    )}
-                    {msg.proposal.discountPercent && (
-                      <div><span className="font-bold text-gray-700">Discount:</span> <span className="font-bold text-emerald-700">{msg.proposal.discountPercent}% OFF</span></div>
-                    )}
-                    {msg.proposal.dealPriceCents && (
-                      <div><span className="font-bold text-gray-700">Deal Price:</span> <span className="font-extrabold text-blue-800">₹{(msg.proposal.dealPriceCents / 100).toFixed(2)}</span></div>
-                    )}
-                    {msg.proposal.durationValue && (
-                      <div><span className="font-bold text-gray-700">Duration:</span> <span className="font-bold text-indigo-700">{formatDurationDisplay(msg.proposal.durationValue, msg.proposal.durationUnit)}</span></div>
-                    )}
-                    <div className="text-[11px] text-amber-800 mt-1 italic">
-                      🔔 Notification: Relevant existing email and timeline workflows will execute automatically upon confirmation.
+                      {/* Deal result — products array takes priority over legacy productName */}
+                      {msg.actionResult.discountPercent && (
+                        <div><span className="font-semibold">Discount:</span> <span className="font-bold text-emerald-700">{msg.actionResult.discountPercent}% OFF</span></div>
+                      )}
+                      {msg.actionResult.cartId && (
+                        <div><span className="font-semibold">Cart ID:</span> <span className="font-mono text-[10px] text-gray-600">{msg.actionResult.cartId}</span></div>
+                      )}
+                      {msg.actionResult.customerEmail && (
+                        <div><span className="font-semibold">Customer:</span> {msg.actionResult.customerName || ''} ({msg.actionResult.customerEmail})</div>
+                      )}
+                      {/* Products list (canonical) */}
+                      {msg.actionResult.products && msg.actionResult.products.length > 0 ? (
+                        <div>
+                          <span className="font-semibold">Products Discounted:</span>
+                          <ul className="ml-3 mt-0.5 list-disc list-inside space-y-0.5">
+                            {msg.actionResult.products.map((p, i) => <li key={i}>{p}</li>)}
+                          </ul>
+                        </div>
+                      ) : (
+                        msg.actionResult.productName && !msg.actionResult.orderNumber && (
+                          <div><span className="font-semibold">Products:</span> {msg.actionResult.productName}</div>
+                        )
+                      )}
+                      {msg.actionResult.originalTotalRupees && (
+                        <div><span className="font-semibold">Original Total:</span> <span className="line-through text-gray-500">₹{msg.actionResult.originalTotalRupees.toFixed(2)}</span></div>
+                      )}
+                      {msg.actionResult.dealTotalRupees && (
+                        <div><span className="font-semibold">Deal Total:</span> <span className="font-extrabold text-emerald-700">₹{msg.actionResult.dealTotalRupees.toFixed(2)}</span></div>
+                      )}
+                      {!msg.actionResult.dealTotalRupees && msg.actionResult.dealPriceRupees && (
+                        <div><span className="font-semibold">Deal Price:</span> ₹{msg.actionResult.dealPriceRupees.toFixed(2)}</div>
+                      )}
+                      {msg.actionResult.expiresAt && (
+                        <div className="text-amber-700 mt-1">
+                          ⏱️ Expires: {new Date(msg.actionResult.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </div>
+                      )}
+                      {/* Product price update */}
+                      {msg.actionResult.newPriceRupees && (
+                        <div><span className="font-semibold">New Price:</span> ₹{msg.actionResult.newPriceRupees.toFixed(2)}</div>
+                      )}
                     </div>
                   </div>
+                )}
 
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleConfirmProposal(msg.proposal!)}
-                      disabled={loading}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      <IconCheck className="w-4 h-4" />
-                      <span>Confirm & Execute Action</span>
-                    </button>
-                    <button
-                      onClick={handleCancelProposal}
-                      disabled={loading}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
-                    >
-                      <IconClose className="w-3.5 h-3.5" />
-                      <span>Cancel</span>
-                    </button>
+                {/* Action Proposal Confirmation Card */}
+                {msg.proposal && (
+                  <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 font-sans shadow-xs">
+                    <div className="flex items-center justify-between border-b border-amber-200 pb-2 mb-3">
+                      <span className="font-bold text-amber-900 text-sm">⚡ Action Ready for Double Confirmation</span>
+                      <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded">Action Pending</span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs mb-4">
+                      {msg.proposal.orderNumber && (
+                        <div><span className="font-bold text-gray-700">Order:</span> #{msg.proposal.orderNumber}</div>
+                      )}
+                      {msg.proposal.customerName && (
+                        <div><span className="font-bold text-gray-700">Customer:</span> {msg.proposal.customerName} ({msg.proposal.customerEmail || 'N/A'})</div>
+                      )}
+                      {msg.proposal.currentOrderStatus && (
+                        <div><span className="font-bold text-gray-700">Current Status:</span> {msg.proposal.currentOrderStatus}</div>
+                      )}
+                      {msg.proposal.newOrderStatus && (
+                        <div><span className="font-bold text-gray-700">Requested Status:</span> <span className="font-bold text-blue-800">{msg.proposal.newOrderStatus}</span></div>
+                      )}
+                      {msg.proposal.currentReturnStatus && !msg.proposal.currentOrderStatus && (
+                        <div><span className="font-bold text-gray-700">Current Return Status:</span> {msg.proposal.currentReturnStatus}</div>
+                      )}
+                      {msg.proposal.newReturnStatus && !msg.proposal.newOrderStatus && (
+                        <div><span className="font-bold text-gray-700">Action:</span> <span className="font-bold text-emerald-800">{msg.proposal.newReturnStatus === 'return_approved' ? 'Approve / Accept Return' : msg.proposal.newReturnStatus === 'return_rejected' ? 'Reject / Decline Return' : msg.proposal.newReturnStatus}</span></div>
+                      )}
+                      {msg.proposal.refundAmountCents && (
+                        <div><span className="font-bold text-gray-700">Refund Amount:</span> <span className="font-bold text-emerald-800">₹{(msg.proposal.refundAmountCents / 100).toFixed(2)}</span></div>
+                      )}
+                      {msg.proposal.scope === 'cart' ? (
+                        <div><span className="font-bold text-gray-700">Scope:</span> <span className="font-bold text-indigo-700">Entire Abandoned Cart</span></div>
+                      ) : (
+                        msg.proposal.productName && <div><span className="font-bold text-gray-700">Product:</span> {msg.proposal.productName}</div>
+                      )}
+                      {msg.proposal.currentPriceCents && (
+                        <div><span className="font-bold text-gray-700">Current Price:</span> ₹{(msg.proposal.currentPriceCents / 100).toFixed(2)}</div>
+                      )}
+                      {msg.proposal.newPriceCents && (
+                        <div><span className="font-bold text-gray-700">New Price:</span> <span className="font-bold text-blue-800">₹{(msg.proposal.newPriceCents / 100).toFixed(2)}</span></div>
+                      )}
+                      {msg.proposal.discountPercent && (
+                        <div><span className="font-bold text-gray-700">Discount:</span> <span className="font-bold text-emerald-700">{msg.proposal.discountPercent}% OFF</span></div>
+                      )}
+                      {msg.proposal.dealPriceCents && (
+                        <div><span className="font-bold text-gray-700">Deal Price:</span> <span className="font-extrabold text-blue-800">₹{(msg.proposal.dealPriceCents / 100).toFixed(2)}</span></div>
+                      )}
+                      {msg.proposal.durationValue && (
+                        <div><span className="font-bold text-gray-700">Duration:</span> <span className="font-bold text-indigo-700">{formatDurationDisplay(msg.proposal.durationValue, msg.proposal.durationUnit)}</span></div>
+                      )}
+                      <div className="text-[11px] text-amber-800 mt-1 italic">
+                        🔔 Notification: Relevant existing email and timeline workflows will execute automatically upon confirmation.
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleConfirmProposal(msg.proposal!)}
+                        disabled={loading}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <IconCheck className="w-4 h-4" />
+                        <span>Confirm & Execute Action</span>
+                      </button>
+                      <button
+                        onClick={handleCancelProposal}
+                        disabled={loading}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+                      >
+                        <IconClose className="w-3.5 h-3.5" />
+                        <span>Cancel</span>
+                      </button>
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {/* Speaker icon button on the RIGHT SIDE of every Merchant Helper assistant message */}
+              {msg.sender === 'assistant' && (
+                <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTTS(msg)}
+                    disabled={loadingTtsMsgId === msg.id}
+                    title={
+                      playingMsgId === msg.id
+                        ? 'Stop Audio Playback'
+                        : loadingTtsMsgId === msg.id
+                        ? 'Generating speech...'
+                        : 'Listen to message (Text-to-Speech)'
+                    }
+                    className={`p-2 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer border ${
+                      playingMsgId === msg.id
+                        ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse shadow-xs'
+                        : loadingTtsMsgId === msg.id
+                        ? 'bg-amber-50 border-amber-300 text-amber-600 cursor-not-allowed'
+                        : 'bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-500 hover:text-blue-600 shadow-xs'
+                    }`}
+                  >
+                    {loadingTtsMsgId === msg.id ? (
+                      <IconRefresh className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                    ) : playingMsgId === msg.id ? (
+                      <span className="text-xs leading-none">🔊</span>
+                    ) : (
+                      <span className="text-xs leading-none">🔈</span>
+                    )}
+                  </button>
+                  {ttsErrorMap[msg.id] && (
+                    <span className="text-[9px] text-rose-500 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded whitespace-nowrap">
+                      {ttsErrorMap[msg.id]}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -519,6 +765,19 @@ export default function MerchantHelper() {
         <div ref={chatEndRef} />
       </div>
 
+      {/* Voice Error Banner */}
+      {voiceError && (
+        <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 text-xs text-amber-800 flex items-center justify-between font-sans">
+          <span>⚠️ {voiceError}</span>
+          <button
+            onClick={() => setVoiceError(null)}
+            className="text-amber-600 hover:text-amber-900 font-bold ml-2 cursor-pointer"
+          >
+            <IconClose className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Input Footer */}
       <div className="bg-white border-t border-gray-200 p-4">
         <form
@@ -526,19 +785,55 @@ export default function MerchantHelper() {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center gap-3"
+          className="flex items-center gap-2"
         >
+          {/* Microphone Voice Input Button */}
+          <button
+            type="button"
+            onClick={isRecording ? handleStopRecording : handleStartRecording}
+            disabled={loading || isTranscribing}
+            title={isRecording ? 'Click to stop recording' : isTranscribing ? 'Transcribing audio...' : 'Speak message (Speech-to-Text)'}
+            className={`p-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer shrink-0 border ${
+              isRecording
+                ? 'bg-rose-50 border-rose-400 text-rose-600 animate-pulse ring-2 ring-rose-200'
+                : isTranscribing
+                ? 'bg-amber-50 border-amber-300 text-amber-600 cursor-not-allowed'
+                : 'bg-gray-100 hover:bg-blue-50 border-gray-300 hover:border-blue-400 text-gray-700 hover:text-blue-600'
+            }`}
+          >
+            {isRecording ? (
+              <span className="flex items-center gap-1.5 text-rose-700 font-extrabold px-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping inline-block" />
+                <span>Stop</span>
+              </span>
+            ) : isTranscribing ? (
+              <span className="flex items-center gap-1.5 text-amber-700 font-bold px-1">
+                <IconRefresh className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                <span>Transcribing...</span>
+              </span>
+            ) : (
+              <span className="text-base leading-none">🎙️</span>
+            )}
+          </button>
+
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Ask questions or instruct actions (e.g. 'Mark order #1234 as dispatched', 'Initiate refund')..."
-            disabled={loading}
+            placeholder={
+              isRecording
+                ? 'Listening... Speak your question or command naturally...'
+                : isTranscribing
+                ? 'Transcribing speech to text...'
+                : "Ask questions or instruct actions (e.g. 'Mark order #1234 as dispatched', 'Initiate refund')..."
+            }
+            disabled={loading || isTranscribing}
             className="flex-1 bg-gray-50 border border-gray-300 focus:border-blue-500 focus:bg-white focus:outline-none rounded-xl px-4 py-2.5 text-xs text-gray-800 transition"
           />
+
           <button
             type="submit"
-            disabled={!inputText.trim() || loading}
+            disabled={!inputText.trim() || loading || isTranscribing}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>Send</span>

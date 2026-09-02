@@ -194,40 +194,87 @@ export class MerchantHelperService {
   }
 
   /**
-   * Parse flexible duration from natural language input
+   * Helper mapping for Hindi, Hinglish, & English number words to numerical values.
    */
-  private parseDuration(text: string): { durationValue: number; durationUnit: 'minutes' | 'hours' | 'days'; expiresInMinutes: number } | null {
-    const lower = text.toLowerCase();
+  public parseNumberWord(token: string): number | null {
+    if (!token) return null;
+    const t = token.toLowerCase().trim();
+    if (/^\d+$/.test(t)) return parseInt(t, 10);
 
-    if (lower.includes('kal tak')) {
+    const map: Record<string, number> = {
+      // English
+      one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50,
+      // Hinglish
+      ek: 1, do: 2, teen: 3, tin: 3, char: 4, chaar: 4, paanch: 5, panch: 5, chhe: 6, che: 6,
+      saat: 7, aath: 8, nau: 9, das: 10, pandrah: 15, bees: 20, tees: 30,
+      // Hindi Devanagari
+      'एक': 1, 'दो': 2, 'तीन': 3, 'चार': 4, 'पाँच': 5, 'पांच': 5, 'छह': 6, 'सात': 7, 'आठ': 8, 'नौ': 9, 'दस': 10,
+      'पंद्रह': 15, 'बीस': 20, 'तीस': 30, 'चालीस': 40, 'पचास': 50,
+    };
+
+    return map[t] ?? null;
+  }
+
+  /**
+   * Parse flexible duration from natural language input in English, Hindi, and Hinglish.
+   */
+  public parseDuration(text: string): { durationValue: number; durationUnit: 'minutes' | 'hours' | 'days'; expiresInMinutes: number } | null {
+    if (!text) return null;
+    const lower = text.toLowerCase().trim();
+
+    // 1. Special case: "kal tak" / "कल तक" (1 day = 1440 minutes)
+    if (lower.includes('kal tak') || lower.includes('कल तक')) {
       return { durationValue: 1, durationUnit: 'days', expiresInMinutes: 1440 };
     }
 
-    const minMatch = lower.match(/(\d+)\s*(min|minute|minutes|m)/i);
+    // Number tokens pattern matching digits OR number words in English, Hinglish, & Hindi
+    const numTokens = '(\\d+|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|thirty|ek|do|teen|tin|chaar|char|paanch|panch|das|pandrah|tees|एक|दो|तीन|चार|पाँच|पांच|छह|सात|आठ|नौ|दस|पंद्रह|तीस)';
+
+    // A. Minutes pattern: (num) (min|mins|minute|minutes|\bm\b|मिनट|मिनिट)
+    const minRegex = new RegExp(`${numTokens}\\s*(min|mins|minute|minutes|\\bm\\b|मिनट|मिनिट)`, 'ui');
+    const minMatch = lower.match(minRegex);
     if (minMatch) {
-      const val = parseInt(minMatch[1], 10);
-      if (!isNaN(val) && val > 0) {
+      const val = this.parseNumberWord(minMatch[1]);
+      if (val && val > 0) {
         return { durationValue: val, durationUnit: 'minutes', expiresInMinutes: val };
       }
     }
 
-    const hrMatch = lower.match(/(\d+)\s*(hr|hour|hours|h)/i);
+    // B. Hours pattern: (num) (hr|hrs|hour|hours|\bh\b|ghanta|ghante|ghanton|घंटा|घंटे|घंटों)
+    const hrRegex = new RegExp(`${numTokens}\\s*(hr|hrs|hour|hours|\\bh\\b|ghanta|ghante|ghanton|घंटा|घंटे|घंटों)`, 'ui');
+    const hrMatch = lower.match(hrRegex);
     if (hrMatch) {
-      const val = parseInt(hrMatch[1], 10);
-      if (!isNaN(val) && val > 0) {
+      const val = this.parseNumberWord(hrMatch[1]);
+      if (val && val > 0) {
         return { durationValue: val, durationUnit: 'hours', expiresInMinutes: val * 60 };
       }
     }
 
-    const dayMatch = lower.match(/(\d+)\s*(day|days|din|d)/i);
+    // C. Days pattern: (num) (day|days|\bd\b|din|dino|दिन|दिनों)
+    const dayRegex = new RegExp(`${numTokens}\\s*(day|days|\\bd\\b|din|dino|दिन|दिनों)`, 'ui');
+    const dayMatch = lower.match(dayRegex);
     if (dayMatch) {
-      const val = parseInt(dayMatch[1], 10);
-      if (!isNaN(val) && val > 0) {
+      const val = this.parseNumberWord(dayMatch[1]);
+      if (val && val > 0) {
         return { durationValue: val, durationUnit: 'days', expiresInMinutes: val * 1440 };
       }
     }
 
     return null;
+  }
+
+  /**
+   * Check if text contains duration intent keywords even if numerical parsing failed
+   */
+  private hasAmbiguousDurationIntent(text: string): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const durationKeywords = [
+      'timer', 'time limit', 'valid for', 'expire', 'duration',
+      'ghante', 'ghanta', 'minute', 'minit', 'dino', 'समय', 'टाइमर', 'अवधि', 'वैलिड'
+    ];
+    return durationKeywords.some((kw) => lower.includes(kw));
   }
 
   /**
@@ -683,6 +730,9 @@ export class MerchantHelperService {
 
     if (isDealIntent) {
       const prop = await this.buildDealProposal(merchantId, userMessage, history, pendingProposal);
+      if (typeof prop === 'string') {
+        return prop;
+      }
       if (!prop) {
         return "There are currently 0 abandoned carts, so there are no customers to target with this deal.";
       }
@@ -1534,7 +1584,18 @@ ${userMessage}`;
     const cartRepo = this.dataSource.getRepository(Cart);
 
     const requestedDiscount = this.parseDiscount(userMessage) ?? 10;
-    const durationObj = this.parseDuration(userMessage) || { durationValue: 2, durationUnit: 'days' as const, expiresInMinutes: 2880 };
+    const parsedDur = this.parseDuration(userMessage);
+    if (!parsedDur && this.hasAmbiguousDurationIntent(userMessage)) {
+      const langStyle = this.detectLanguageStyle(userMessage);
+      if (langStyle === 'hindi') {
+        return 'Deal कितने समय के लिए रखनी है? उदाहरण: 30 मिनट, 1 घंटा या 2 दिन.' as any;
+      }
+      if (langStyle === 'hinglish') {
+        return 'Deal kitne time ke liye rakhni hai? Example: 30 minutes, 1 hour ya 2 days.' as any;
+      }
+      return 'How long should this deal remain active? Example: 30 minutes, 1 hour, or 2 days.' as any;
+    }
+    const durationObj = parsedDur || { durationValue: 2, durationUnit: 'days' as const, expiresInMinutes: 2880 };
     const sendEmail = this.parseEmailFlag(userMessage) ?? true;
 
     const merchantProducts = await productRepo.find({

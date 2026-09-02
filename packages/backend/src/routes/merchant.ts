@@ -25,6 +25,8 @@ import { DEMO_MERCHANT_UUID } from '../seed.js';
 
 import { OrderService } from '../services/OrderService.js';
 import { MerchantHelperService } from '../services/MerchantHelperService.js';
+import { transcriptionService } from '../services/TranscriptionService.js';
+import { ttsService } from '../services/TTSService.js';
 
 export function createMerchantRouter(
   dataSource: DataSource = AppDataSource,
@@ -1388,6 +1390,58 @@ export function createMerchantRouter(
     } catch (err: any) {
       console.error('[MerchantHelper] Error executing action confirm:', err);
       return res.status(400).json({ error: err.message || 'Failed to execute deal action' });
+    }
+  });
+
+  /**
+   * POST /api/merchant/helper/transcribe
+   * Speech-to-text voice transcription endpoint using Groq Whisper Large V3
+   */
+  router.post('/helper/transcribe', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      // Validate authenticated merchant session
+      await getAuthenticatedMerchantId(req);
+
+      const { audio, audioBase64, mimeType, filename } = req.body || {};
+      const rawAudio = audio || audioBase64;
+
+      if (!rawAudio || typeof rawAudio !== 'string' || !rawAudio.trim()) {
+        return res.status(400).json({ error: 'Audio data is required for transcription' });
+      }
+
+      const transcription = await transcriptionService.transcribeAudio({
+        audioBase64: rawAudio,
+        mimeType: mimeType || 'audio/webm',
+        filename: filename || 'recording.webm',
+      });
+
+      return res.json({ text: transcription });
+    } catch (err: any) {
+      console.error('[MerchantHelper] Error transcribing speech:', err);
+      return res.status(500).json({ error: err.message || 'Speech transcription failed' });
+    }
+  });
+
+  /**
+   * POST /api/merchant/helper/tts
+   * Text-to-speech voice generation endpoint using Sarvam AI Bulbul v3
+   */
+  router.post('/helper/tts', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      // Validate authenticated merchant session
+      await getAuthenticatedMerchantId(req);
+
+      const { text } = req.body || {};
+
+      if (!text || typeof text !== 'string' || !text.trim()) {
+        return res.status(400).json({ error: 'Message text is required for TTS generation' });
+      }
+
+      const result = await ttsService.generateSpeech({ text });
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[MerchantHelper] Error generating TTS speech:', err);
+      return res.status(500).json({ error: err.message || 'Text-to-speech generation failed' });
     }
   });
 

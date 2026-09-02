@@ -37,6 +37,7 @@ export interface Environment {
   SCHEDULER_ENABLED: boolean;
   ADMIN_EMAIL: string;
   ADMIN_PASSWORD_HASH: string;
+  SARVAM_API_KEY?: string;
 }
 
 let cachedEnv: Environment | null = null;
@@ -97,6 +98,7 @@ export function validateEnv(): Environment {
     SCHEDULER_ENABLED,
     ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'admin@razorshop.app',
     ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH || defaultAdminHash,
+    SARVAM_API_KEY: process.env.SARVAM_API_KEY || '',
   };
 }
 
