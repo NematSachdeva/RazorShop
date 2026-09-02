@@ -17,6 +17,7 @@ import { Cart } from '../models/Cart.js';
 import { CartItem } from '../models/CartItem.js';
 import { Payment } from '../models/Payment.js';
 import { OrderService } from './OrderService.js';
+import { RecoveryEmailGenerator } from './RecoveryEmailGenerator.js';
 
 describe('PaymentFailureService', () => {
   let service: PaymentFailureService;
@@ -29,6 +30,13 @@ describe('PaymentFailureService', () => {
 
   beforeAll(async () => {
     await initializeTestDatabase();
+    jest.spyOn(RecoveryEmailGenerator.prototype, 'generateEmailContent').mockResolvedValue({
+      subject: 'Payment Failure',
+      greeting: 'Hi Customer',
+      body: 'Your payment has failed.',
+      call_to_action: 'Complete Payment',
+      tone: 'helpful',
+    });
     service = new PaymentFailureService(TestDataSource);
     orderService = new OrderService(TestDataSource);
   });
@@ -236,9 +244,9 @@ describe('PaymentFailureService', () => {
 
   describe('triggerRecoveryEmail', () => {
     it('gracefully handles missing customer email without crashing', async () => {
-      // Set customer email to empty string
+      // Set customer email to invalid string
       const customerRepo = TestDataSource.getRepository(Customer);
-      await customerRepo.update(testCustomerId, { email: '' });
+      await customerRepo.update(testCustomerId, { email: `invalid-email-${Date.now()}` });
 
       const recoveryCase = await service.handlePaymentFailure(
         testPaymentId,
