@@ -34,15 +34,20 @@ class AuthService {
     business_name?: string,
     reason?: string
   ): Promise<AuthResponse> {
+    const normalizedEmail = email.trim().toLowerCase();
     const response = await fetch(getApiUrl('/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name, role, business_name, reason }),
+      body: JSON.stringify({ email: normalizedEmail, password, name, role, business_name, reason }),
     });
 
     if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || 'Registration failed');
+      const data = await response.json().catch(() => ({}));
+      const msg = data.message || data.error || 'Registration failed';
+      const err: any = new Error(msg);
+      err.status = response.status;
+      err.code = data.error;
+      throw err;
     }
 
     const data: AuthResponse = await response.json();
@@ -62,15 +67,20 @@ class AuthService {
    * Login with email and password
    */
   async login(email: string, password: string): Promise<AuthResponse> {
+    const normalizedEmail = email.trim().toLowerCase();
     const response = await fetch(getApiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: normalizedEmail, password }),
     });
 
     if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || 'Login failed');
+      const data = await response.json().catch(() => ({}));
+      const msg = data.message || data.error || 'Invalid email or password';
+      const err: any = new Error(msg);
+      err.status = response.status;
+      err.code = data.error;
+      throw err;
     }
 
     const data: AuthResponse = await response.json();

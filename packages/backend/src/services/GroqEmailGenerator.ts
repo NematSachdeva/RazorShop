@@ -21,13 +21,101 @@ export interface GroqEmailFactContext {
   pickupNotes?: string;
 }
 
+export interface GroqPromotionalDealFactContext {
+  customerName: string;
+  productName: string;
+  originalPriceDisplay: string;
+  dealPriceDisplay: string;
+  discountPercent: number;
+  dealExpiresInDays?: number;
+}
+
 /**
-  Groq AI Service for natural-language order lifecycle & return/cancellation email generation.
+  Groq AI Service for natural-language order lifecycle, return/cancellation, and promotional deal email generation.
   Strictly uses authoritative factual metadata provided by backend system.
  */
 export class GroqEmailGenerator {
   private static readonly MODEL = 'openai/gpt-oss-120b';
   private static readonly FALLBACK_MODEL = 'openai/gpt-oss-20b';
+
+  async generatePromotionalDealEmail(context: GroqPromotionalDealFactContext): Promise<GeneratedEmailBody> {
+    const apiKey = process.env.GROQ_API_KEY || env.GROQ_API_KEY;
+
+    if (!apiKey || apiKey === 'placeholder-groq-key' || process.env.NODE_ENV === 'test') {
+      return this.getPromotionalFallbackContent(context);
+    }
+
+    const systemPrompt = `You are a professional e-commerce marketing assistant for RazorShop.
+Write a concise, compelling customer promotional email in ENGLISH for an exclusive limited-time offer.
+Base all content STRICTLY on the authoritative facts below. DO NOT alter product names, prices, or discount percentages.
+Return ONLY valid JSON matching this exact structure:
+{
+  "subject": "Exclusive Offer: Special Deal on Product Name!",
+  "greeting": "Hi CustomerName,",
+  "body": "Natural-language English promotional email body explaining the offer clearly.",
+  "call_to_action": "Claim Deal Now"
+}`;
+
+    const userPrompt = `AUTHORITATIVE SYSTEM FACTS (MUST NOT BE ALTERED):
+- Customer Name: ${context.customerName || 'Valued Customer'}
+- Product Name: ${context.productName}
+- Original Price: ₹${context.originalPriceDisplay}
+- Discount Percent: ${context.discountPercent}%
+- Exclusive Deal Price: ₹${context.dealPriceDisplay}
+${context.dealExpiresInDays ? `- Offer Valid For: ${context.dealExpiresInDays} days` : ''}`;
+
+    for (const model of [GroqEmailGenerator.MODEL, GroqEmailGenerator.FALLBACK_MODEL]) {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.3,
+            max_tokens: 450,
+            response_format: { type: 'json_object' },
+          }),
+        });
+
+        if (response.ok) {
+          const data: any = await response.json();
+          const rawText = data.choices?.[0]?.message?.content;
+          if (rawText) {
+            const parsed = JSON.parse(rawText);
+            if (parsed.subject && parsed.body) {
+              return {
+                subject: parsed.subject,
+                greeting: parsed.greeting || `Hi ${context.customerName || 'Valued Customer'},`,
+                body: parsed.body,
+                call_to_action: parsed.call_to_action || 'Complete Purchase Now',
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[GroqEmailGenerator] Groq API promotional call failed for model ${model}, fallback used:`, err);
+      }
+    }
+
+    return this.getPromotionalFallbackContent(context);
+  }
+
+  private getPromotionalFallbackContent(context: GroqPromotionalDealFactContext): GeneratedEmailBody {
+    const custName = context.customerName || 'Valued Customer';
+    return {
+      subject: `Special ${context.discountPercent}% Off Offer on ${context.productName}!`,
+      greeting: `Hi ${custName},`,
+      body: `We noticed you were interested in ${context.productName}. For a limited time, we are offering an exclusive ${context.discountPercent}% discount! You can now get ${context.productName} for just ₹${context.dealPriceDisplay} (Original Price: ₹${context.originalPriceDisplay}).${context.dealExpiresInDays ? ` Hurry, this offer expires in ${context.dealExpiresInDays} days!` : ''}`,
+      call_to_action: 'Get Deal Now',
+    };
+  }
 
   async generateEmail(context: GroqEmailFactContext): Promise<GeneratedEmailBody> {
     const apiKey = process.env.GROQ_API_KEY || env.GROQ_API_KEY;

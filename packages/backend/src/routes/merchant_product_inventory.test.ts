@@ -107,6 +107,7 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
       .send({
         name: 'Solar Smart Outdoor Lamp',
         description: 'Solar powered motion sensor light',
+        image_url: 'https://example.com/lamp.jpg',
         price_cents: 499900,
         category: 'Lighting',
         initial_quantity: 45,
@@ -132,6 +133,8 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
       .set('Authorization', `Bearer ${merchantToken}`)
       .send({
         name: 'Smart Door Lock',
+        description: 'Smart biometric door lock',
+        image_url: 'https://example.com/doorlock.jpg',
         price_cents: 899900,
         category: 'Security',
         initial_quantity: 20,
@@ -154,6 +157,8 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
       .set('Authorization', `Bearer ${merchantToken}`)
       .send({
         name: 'Draft Product',
+        description: 'Draft description',
+        image_url: 'https://example.com/draft.jpg',
         price_cents: 100000,
         category: 'Drafts',
         initial_quantity: 10,
@@ -189,6 +194,8 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
       .set('Authorization', `Bearer ${merchantToken}`)
       .send({
         name: 'Merchant 1 Exclusive Item',
+        description: 'Exclusive description',
+        image_url: 'https://example.com/exclusive.jpg',
         price_cents: 500000,
       });
 
@@ -214,6 +221,8 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
       .set('Authorization', `Bearer ${merchantToken}`)
       .send({
         name: 'Stock Adjustment Test Product',
+        description: 'Stock product description',
+        image_url: 'https://example.com/stock.jpg',
         price_cents: 199900,
         initial_quantity: 10,
       });
@@ -255,6 +264,8 @@ describe('Merchant Product Catalog & Inventory Management API', () => {
       .set('Authorization', `Bearer ${merchantToken}`)
       .send({
         name: 'Reserved Stock Test Product',
+        description: 'Reserved product description',
+        image_url: 'https://example.com/reserved.jpg',
         price_cents: 299900,
         initial_quantity: 10,
       });

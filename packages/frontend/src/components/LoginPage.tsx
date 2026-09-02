@@ -84,9 +84,22 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         </div>
 
         {error && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-2">
-            <span>⚠️</span>
-            <span>{error}</span>
+          <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold space-y-2">
+            <div className="flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{error}</span>
+            </div>
+            {(error.includes('already registered') || error.includes('EMAIL_ALREADY_REGISTERED')) && mode !== 'login' && (
+              <div className="pt-1 border-t border-rose-200/60 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className="px-3 py-1 bg-rose-700 hover:bg-rose-800 text-white rounded-lg text-[11px] font-extrabold transition cursor-pointer"
+                >
+                  Sign In Instead →
+                </button>
+              </div>
+            )}
           </div>
         )}
 

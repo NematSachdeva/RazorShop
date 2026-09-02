@@ -899,7 +899,7 @@ export class OrderService {
       throw new Error('Refund has already been initiated for this order');
     }
 
-    if (currentReturnStatus !== 'order_returned_to_seller') {
+    if (currentReturnStatus !== 'order_returned_to_seller' && currentReturnStatus !== 'cancelled') {
       throw new Error(`Cannot initiate refund before order is returned to seller. Current status is '${currentReturnStatus}'`);
     }
 
@@ -945,6 +945,133 @@ export class OrderService {
     }
 
     return this.orderToDTO(savedOrder, savedOrder.items || []);
+  }
+
+  /**
+   * Merchant action: Update order status (dispatched, delivered, cancelled) with timeline and email notifications
+   */
+  async updateOrderStatusByMerchant(
+    orderId: string,
+    merchantId: string,
+    newStatus: OrderStatus,
+    notes?: string
+  ): Promise<OrderDTO> {
+    const orderRepo = this.getOrderRepository();
+    const order = await orderRepo.findOne({
+      where: [{ id: orderId }, { order_number: orderId }],
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    if (!order) {
+      throw new Error(`Order '${orderId}' not found`);
+    }
+
+    const currentStatus = order.status;
+
+    // Transition State Machine Validation
+    if (newStatus === 'dispatched' || newStatus === 'shipped') {
+      if (currentStatus !== 'confirmed' && currentStatus !== 'pending') {
+        throw new Error(`Order '${order.order_number}' is currently in '${currentStatus}' status. Dispatched requires status to be 'confirmed'.`);
+      }
+      order.status = 'dispatched';
+      await this.getOrderRepository().save(order);
+      await this.addTimelineEvent(order.id, 'ORDER_DISPATCHED', 'merchant', merchantId, notes || 'Order marked as dispatched by merchant');
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendOrderDispatchedNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              orderDate: order.created_at ? order.created_at.toISOString() : new Date().toISOString(),
+              shippingAddress: order.shipping_address || null,
+              items: order.items?.map((i) => ({
+                name: i.product?.name || 'Item',
+                quantity: i.quantity,
+                lineTotalCents: Number(i.line_total_cents),
+              })) || [],
+              totalCents: Number(order.total_cents),
+              orderLink: `/orders/${order.id}`,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send dispatch email:', emailErr);
+        }
+      }
+    } else if (newStatus === 'delivered') {
+      if (currentStatus !== 'dispatched' && currentStatus !== 'shipped') {
+        throw new Error(`Order '${order.order_number}' is currently '${currentStatus}'. It cannot be marked Delivered directly because 'dispatched' is the required previous stage.`);
+      }
+      order.status = 'delivered';
+      await this.getOrderRepository().save(order);
+      await this.addTimelineEvent(order.id, 'ORDER_DELIVERED', 'merchant', merchantId, notes || 'Order marked as delivered by merchant');
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendOrderDeliveredNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              deliveredDate: new Date().toISOString(),
+              items: order.items?.map((i) => ({
+                name: i.product?.name || 'Item',
+                quantity: i.quantity,
+                lineTotalCents: Number(i.line_total_cents),
+              })) || [],
+              totalCents: Number(order.total_cents),
+              orderLink: `/orders/${order.id}`,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send delivery email:', emailErr);
+        }
+      }
+    } else if (newStatus === 'cancelled') {
+      if (currentStatus === 'delivered') {
+        throw new Error(`Order '${order.order_number}' cannot be cancelled after delivery.`);
+      }
+      order.status = 'cancelled';
+      order.cancelled_by = 'merchant';
+      order.cancellation_reason = notes || 'Cancelled by merchant via Merchant Helper';
+      order.cancellation_timestamp = new Date();
+      await this.getOrderRepository().save(order);
+      await this.addTimelineEvent(order.id, 'ORDER_CANCELLED', 'merchant', merchantId, notes || 'Order cancelled by merchant');
+
+      if (order.customer?.email) {
+        try {
+          const { emailService } = await import('./EmailService.js');
+          await emailService.sendOrderCancelledNotification(
+            order.customer.email,
+            order.customer.name || 'Valued Customer',
+            order.order_number,
+            {
+              orderId: order.id,
+              amountCents: Number(order.total_cents),
+              reason: notes || 'Order cancelled by seller',
+              orderLink: `/orders/${order.id}`,
+            }
+          );
+        } catch (emailErr) {
+          console.error('[OrderService] Failed to send cancel email:', emailErr);
+        }
+      }
+    } else {
+      order.status = newStatus;
+      await this.getOrderRepository().save(order);
+    }
+
+    const updated = await this.getOrderRepository().findOne({
+      where: { id: order.id },
+      relations: ['items', 'items.product', 'customer'],
+    });
+
+    return this.orderToDTO(updated!, updated!.items || []);
   }
 
   /**

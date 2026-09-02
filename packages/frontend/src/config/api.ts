@@ -15,3 +15,28 @@ export const getApiUrl = (path: string): string => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   return `${basePath}${cleanPath}`;
 };
+
+export const getImageUrl = (url?: string | null): string | undefined => {
+  if (!url || typeof url !== 'string' || !url.trim()) return undefined;
+  let trimmed = url.trim();
+
+  // Extract direct image URL if user pasted a Google Search / Imgres redirect link
+  if (trimmed.includes('google.com/imgres') || trimmed.includes('google.com/url')) {
+    try {
+      const parsed = new URL(trimmed);
+      const targetParam = parsed.searchParams.get('imgurl') || parsed.searchParams.get('url');
+      if (targetParam && (targetParam.startsWith('http://') || targetParam.startsWith('https://'))) {
+        trimmed = targetParam;
+      }
+    } catch {
+      // Keep trimmed if URL parsing fails
+    }
+  }
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  const serverBase = API_BASE_URL.replace(/\/api\/?$/, '');
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `${serverBase}${cleanPath}`;
+};

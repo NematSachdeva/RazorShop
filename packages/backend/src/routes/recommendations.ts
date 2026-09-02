@@ -57,6 +57,7 @@ export function createRecommendationsRouter(recommendationService: Recommendatio
             description: p.description,
             price_cents: p.price_cents,
             category: p.category,
+            image_url: p.image_url,
           })),
         });
       } catch (error) {
@@ -122,6 +123,7 @@ export function createRecommendationsRouter(recommendationService: Recommendatio
             description: p.description,
             price_cents: p.price_cents,
             category: p.category,
+            image_url: p.image_url,
           })),
         });
       } catch (error) {

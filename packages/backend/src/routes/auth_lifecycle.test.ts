@@ -69,6 +69,27 @@ describe('Auth Lifecycle & Cart Persistence Tests', () => {
     expect(customer?.role).toBe('merchant');
   });
 
+  test('B2. Login with uppercase / trailing spaces email works', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: '  NnnnSachdeva@Gmail.com  ', password: 'password123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('token');
+    expect(res.body.email).toBe('nnnnsachdeva@gmail.com');
+  });
+
+  test('B3. Duplicate registration returns 409 Conflict with EMAIL_ALREADY_REGISTERED', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'nnnnsachdeva@gmail.com', password: 'password123', name: 'Test' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('already registered');
+    expect(res.body.code).toBe('EMAIL_ALREADY_REGISTERED');
+    expect(res.body.message).toContain('already registered');
+  });
+
   test('C. Wrong password returns 401 Unauthorized', async () => {
     const res = await request(app)
       .post('/api/auth/login')

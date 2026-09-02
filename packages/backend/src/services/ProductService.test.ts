@@ -1,11 +1,13 @@
 import { ProductService } from './ProductService.js';
 import { initializeTestDatabase, closeTestDatabase, TestDataSource } from '../config/database.test.js';
+import { seedDatabase } from '../seed.js';
 
 describe('ProductService', () => {
   let service: ProductService;
 
   beforeAll(async () => {
     await initializeTestDatabase();
+    await seedDatabase(TestDataSource);
     service = new ProductService(TestDataSource);
   });
 

@@ -64,6 +64,10 @@ describe('MerchantAgent', () => {
 
   afterEach(async () => {
     // Clean up
+    const qr = TestDataSource.createQueryRunner();
+    await qr.query('TRUNCATE TABLE payment_failures, payments, payment_attempts, order_items, orders, cart_items, carts CASCADE');
+    await qr.release();
+
     const configRepo = TestDataSource.getRepository(MerchantConfig);
     const merchantRepo = TestDataSource.getRepository(Merchant);
     await configRepo.delete({ merchant_id: testMerchant.id });

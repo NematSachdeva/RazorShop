@@ -168,6 +168,49 @@ export class EmailService {
   /**
    * Send payment confirmation email for successfully captured payments.
    */
+  async sendPromotionalDealEmail(
+    customerEmail: string,
+    customerName: string,
+    productName: string,
+    originalPriceDisplay: string,
+    dealPriceDisplay: string,
+    discountPercent: number,
+    dealExpiresInDays?: number,
+    options?: EmailOptions
+  ): Promise<EmailResult> {
+    const generated = await groqEmailGenerator.generatePromotionalDealEmail({
+      customerName,
+      productName,
+      originalPriceDisplay,
+      dealPriceDisplay,
+      discountPercent,
+      dealExpiresInDays,
+    });
+
+    const template: EmailTemplate = {
+      subject: generated.subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+          <h2 style="color: #2563eb; margin-top: 0;">Special Offer for You!</h2>
+          <p>${generated.greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6; color: #374151;">${generated.body}</p>
+          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+            <p style="margin: 0; font-weight: bold; color: #1f2937;">Product: ${productName}</p>
+            <p style="margin: 5px 0 0 0; color: #4b5563;">Original Price: <span style="text-decoration: line-through;">₹${originalPriceDisplay}</span></p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #059669;">Special Deal Price: ₹${dealPriceDisplay} (${discountPercent}% OFF)</p>
+          </div>
+          <a href="#" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; text-align: center;">${generated.call_to_action || 'Shop Now'}</a>
+        </div>
+      `,
+      text: `${generated.greeting}\n\n${generated.body}\n\nProduct: ${productName}\nOriginal Price: ₹${originalPriceDisplay}\nDeal Price: ₹${dealPriceDisplay} (${discountPercent}% OFF)`,
+    };
+
+    return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');
+  }
+
+  /**
+   * Send notification when payment confirmation is complete
+   */
   async sendPaymentConfirmationNotification(
     customerEmail: string,
     customerName: string,

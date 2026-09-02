@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { getApiUrl } from './config/api';
+import { useEffect, useState, useCallback } from 'react';
+import { getApiUrl, getImageUrl } from './config/api';
 import { ProductDTO, CartDTO, ProductListResponse } from '@razor/shared';
 import Checkout from './components/Checkout';
 import PaymentPage from './components/PaymentPage';
@@ -125,52 +125,72 @@ export default function App() {
   }, []);
 
   // Fetch categories
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const response = await fetch(getApiUrl('/products/categories'));
-        if (response.ok) {
-          const data = await response.json();
-          setCategories(data.categories || []);
-        }
-      } catch (err) {
-        console.error('Failed to load categories', err);
+  const fetchCategories = useCallback(async () => {
+    try {
+      const response = await fetch(getApiUrl('/products/categories'));
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.categories || []);
       }
-    };
-    fetchCategories();
+    } catch (err) {
+      console.error('Failed to load categories', err);
+    }
   }, []);
 
-  // Fetch products with search, category, minPrice, maxPrice, sort
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const query = new URLSearchParams({
-          page: currentPage.toString(),
-          limit: '100',
-          ...(selectedCategory && { category: selectedCategory }),
-          ...(searchTerm && { search: searchTerm }),
-          ...(minPrice !== '' && !isNaN(Number(minPrice)) && { minPrice }),
-          ...(maxPrice !== '' && !isNaN(Number(maxPrice)) && { maxPrice }),
-          ...(sortOption && { sort: sortOption }),
-        });
-        const response = await fetch(getApiUrl(`/products?${query}`));
-        if (response.ok) {
-          const data: ProductListResponse = await response.json();
-          setProducts(data.data || []);
-          setPagination({ total: data.total, pages: data.pages });
-        } else {
-          setError('Failed to load products');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
+    fetchCategories();
+  }, [fetchCategories]);
+
+  // Fetch products with search, category, minPrice, maxPrice, sort
+  const fetchProducts = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const query = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: '100',
+        ...(selectedCategory && { category: selectedCategory }),
+        ...(searchTerm && { search: searchTerm }),
+        ...(minPrice !== '' && !isNaN(Number(minPrice)) && { minPrice }),
+        ...(maxPrice !== '' && !isNaN(Number(maxPrice)) && { maxPrice }),
+        ...(sortOption && { sort: sortOption }),
+      });
+      const response = await fetch(getApiUrl(`/products?${query}`));
+      if (response.ok) {
+        const data: ProductListResponse = await response.json();
+        setProducts(data.data || []);
+        setPagination({ total: data.total, pages: data.pages });
+      } else {
+        setError('Unable to load products. Server returned an error.');
       }
-    };
-    fetchProducts();
+    } catch (err) {
+      setError('Unable to load products. Could not connect to the server.');
+    } finally {
+      setLoading(false);
+    }
   }, [currentPage, selectedCategory, searchTerm, minPrice, maxPrice, sortOption]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  const handleRetry = () => {
+    fetchCategories();
+    fetchProducts();
+  };
+
+  const handleSelectProduct = async (product: ProductDTO) => {
+    setSelectedProduct(product);
+    try {
+      const response = await fetch(getApiUrl(`/products/${product.id}`));
+      if (response.ok) {
+        const freshProduct: ProductDTO = await response.json();
+        setSelectedProduct(freshProduct);
+      }
+    } catch {
+      // Fall back to original product object
+    }
+  };
 
   const handleUnauthorized = () => {
     authService.logout();
@@ -717,7 +737,7 @@ export default function App() {
                         <div className="pt-4 border-t border-gray-100 text-xs text-gray-500 font-medium flex justify-between items-center">
                           <span>Products found:</span>
                           <span className="font-bold text-gray-900 bg-gray-100 px-2.5 py-0.5 rounded-full">
-                            {filteredProducts.length}
+                            {error ? 'N/A' : filteredProducts.length}
                           </span>
                         </div>
                       </div>
@@ -787,12 +807,24 @@ export default function App() {
                           <p className="text-gray-500 text-sm font-medium">Loading catalog products...</p>
                         </div>
                       )}
-                      {error && (
-                        <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 text-red-600">
-                          <p className="font-bold">{error}</p>
+                      {!loading && error && (
+                        <div className="text-center py-16 bg-white rounded-2xl border border-rose-200 p-6 space-y-3">
+                          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-50 text-rose-600 mb-1">
+                            <span className="text-xl">⚠️</span>
+                          </div>
+                          <h3 className="text-base font-extrabold text-gray-900">Unable to load products</h3>
+                          <p className="text-xs text-gray-500 max-w-md mx-auto">{error}</p>
+                          <div className="pt-2">
+                            <button
+                              onClick={handleRetry}
+                              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                            >
+                              Retry Connection
+                            </button>
+                          </div>
                         </div>
                       )}
-                      {!loading && filteredProducts.length === 0 && (
+                      {!loading && !error && filteredProducts.length === 0 && (
                         <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 space-y-2">
                           <p className="text-gray-800 font-bold text-base">No products match your criteria</p>
                           <p className="text-gray-500 text-xs">Try clearing or broadening your search and filter settings.</p>
@@ -805,50 +837,82 @@ export default function App() {
                         </div>
                       )}
 
-                      {!loading && filteredProducts.length > 0 && (
+                      {!loading && !error && filteredProducts.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {filteredProducts.map((product) => {
                             const available = product.inventory?.available ?? 10;
                             const canAdd = available > 0;
+                            const imageSrc = getImageUrl(product.image_url || (product as any).imageUrl);
 
                             return (
                               <div
                                 key={product.id}
-                                onClick={() => setSelectedProduct(product)}
-                                className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group hover:border-gray-300"
+                                onClick={() => handleSelectProduct(product)}
+                                className="bg-white rounded-2xl border border-gray-200/90 shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between cursor-pointer group hover:border-blue-200 overflow-hidden"
                               >
                                 <div>
-                                  <div className="mb-2">
-                                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-block">
-                                      {product.category || 'General'}
-                                    </span>
+                                  {/* Dedicated Top Image Container */}
+                                  <div className="h-48 sm:h-52 w-full bg-slate-50/80 border-b border-gray-100 flex items-center justify-center p-3.5 relative overflow-hidden">
+                                    {imageSrc ? (
+                                      <img
+                                        src={imageSrc}
+                                        alt={product.name}
+                                        referrerPolicy="no-referrer"
+                                        className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                                        onError={(e) => {
+                                          e.currentTarget.onerror = null;
+                                          e.currentTarget.style.display = 'none';
+                                          if (e.currentTarget.nextElementSibling) {
+                                            (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex';
+                                          }
+                                        }}
+                                      />
+                                    ) : null}
+                                    <div
+                                      className="flex flex-col items-center justify-center text-gray-400 space-y-1"
+                                      style={{ display: imageSrc ? 'none' : 'flex' }}
+                                    >
+                                      <div className="w-10 h-10 rounded-xl bg-gray-100/90 flex items-center justify-center text-gray-400 font-bold text-sm">
+                                        📦
+                                      </div>
+                                    </div>
                                   </div>
 
-                                  <h3 className="font-semibold font-heading text-gray-900 text-base mb-1.5 group-hover:text-blue-600 transition-colors line-clamp-2">
-                                    {product.name}
-                                  </h3>
+                                  {/* Product Information */}
+                                  <div className="p-4">
+                                    <div className="mb-1.5">
+                                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-block">
+                                        {product.category || 'General'}
+                                      </span>
+                                    </div>
 
-                                  <p className="text-xs text-gray-600 mb-4 line-clamp-3 leading-relaxed font-normal">
-                                    {product.description || 'High quality product carefully inspected for maximum value.'}
-                                  </p>
+                                    <h3 className="font-bold font-heading text-gray-900 text-base mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[2.5rem] leading-snug">
+                                      {product.name}
+                                    </h3>
+
+                                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed font-normal min-h-[2.25rem]">
+                                      {product.description || 'No description available.'}
+                                    </p>
+                                  </div>
                                 </div>
 
-                                <div className="space-y-3 pt-3 border-t border-gray-100">
+                                {/* Divider & Bottom Action Area */}
+                                <div className="px-4 pb-4 space-y-3 pt-3 border-t border-gray-100">
                                   <div>
                                     <StockBadge availableQuantity={available} compact />
                                   </div>
 
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xl font-bold font-price text-gray-900">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-lg sm:text-xl font-bold font-price text-gray-900">
                                       {formatPrice(product.price_cents)}
                                     </span>
-                                    <div className="flex gap-2">
+                                    <div className="flex items-center gap-1.5">
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setSelectedProduct(product);
+                                          handleSelectProduct(product);
                                         }}
-                                        className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition"
+                                        className="px-2.5 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition"
                                       >
                                         Details
                                       </button>
@@ -858,13 +922,13 @@ export default function App() {
                                           e.stopPropagation();
                                           if (canAdd) addToCart(product.id);
                                         }}
-                                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition shadow-xs ${
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
                                           canAdd
                                             ? 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
-                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed border'
+                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                         }`}
                                       >
-                                        {canAdd ? 'Add' : 'Out of Stock'}
+                                        {canAdd ? '+ Add' : 'Sold Out'}
                                       </button>
                                     </div>
                                   </div>

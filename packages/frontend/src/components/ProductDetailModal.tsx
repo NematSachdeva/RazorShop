@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { ProductDTO } from '@razor/shared';
+import { getImageUrl } from '../config/api';
 import StockBadge, { getStockInfo } from './common/StockBadge';
 import ProductRecommendations from './ProductRecommendations';
 import { IconClose, IconCart } from './common/Icons';
@@ -53,6 +54,34 @@ export default function ProductDetailModal({
           <IconClose className="w-4 h-4" />
         </button>
 
+        {/* Product Image Hero */}
+        <div className="mb-6 h-64 sm:h-72 w-full overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center p-3 relative">
+          {getImageUrl(product.image_url || (product as any).imageUrl) ? (
+            <img
+              src={getImageUrl(product.image_url || (product as any).imageUrl)}
+              alt={product.name}
+              referrerPolicy="no-referrer"
+              className="max-h-full max-w-full object-contain transition-transform duration-300"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.nextElementSibling) {
+                  (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex';
+                }
+              }}
+            />
+          ) : null}
+          <div
+            className="flex flex-col items-center justify-center text-gray-400 space-y-1.5"
+            style={{ display: getImageUrl(product.image_url || (product as any).imageUrl) ? 'none' : 'flex' }}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+              📦
+            </div>
+            <span className="text-xs font-semibold text-gray-400">No image available</span>
+          </div>
+        </div>
+
         {/* Category & Title */}
         <div className="mb-4 pr-8">
           <span className="bg-blue-50 text-blue-700 text-[11px] font-medium px-3 py-1 rounded-full uppercase tracking-wider font-body">
@@ -81,7 +110,7 @@ export default function ProductDetailModal({
             Product Overview
           </h4>
           <p className="text-gray-700 leading-relaxed text-xs sm:text-sm break-words font-normal font-body">
-            {product.description || 'High quality product carefully inspected for maximum value.'}
+            {product.description || 'No product description available.'}
           </p>
         </div>
 

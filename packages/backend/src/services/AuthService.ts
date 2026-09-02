@@ -107,10 +107,19 @@ export class AuthService {
       throw new Error('Password must be at least 6 characters');
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Check if email already exists
-    const existing = await this.getCustomerRepository().findOne({
-      where: { email },
+    let existing = await this.getCustomerRepository().findOne({
+      where: { email: normalizedEmail },
     });
+
+    if (!existing) {
+      existing = await this.getCustomerRepository()
+        .createQueryBuilder('customer')
+        .where('LOWER(customer.email) = LOWER(:email)', { email: normalizedEmail })
+        .getOne();
+    }
 
     if (existing) {
       throw new Error('Email already registered');
@@ -121,10 +130,10 @@ export class AuthService {
 
     // Create customer
     const customer = this.getCustomerRepository().create({
-      email,
+      email: normalizedEmail,
       phone,
       password_hash,
-      name: name || email.split('@')[0],
+      name: name?.trim() || normalizedEmail.split('@')[0],
       role,
     });
 
@@ -211,8 +220,10 @@ export class AuthService {
       throw new Error('Email and password are required');
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Check for admin login attempt via ADMIN_EMAIL configuration
-    if (env.ADMIN_EMAIL && email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase()) {
+    if (env.ADMIN_EMAIL && normalizedEmail === env.ADMIN_EMAIL.trim().toLowerCase()) {
       let isValidAdmin = false;
       if (env.ADMIN_PASSWORD_HASH) {
         try {
@@ -241,9 +252,16 @@ export class AuthService {
     }
 
     // Find customer
-    const customer = await this.getCustomerRepository().findOne({
-      where: { email },
+    let customer = await this.getCustomerRepository().findOne({
+      where: { email: normalizedEmail },
     });
+
+    if (!customer) {
+      customer = await this.getCustomerRepository()
+        .createQueryBuilder('customer')
+        .where('LOWER(customer.email) = LOWER(:email)', { email: normalizedEmail })
+        .getOne();
+    }
 
     if (!customer) {
       throw new Error('Invalid email or password');

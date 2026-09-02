@@ -29,6 +29,7 @@ export interface ProductDTO {
   description?: string;
   price_cents: number;
   category?: string;
+  image_url?: string | null;
   inventory?: {
     quantity_on_hand: number;
     reserved: number;

@@ -12,6 +12,7 @@ import InsightsFeed from './analytics/InsightsFeed';
 import MerchantConfigUI from './analytics/MerchantConfigUI';
 import MerchantProducts from './merchant/MerchantProducts';
 import { MerchantOrdersTab } from './merchant/MerchantOrdersTab';
+import MerchantHelper from './merchant/MerchantHelper';
 import Footer from './Footer';
 import ProfilePopover from './common/ProfilePopover';
 import {
@@ -106,6 +107,7 @@ type ViewState =
   | 'recovery-cases'
   | 'recovery-case-detail'
   | 'insights'
+  | 'merchant-helper'
   | 'config';
 
 interface MerchantDashboardProps {
@@ -223,6 +225,7 @@ export default function MerchantDashboard({
     { id: 'products', label: 'Products & Stock', icon: IconCart },
     { id: 'recovery-cases', label: 'Recovery Cases', icon: IconShield },
     { id: 'insights', label: 'Insights', icon: IconInfo },
+    { id: 'merchant-helper', label: 'Merchant Helper', icon: IconInfo },
     { id: 'config', label: 'Config', icon: IconInfo },
   ] as const;
 
@@ -254,6 +257,10 @@ export default function MerchantDashboard({
     insights: {
       title: 'AI Insights & Recommendations',
       subtitle: 'Actionable catalog recommendations generated for your store.',
+    },
+    'merchant-helper': {
+      title: 'Merchant Helper',
+      subtitle: 'AI Business Assistant & Deal Creation (English, Hindi, Hinglish)',
     },
     config: {
       title: 'Merchant Guard Rails & Settings',
@@ -427,6 +434,7 @@ export default function MerchantDashboard({
             <RecoveryCaseDetail caseId={selectedCaseId} />
           )}
           {viewState === 'insights' && <InsightsFeed />}
+          {viewState === 'merchant-helper' && <MerchantHelper />}
           {viewState === 'config' && <MerchantConfigUI />}
 
           {(viewState === 'dashboard' || viewState === 'analytics') && (

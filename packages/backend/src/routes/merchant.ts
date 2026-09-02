@@ -24,6 +24,7 @@ import { emailService as defaultEmailService } from '../services/EmailService.js
 import { DEMO_MERCHANT_UUID } from '../seed.js';
 
 import { OrderService } from '../services/OrderService.js';
+import { MerchantHelperService } from '../services/MerchantHelperService.js';
 
 export function createMerchantRouter(
   dataSource: DataSource = AppDataSource,
@@ -32,6 +33,7 @@ export function createMerchantRouter(
   orderService: OrderService = new OrderService(dataSource)
 ): Router {
   const router = Router();
+  const helperService = new MerchantHelperService(dataSource, emailService);
   const authenticate = createAuthenticate(authService);
   const requireApprovedMerchant = createRequireApprovedMerchant(authService);
 
@@ -646,13 +648,70 @@ export function createMerchantRouter(
   });
 
   /**
+   * POST /api/merchant/upload-image
+   * Upload an image file or base64 payload for product management
+   */
+  router.post('/upload-image', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const { image, filename } = req.body;
+      if (!image || typeof image !== 'string') {
+        return res.status(400).json({ error: 'Image data or URL is required' });
+      }
+
+      // If already a valid http/https URL, return directly
+      if (image.startsWith('http://') || image.startsWith('https://')) {
+        return res.json({ url: image });
+      }
+
+      // Handle base64 image data (e.g. data:image/png;base64,...)
+      let buffer: Buffer;
+      let ext = 'png';
+
+      if (image.startsWith('data:image/')) {
+        const matches = image.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) {
+          return res.status(400).json({ error: 'Invalid base64 image format' });
+        }
+        ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+        buffer = Buffer.from(matches[2], 'base64');
+      } else {
+        // Raw base64 string
+        buffer = Buffer.from(image, 'base64');
+      }
+
+      // Validate reasonable file size (max 5MB)
+      if (buffer.length > 5 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Image file size exceeds 5MB limit' });
+      }
+
+      const fs = await import('fs');
+      const path = await import('path');
+      const uploadsDir = path.join(process.cwd(), 'uploads');
+
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+
+      const safeFilename = `prod-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+      const filePath = path.join(uploadsDir, safeFilename);
+      fs.writeFileSync(filePath, buffer);
+
+      const imageUrl = `/uploads/${safeFilename}`;
+      res.json({ url: imageUrl });
+    } catch (err: any) {
+      console.error('Error uploading product image:', err);
+      res.status(500).json({ error: err.message || 'Failed to upload product image' });
+    }
+  });
+
+  /**
    * POST /api/merchant/products
    * Create a new merchant product and corresponding inventory record
    */
   router.post('/products', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
-      const { name, description, price_cents, price, category, initial_quantity } = req.body;
+      const { name, description, price_cents, price, category, initial_quantity, image_url } = req.body;
 
       if (!name || typeof name !== 'string' || name.trim() === '') {
         return res.status(400).json({ error: 'Product name is required' });
@@ -668,11 +727,23 @@ export function createMerchantRouter(
       const productRepo = dataSource.getRepository('Product');
       const inventoryRepo = dataSource.getRepository('Inventory');
 
+      const rawImageUrl = image_url !== undefined ? image_url : req.body.imageUrl;
+      const rawDescription = description !== undefined ? description : req.body.desc;
+
+      if (!rawDescription || typeof rawDescription !== 'string' || rawDescription.trim() === '') {
+        return res.status(400).json({ error: 'Product description is required' });
+      }
+
+      if (!rawImageUrl || typeof rawImageUrl !== 'string' || rawImageUrl.trim() === '') {
+        return res.status(400).json({ error: 'Product image is required' });
+      }
+
       const product = productRepo.create({
         name: name.trim(),
-        description: description || '',
+        description: rawDescription.trim(),
         price_cents: calculatedPriceCents,
         category: category || 'General',
+        image_url: rawImageUrl.trim(),
         merchant_id: merchantId,
       });
 
@@ -720,10 +791,20 @@ export function createMerchantRouter(
         return res.status(403).json({ error: 'Unauthorized to modify another merchant product' });
       }
 
-      const { name, description, price_cents, category } = req.body;
+      const { name, description, price_cents, category, image_url } = req.body;
+      const rawImageUrl = image_url !== undefined ? image_url : req.body.imageUrl;
+      const rawDescription = description !== undefined ? description : req.body.desc;
+
       if (name !== undefined) product.name = name.trim();
-      if (description !== undefined) product.description = description;
+      if (rawDescription !== undefined) product.description = rawDescription !== null ? String(rawDescription) : '';
       if (category !== undefined) product.category = category;
+      if (rawImageUrl !== undefined) {
+        if (rawImageUrl === null || rawImageUrl === '' || rawImageUrl === 'remove') {
+          product.image_url = null;
+        } else {
+          product.image_url = String(rawImageUrl).trim();
+        }
+      }
       if (price_cents !== undefined) {
         const val = Number(price_cents);
         if (isNaN(val) || val < 0) {
@@ -1260,6 +1341,48 @@ export function createMerchantRouter(
     } catch (err: any) {
       console.error('Error updating order status:', err);
       res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * POST /api/merchant/helper/chat
+   * Chatbot RAG assistant endpoint for Merchant Helper
+   */
+  router.post('/helper/chat', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { message, proposal } = req.body;
+
+      if (!message || typeof message !== 'string' || !message.trim()) {
+        return res.status(400).json({ error: 'Message content is required' });
+      }
+
+      const response = await helperService.processChatMessage(merchantId, message.trim(), proposal || null);
+      return res.json(response);
+    } catch (err: any) {
+      console.error('[MerchantHelper] Error processing chat message:', err);
+      return res.status(500).json({ error: err.message || 'Error processing merchant helper chat' });
+    }
+  });
+
+  /**
+   * POST /api/merchant/helper/action/confirm
+   * Executes a proposed deal action after explicit double confirmation
+   */
+  router.post('/helper/action/confirm', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
+    try {
+      const merchantId = await getAuthenticatedMerchantId(req);
+      const { proposal } = req.body;
+
+      if (!proposal || !proposal.proposalId) {
+        return res.status(400).json({ error: 'Valid action proposal is required' });
+      }
+
+      const result = await helperService.executeActionProposal(merchantId, proposal);
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[MerchantHelper] Error executing action confirm:', err);
+      return res.status(400).json({ error: err.message || 'Failed to execute deal action' });
     }
   });
 

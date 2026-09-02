@@ -39,7 +39,11 @@ export function createAuthRouter(service: AuthService = defaultAuthService): Rou
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes('already registered')) {
-            return res.status(409).json({ error: error.message });
+            return res.status(409).json({
+              error: 'Email already registered',
+              code: 'EMAIL_ALREADY_REGISTERED',
+              message: 'This email is already registered. Please log in instead.',
+            });
           }
           if (error.message.includes('at least 6 characters')) {
             return res.status(400).json({ error: error.message });

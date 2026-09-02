@@ -32,6 +32,10 @@ describe('Payment Initiation & Lifecycle State Integration Tests', () => {
   });
 
   beforeEach(async () => {
+    const qr = TestDataSource.createQueryRunner();
+    await qr.query('TRUNCATE TABLE order_timeline, order_feedbacks, audit_logs, merchant_insights, merchant_configs, recovery_actions, agent_decisions, recovery_cases, payment_failures, payments, payment_attempts, order_items, orders, cart_items, carts, inventory, recommendations, products, merchants, customers CASCADE');
+    await qr.release();
+
     const customerRepo = TestDataSource.getRepository(Customer);
     testCustomer = await customerRepo.save(
       customerRepo.create({

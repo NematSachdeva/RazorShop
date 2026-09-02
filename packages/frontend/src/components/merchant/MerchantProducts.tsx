@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getApiUrl } from '../../config/api';
+import { getApiUrl, getImageUrl } from '../../config/api';
 import { authService } from '../../services/authService';
 import MerchantProductForm from './MerchantProductForm';
 import MerchantInventoryEditor from './MerchantInventoryEditor';
@@ -10,6 +10,7 @@ export interface ProductItem {
   category: string;
   description: string;
   price_cents: number;
+  image_url?: string | null;
   created_at: string;
   inventory: {
     quantity_on_hand: number;
@@ -149,13 +150,27 @@ export default function MerchantProducts() {
             <tbody className="divide-y">
               {products.map((prod) => (
                 <tr key={prod.id} className="hover:bg-gray-50">
-                  <td className="py-3 px-4 font-semibold text-gray-900">
-                    {prod.name}
-                    {prod.description && (
-                      <span className="block text-xs text-gray-500 font-normal truncate max-w-xs">
-                        {prod.description}
-                      </span>
+                  <td className="py-3 px-4 font-semibold text-gray-900 flex items-center gap-3">
+                    {getImageUrl(prod.image_url) ? (
+                      <img
+                        src={getImageUrl(prod.image_url)}
+                        alt={prod.name}
+                        referrerPolicy="no-referrer"
+                        className="w-10 h-10 object-cover rounded-lg border border-gray-200 bg-gray-50 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-xs shrink-0 text-gray-400 font-bold">
+                        📦
+                      </div>
                     )}
+                    <div>
+                      <div>{prod.name}</div>
+                      {prod.description && (
+                        <span className="block text-xs text-gray-500 font-normal truncate max-w-xs">
+                          {prod.description}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     <span className="bg-gray-100 text-gray-700 px-2.5 py-0.5 rounded-full text-xs font-medium">

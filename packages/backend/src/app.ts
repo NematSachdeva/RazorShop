@@ -5,7 +5,8 @@ import { env } from './config/env.js';
 import { requestLogger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import healthRoutes from './routes/health.js';
-import productsRoutes from './routes/products.js';
+import productsRoutes, { createProductsRouter } from './routes/products.js';
+import { ProductService } from './services/ProductService.js';
 import authRoutes, { createAuthRouter } from './routes/auth.js';
 import cartsRoutes from './routes/carts.js';
 import { createOrdersRouter } from './routes/orders.js';
@@ -66,20 +67,23 @@ export function createApp(
   app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json', verify: captureRawBody }));
   
   // For all other routes, use JSON parsing
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(requestLogger);
+  app.use('/uploads', express.static('uploads'));
+  app.use('/api/uploads', express.static('uploads'));
 
   // Create services with passed DataSource for test/production flexibility
   const orderService = new OrderService(dataSource);
   const paymentService = new PaymentService(dataSource);
   const recommendationService = new RecommendationService(dataSource);
   const addressService = new AddressService(dataSource);
+  const productService = new ProductService(dataSource);
 
   // Routes
   app.use('/api', healthRoutes);
   app.use('/api/auth', createAuthRouter(authService));
-  app.use('/api/products', productsRoutes);
+  app.use('/api/products', createProductsRouter(productService));
   app.use('/api/carts', cartsRoutes);
   app.use('/api/addresses', createAddressesRouter(addressService, authService));
   app.use('/api/recommendations', createRecommendationsRouter(recommendationService));
