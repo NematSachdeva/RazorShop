@@ -38,6 +38,28 @@ export interface DealActionProposal {
   originalPriceCents?: number;
   discountPercent?: number;
   dealPriceCents?: number;
+  isBulk?: boolean;
+  targetCartId?: string;
+  affectedCartsList?: Array<{
+    cartId: string;
+    customerId?: string;
+    customerName: string;
+    customerEmail: string;
+    productId: string;
+    productName: string;
+    unitPriceCents?: number;
+    originalPriceCents: number;
+    dealPriceCents: number;
+    items?: Array<{
+      productId: string;
+      productName: string;
+      quantity: number;
+      originalPriceCents: number;
+      dealPriceCents: number;
+    }>;
+    originalCartTotalCents?: number;
+    dealCartTotalCents?: number;
+  }>;
   cartItemsSummary?: Array<{
     productId: string;
     productName: string;
@@ -237,12 +259,32 @@ export class MerchantHelperService {
   }
 
   /**
+   * Helper to extract order reference number from prompt or recent conversation history
+   */
+  private extractReferencedOrderNumber(
+    userMessage: string,
+    history: Array<{ role: string; content: string }> = []
+  ): string | null {
+    const directMatch = userMessage.match(/#?(ORD-[A-Za-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (directMatch) return directMatch[1].replace('#', '');
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const match = history[i].content.match(/#?(ORD-[A-Za-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (match) {
+        return match[1].replace('#', '');
+      }
+    }
+    return null;
+  }
+
+  /**
    * Main entry point to process merchant chatbot message
    */
   async processChatMessage(
     merchantId: string,
     userMessage: string,
-    pendingProposal?: DealActionProposal | null
+    pendingProposal?: DealActionProposal | null,
+    history: Array<{ role: 'user' | 'assistant'; content: string }> = []
   ): Promise<HelperChatResponse> {
     const lang = this.detectLanguageStyle(userMessage);
     const trimmed = userMessage.trim().toLowerCase();
@@ -270,6 +312,37 @@ export class MerchantHelperService {
       return result;
     }
 
+    // 2B. Contextual Cancellation Reason Query
+    if (trimmed.includes('reason') || (trimmed.includes('why') && (trimmed.includes('cancel') || trimmed.includes('returned')))) {
+      const refOrderNum = this.extractReferencedOrderNumber(userMessage, history);
+      if (refOrderNum) {
+        const orderRepo = this.dataSource.getRepository(Order);
+        const order = await orderRepo.findOne({
+          where: [
+            { order_number: refOrderNum },
+            { order_number: `ORD-${refOrderNum}` },
+            { order_number: `#${refOrderNum}` },
+          ],
+          relations: ['customer'],
+        });
+
+        if (order) {
+          const reason = order.cancellation_reason || order.return_reason || 'Cancelled by merchant or customer requested cancellation.';
+          let respMsg = `Order **#${order.order_number}** (${order.customer?.name || 'Customer'}) status is **${order.status}**. Reason for cancellation: "${reason}".`;
+          if (lang === 'hinglish') {
+            respMsg = `Order **#${order.order_number}** (${order.customer?.name || 'Customer'}) ka status **${order.status}** hai. Cancellation reason: "${reason}".`;
+          } else if (lang === 'hindi') {
+            respMsg = `ऑर्डर **#${order.order_number}** की स्थिति **${order.status}** है। रद्द करने का कारण: "${reason}"।`;
+          }
+          return {
+            message: respMsg,
+            proposal: null,
+            requiresConfirmation: false,
+          };
+        }
+      }
+    }
+
     // 3. Question about maximum discount allowed ("maximum kitna discount de sakte hain?")
     if (trimmed.includes('max') && trimmed.includes('discount')) {
       let maxAnswer = 'As a merchant, you have full authority to grant any discount percentage you decide (e.g., 10%, 20%, 50%, or 90%). AI recommendations (typically 15–25%) are non-binding suggestions to protect margins. What discount percentage would you like to offer your customers?';
@@ -287,7 +360,7 @@ export class MerchantHelperService {
     }
 
     // 4. Operational Action Intent Detection & Proposal Building
-    const actionProposal = await this.detectAndBuildOperationalAction(merchantId, userMessage, pendingProposal);
+    const actionProposal = await this.detectAndBuildOperationalAction(merchantId, userMessage, pendingProposal, history);
     if (actionProposal) {
       // If error message string returned due to invalid state transition, return informational response without mutating
       if (typeof actionProposal === 'string') {
@@ -308,7 +381,7 @@ export class MerchantHelperService {
 
     // 5. Full-Spectrum Grounded Database Context Retrieval for READ Queries
     const contextData = await this.retrieveGroundedContext(merchantId, userMessage);
-    const answer = await this.generateGroqResponse(merchantId, userMessage, contextData, lang);
+    const answer = await this.generateGroqResponse(merchantId, userMessage, contextData, lang, history);
 
     return {
       message: answer,
@@ -323,7 +396,8 @@ export class MerchantHelperService {
   private async detectAndBuildOperationalAction(
     merchantId: string,
     userMessage: string,
-    pendingProposal?: DealActionProposal | null
+    pendingProposal?: DealActionProposal | null,
+    history: Array<{ role: string; content: string }> = []
   ): Promise<DealActionProposal | string | null> {
     const lower = userMessage.toLowerCase();
     const orderRepo = this.dataSource.getRepository(Order);
@@ -342,7 +416,7 @@ export class MerchantHelperService {
 
     // 1A. Order Dispatch Action
     if (isDispatch) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage);
+      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
       if (order) {
         if (order.status !== 'confirmed' && order.status !== 'pending') {
           return `Order '${order.order_number}' is currently in '${order.status}' status. Dispatched requires status to be 'confirmed'.`;
@@ -364,7 +438,7 @@ export class MerchantHelperService {
 
     // 1B. Order Delivery Action
     if (isDeliver) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage);
+      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
       if (order) {
         // STATE MACHINE CHECK: Confirmed -> Delivered directly is INVALID
         if (order.status === 'confirmed' || order.status === 'pending') {
@@ -390,7 +464,7 @@ export class MerchantHelperService {
 
     // 1C. Order Cancellation Action
     if (isCancelOrder) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage);
+      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
       if (order) {
         if (order.status === 'delivered') {
           return `Order '${order.order_number}' cannot be cancelled after delivery.`;
@@ -412,7 +486,7 @@ export class MerchantHelperService {
 
     // 1D. Refund Initiation Action
     if (isRefund) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage);
+      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
       if (order) {
         const refundAmountCents = Number(order.total_cents);
         return {
@@ -498,7 +572,11 @@ export class MerchantHelperService {
     }
 
     if (isDealIntent) {
-      return this.buildDealProposal(merchantId, userMessage);
+      const prop = await this.buildDealProposal(merchantId, userMessage, history);
+      if (!prop || (prop.affectedCartsList && prop.affectedCartsList.length === 0 && prop.scope === 'cart')) {
+        return "There are currently 0 abandoned carts, so there are no customers to target with this deal.";
+      }
+      return prop;
     }
 
     return null;
@@ -507,8 +585,31 @@ export class MerchantHelperService {
   /**
    * Helper to find matching order by order number, ID, or recent order
    */
-  private async findMatchingMerchantOrder(merchantId: string, text: string): Promise<Order | null> {
+  private async findMatchingMerchantOrder(
+    merchantId: string,
+    text: string,
+    history: Array<{ role: string; content: string }> = []
+  ): Promise<Order | null> {
     const orderRepo = this.dataSource.getRepository(Order);
+    const refNum = this.extractReferencedOrderNumber(text, history);
+
+    if (refNum) {
+      const whereConditions: any[] = [
+        { order_number: refNum },
+        { order_number: `ORD-${refNum}` },
+        { order_number: `#${refNum}` },
+      ];
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refNum)) {
+        whereConditions.push({ id: refNum });
+      }
+
+      const order = await orderRepo.findOne({
+        where: whereConditions,
+        relations: ['items', 'items.product', 'customer'],
+      });
+      if (order) return order;
+    }
+
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const ignoreWords = ['mark', 'order', 'as', 'for', 'initiate', 'the', 'refund', 'dispatched', 'delivered', 'cancel', 'process'];
 
@@ -546,6 +647,31 @@ export class MerchantHelperService {
   }
 
   /**
+   * Helper to extract referenced cart ID or index from prompt or recent conversation history
+   */
+  private extractReferencedCartId(
+    userMessage: string,
+    history: Array<{ role: string; content: string }> = []
+  ): string | null {
+    const directUuidMatch = userMessage.match(/#?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (directUuidMatch) return directUuidMatch[1];
+
+    const directIndexMatch = userMessage.match(/cart\s*#?\s*(\d+)/i);
+    if (directIndexMatch) return directIndexMatch[1];
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const hContent = history[i].content;
+      const uuidMatch = hContent.match(/#?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (uuidMatch) return uuidMatch[1];
+
+      const idxMatch = hContent.match(/cart\s*#?\s*(\d+)/i);
+      if (idxMatch) return idxMatch[1];
+    }
+
+    return null;
+  }
+
+  /**
    * Format natural language action confirmation message with explicit state comparison
    */
   private formatActionConfirmationMessage(proposal: DealActionProposal, lang: 'english' | 'hindi' | 'hinglish'): string {
@@ -556,19 +682,17 @@ export class MerchantHelperService {
         return `Mujhe Order **#${proposal.orderNumber}** (${proposal.customerName}) mila.\n\n` +
           `**Proposed Action:**\n` +
           `• Order: #${proposal.orderNumber}\n` +
-          `• Customer: ${proposal.customerName} (${proposal.customerEmail})\n` +
-          `• Current Status: **${fromStatus}**\n` +
+          `• Current Status: ${fromStatus}\n` +
           `• New Status: **${toStatus}**\n` +
-          `• Notification: Existing customer notification workflow execute hoga.\n\n` +
-          `Kya aap confirm karte hain ki Order #${proposal.orderNumber} ko **${toStatus}** mark kar diya jaye?`;
+          `• Customer Notification: Existing status update notification workflow will execute.\n\n` +
+          `Kya aap confirm karna chahte hain ki Order #${proposal.orderNumber} ko **${toStatus}** mark kiya jaye?`;
       }
       return `I found Order **#${proposal.orderNumber}** (${proposal.customerName}).\n\n` +
         `**Proposed Action:**\n` +
         `• Order: #${proposal.orderNumber}\n` +
-        `• Customer: ${proposal.customerName} (${proposal.customerEmail})\n` +
-        `• Current Status: **${fromStatus}**\n` +
+        `• Current Status: ${fromStatus}\n` +
         `• New Status: **${toStatus}**\n` +
-        `• Notification: Existing customer notification workflow will run.\n\n` +
+        `• Customer Notification: Existing status update notification workflow will execute.\n\n` +
         `Please confirm: should I mark Order #${proposal.orderNumber} as **${toStatus}**?`;
     }
 
@@ -577,15 +701,15 @@ export class MerchantHelperService {
       return `I found Order **#${proposal.orderNumber}** (${proposal.customerName}).\n\n` +
         `**Proposed Action:**\n` +
         `• Order: #${proposal.orderNumber}\n` +
-        `• Current Status: ${proposal.currentReturnStatus || proposal.currentOrderStatus}\n` +
         `• Refund Amount: **${this.formatRupees(refundRupees)}**\n` +
-        `• New Status: **Refund Initiated**\n` +
-        `• Customer Notification: Existing refund notification workflow will run.\n\n` +
-        `Please confirm: should I initiate the refund of **${this.formatRupees(refundRupees)}** for Order #${proposal.orderNumber}?`;
+        `• Current Status: ${proposal.currentOrderStatus}\n` +
+        `• New Return Status: **Refund Initiated**\n` +
+        `• Customer Notification: Existing refund initiation notification will be sent.\n\n` +
+        `Please confirm: should I initiate a refund of **${this.formatRupees(refundRupees)}** for Order #${proposal.orderNumber}?`;
     }
 
     if (proposal.actionType === 'UPDATE_PRODUCT_PRICE') {
-      const curRupees = proposal.currentPriceCents ? Number((proposal.currentPriceCents / 100).toFixed(2)) : 0;
+      const curRupees = proposal.originalPriceCents ? Number((proposal.originalPriceCents / 100).toFixed(2)) : 0;
       const newRupees = proposal.newPriceCents ? Number((proposal.newPriceCents / 100).toFixed(2)) : 0;
       return `I found product **${proposal.productName}**.\n\n` +
         `**Proposed Action:**\n` +
@@ -607,20 +731,48 @@ export class MerchantHelperService {
 
     // Deal proposal message
     const durationStr = this.formatDurationDisplay(proposal.durationValue || 2, proposal.durationUnit || 'days');
-    const targetStr = `${proposal.uniqueCustomersCount || proposal.eligibleCustomers?.length || 1} unique customer(s)`;
-    const cartInstancesStr = `${proposal.cartInstancesCount || proposal.eligibleCustomers?.length || 1} abandoned-cart instance(s)`;
+    const isBulk = proposal.isBulk || (proposal.affectedCartsList && proposal.affectedCartsList.length > 1);
+    const cartsList = proposal.affectedCartsList || [];
+
+    if (isBulk && cartsList.length > 0) {
+      const cartsFormatted = cartsList
+        .map((c, idx) => {
+          const itemsStr = (c.items && c.items.length > 0)
+            ? c.items.map((i: any) => `${i.productName} × ${i.quantity}`).join(', ')
+            : c.productName;
+          return `• Cart #${idx + 1} — ${itemsStr} — ${c.customerEmail}`;
+        })
+        .join('\n');
+
+      return `I found **${cartsList.length} abandoned cart(s)**.\n\n` +
+        `**${proposal.discountPercent || 10}% OFF** will be applied to:\n` +
+        `${cartsFormatted}\n\n` +
+        `Offer: **${proposal.discountPercent || 10}% OFF**\n` +
+        `Expires: **${durationStr}**\n` +
+        `Promotional Email: **${proposal.sendEmail ? 'Yes (to all affected customers)' : 'No'}**\n\n` +
+        `Apply this offer to all ${cartsList.length} abandoned cart(s)?`;
+    }
+
+    // Single cart proposal message
+    const targetCart = (cartsList.length === 1) ? cartsList[0] : null;
+    const itemsList = targetCart?.items || [];
+    const itemsFormatted = itemsList.length > 0
+      ? itemsList.map((i: any) => `  • ${i.productName} × ${i.quantity} — ${this.formatRupees((i.originalPriceCents || 0) / 100)} each`).join('\n')
+      : `  • ${proposal.productName || 'Product'}`;
+
     const originalRupees = proposal.originalPriceCents ? Number((proposal.originalPriceCents / 100).toFixed(2)) : undefined;
     const dealPriceRupees = proposal.dealPriceCents ? Number((proposal.dealPriceCents / 100).toFixed(2)) : undefined;
 
-    return `I found **${cartInstancesStr}** across **${targetStr}**.\n\n` +
+    return `I found **Abandoned Cart** (${targetCart?.customerEmail || proposal.eligibleCustomers?.[0]?.email || 'Customer'}).\n\n` +
       `**Action Proposal:**\n` +
-      `• Scope: ${proposal.scope === 'cart' ? 'Entire Abandoned Cart' : (proposal.productName || 'Product')}\n` +
+      `• Scope: Entire Abandoned Cart\n` +
+      `• Products in Cart:\n${itemsFormatted}\n` +
       (originalRupees ? `• Original Cart Total: **${this.formatRupees(originalRupees)}**\n` : '') +
       `• Discount: **${proposal.discountPercent || 10}% OFF**\n` +
       (dealPriceRupees ? `• Final Cart Total: **${this.formatRupees(dealPriceRupees)}**\n` : '') +
-      `• Target: ${targetStr}\n` +
-      `• Duration: **${durationStr}** (Original state restores automatically with 0 emails sent on expiration)\n` +
-      `• Promotional Email: **${proposal.sendEmail ? 'Yes (English)' : 'No'}**\n\n` +
+      `• Target Customer: ${targetCart?.customerEmail || proposal.eligibleCustomers?.[0]?.email || 'Customer'}\n` +
+      `• Duration: **${durationStr}** (Original state restores automatically on expiration)\n` +
+      `• Promotional Email: **${proposal.sendEmail ? 'Yes' : 'No'}**\n\n` +
       `Would you like me to confirm and execute this action?`;
   }
 
@@ -765,6 +917,47 @@ export class MerchantHelperService {
       };
     }
 
+    // 5. ABANDONED CARTS & ITEMS LOOKUP
+    const cartRepo = this.dataSource.getRepository(Cart);
+    const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
+      ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
+      : 5;
+    const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
+
+    const abandonedCarts = await cartRepo
+      .createQueryBuilder('c')
+      .innerJoinAndSelect('c.items', 'ci')
+      .innerJoinAndSelect('ci.product', 'p')
+      .leftJoinAndSelect('c.customer', 'cust')
+      .where('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
+      .andWhere("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
+      .orderBy('c.updated_at', 'DESC')
+      .getMany();
+
+    context.abandoned_carts_details = abandonedCarts.map((c, idx) => {
+      const items = c.items || [];
+      const totalCents = items.reduce((acc, it) => {
+        const itemPrice = Number(it.product?.price_cents || it.price_cents || 0);
+        return acc + itemPrice * (it.quantity || 1);
+      }, 0);
+
+      return {
+        cart_index: idx + 1,
+        cart_id: c.id,
+        customer_id: c.customer_id,
+        customer_name: c.customer?.name || 'Customer',
+        customer_email: c.customer?.email || 'N/A',
+        updated_at: c.updated_at,
+        total_value: this.formatRupees(totalCents / 100),
+        items: items.map((i) => ({
+          product_id: i.product_id,
+          product_name: i.product?.name || 'Product',
+          quantity: i.quantity,
+          unit_price: this.formatRupees(Number(i.product?.price_cents || i.price_cents || 0) / 100),
+        })),
+      };
+    });
+
     return context;
   }
 
@@ -775,7 +968,8 @@ export class MerchantHelperService {
     merchantId: string,
     userMessage: string,
     contextData: Record<string, any>,
-    langStyle: 'english' | 'hindi' | 'hinglish'
+    langStyle: 'english' | 'hindi' | 'hinglish',
+    history: Array<{ role: 'user' | 'assistant'; content: string }> = []
   ): Promise<string> {
     const apiKey = process.env.GROQ_API_KEY || env.GROQ_API_KEY;
 
@@ -786,10 +980,12 @@ export class MerchantHelperService {
     const systemPrompt = `You are a professional, accurate AI Merchant Operations Assistant for RazorShop.
 STRICT GUIDELINES:
 1. Base all answers strictly on the supplied REAL MERCHANT DATABASE CONTEXT. NEVER fabricate numbers, orders, products, prices, return reasons, or customers.
-2. If the data exists in context (recent_orders, returns_and_refunds, payment_failure_reasons, queried_product), answer directly. NEVER tell the merchant to visit another page or say data is unavailable if present.
-3. OUTPUT CURRENCY FORMATTING: All monetary numbers MUST use the '₹' symbol (e.g. ₹3,492.22). NEVER output 'INR', 'cents', 'paise', 'USD', or raw unformatted numbers.
-4. LANGUAGE MATCHING: Respond in the EXACT language style of the user prompt (English, Hindi, Hinglish).
-5. Keep responses concise, clear, and direct.`;
+2. Abandoned-cart metrics and cart/product/customer records in this payload are the authoritative CURRENT database state. Do not infer, remember, or reuse abandoned carts from previous messages. If the payload says 0, answer 0.
+3. The target cart/customer/product IDs supplied by the backend are authoritative. Never invent or reuse IDs from previous conversation turns.
+4. If the data exists in context (recent_orders, returns_and_refunds, payment_failure_reasons, queried_product, abandoned_carts_details), answer directly. NEVER tell the merchant to visit another page or say data is unavailable if present.
+5. OUTPUT CURRENCY FORMATTING: All monetary numbers MUST use the '₹' symbol (e.g. ₹3,492.22). NEVER output 'INR', 'cents', 'paise', 'USD', or raw unformatted numbers.
+6. LANGUAGE MATCHING: Respond in the EXACT language style of the user prompt (English, Hindi, Hinglish).
+7. Keep responses concise, clear, and direct.`;
 
     const userPrompt = `REAL MERCHANT DATABASE CONTEXT:
 ${JSON.stringify(contextData, null, 2)}
@@ -798,6 +994,12 @@ MERCHANT QUESTION:
 ${userMessage}`;
 
     try {
+      const messagesPayload: any[] = [{ role: 'system', content: systemPrompt }];
+      for (const h of history.slice(-10)) {
+        messagesPayload.push({ role: h.role, content: h.content });
+      }
+      messagesPayload.push({ role: 'user', content: userPrompt });
+
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -806,10 +1008,7 @@ ${userMessage}`;
         },
         body: JSON.stringify({
           model: 'openai/gpt-oss-120b',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
+          messages: messagesPayload,
           temperature: 0.3,
           max_tokens: 500,
         }),
@@ -847,6 +1046,30 @@ ${userMessage}`;
         if (langStyle === 'hinglish') return `${p.name} ki current price ${p.price_formatted} hai.`;
         if (langStyle === 'hindi') return `${p.name} का वर्तमान मूल्य ${p.price_formatted} है।`;
         return `The current price of ${p.name} is ${p.price_formatted}.`;
+      }
+    }
+
+    // 0B. Abandoned Carts Details Query
+    if (lower.includes('abandon') || lower.includes('cart') || lower.includes('item') || lower.includes('value')) {
+      if (context.abandoned_carts_details && context.abandoned_carts_details.length > 0) {
+        const carts = context.abandoned_carts_details;
+        const detailsList = carts.map((c: any) => {
+          const itemsStr = c.items.map((i: any) => `${i.product_name} (×${i.quantity})`).join(', ') || 'No items';
+          return `Cart #${c.cart_index} — ${itemsStr} — Customer: ${c.customer_name} (${c.customer_email}) — Value: ${c.total_value}`;
+        });
+
+        if (langStyle === 'hinglish') {
+          return `Aapke store par total ${carts.length} abandoned cart(s) hain:\n\n` +
+            detailsList.map((d: string) => `• ${d}`).join('\n');
+        }
+        if (langStyle === 'hindi') {
+          return `आपकी दुकान में कुल ${carts.length} छोड़े गए कार्ट (abandoned carts) हैं:\n\n` +
+            detailsList.map((d: string) => `• ${d}`).join('\n');
+        }
+        return `I found ${carts.length} abandoned cart(s) in your store records:\n\n` +
+          detailsList.map((d: string) => `• ${d}`).join('\n');
+      } else {
+        return `There are currently 0 abandoned carts in your store records.`;
       }
     }
 
@@ -893,7 +1116,11 @@ ${userMessage}`;
   /**
    * Build structured deal action proposal grounded in real current database/cart contents
    */
-  private async buildDealProposal(merchantId: string, userMessage: string): Promise<DealActionProposal | null> {
+  private async buildDealProposal(
+    merchantId: string,
+    userMessage: string,
+    history: Array<{ role: string; content: string }> = []
+  ): Promise<DealActionProposal | null> {
     const productRepo = this.dataSource.getRepository(Product);
     const cartRepo = this.dataSource.getRepository(Cart);
 
@@ -922,7 +1149,10 @@ ${userMessage}`;
       scope = hasExplicitProductMatch ? 'product' : 'cart';
     }
 
-    const cutoffDate = new Date(Date.now() - 5 * 60 * 1000);
+    const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
+      ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
+      : 5;
+    const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
     const abandonedCartRows = await cartRepo
       .createQueryBuilder('c')
       .select('c.id', 'cart_id')
@@ -945,6 +1175,27 @@ ${userMessage}`;
     const customerMap = new Map<string, { id: string; name?: string; email: string }>();
     const cartSet = new Set<string>();
     const cartItemsMap = new Map<string, { productId: string; productName: string; unitPriceCents: number; quantity: number; lineTotalCents: number }>();
+    const affectedCartsMap = new Map<string, {
+      cartId: string;
+      customerId?: string;
+      customerName: string;
+      customerEmail: string;
+      productId: string;
+      productName: string;
+      unitPriceCents: number;
+      originalPriceCents: number;
+      dealPriceCents: number;
+      items: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        originalPriceCents: number;
+        dealPriceCents: number;
+      }>;
+      originalCartTotalCents: number;
+      dealCartTotalCents: number;
+    }>();
+
     let totalCartCents = 0;
     let totalUnitsCount = 0;
 
@@ -961,6 +1212,7 @@ ${userMessage}`;
       const unitPriceCents = Number(r.product_original_price_cents || r.product_price_cents || r.item_price_cents);
       const qty = Number(r.quantity || 1);
       const lineTotal = unitPriceCents * qty;
+      const dealPrice = Math.round(unitPriceCents * (1 - requestedDiscount / 100));
 
       totalCartCents += lineTotal;
       totalUnitsCount += qty;
@@ -978,12 +1230,68 @@ ${userMessage}`;
         item.quantity += qty;
         item.lineTotalCents += lineTotal;
       }
+
+      if (!affectedCartsMap.has(r.cart_id)) {
+        affectedCartsMap.set(r.cart_id, {
+          cartId: r.cart_id,
+          customerId: r.customer_id,
+          customerName: r.customer_name || 'Customer',
+          customerEmail: r.customer_email || 'customer@example.com',
+          productId: r.product_id,
+          productName: r.product_name || 'Product',
+          unitPriceCents,
+          originalPriceCents: unitPriceCents,
+          dealPriceCents: dealPrice,
+          items: [{
+            productId: r.product_id,
+            productName: r.product_name || 'Product',
+            quantity: qty,
+            originalPriceCents: unitPriceCents,
+            dealPriceCents: dealPrice,
+          }],
+          originalCartTotalCents: lineTotal,
+          dealCartTotalCents: dealPrice * qty,
+        });
+      } else {
+        const existingCart = affectedCartsMap.get(r.cart_id)!;
+        existingCart.items.push({
+          productId: r.product_id,
+          productName: r.product_name || 'Product',
+          quantity: qty,
+          originalPriceCents: unitPriceCents,
+          dealPriceCents: dealPrice,
+        });
+        existingCart.originalCartTotalCents += lineTotal;
+        existingCart.dealCartTotalCents += dealPrice * qty;
+      }
     }
 
     const eligibleCustomers = Array.from(customerMap.values());
     const cartInstancesCount = cartSet.size;
     const uniqueCustomersCount = eligibleCustomers.length;
     const cartItemsSummary = Array.from(cartItemsMap.values());
+    const allCartsList = Array.from(affectedCartsMap.values());
+
+    const isBulk = !userMessage.match(/#?([0-9a-f]{8}-[0-9a-f]{4}|cart\s*#?\d+)/i) &&
+      (lowerMsg.includes('all') || lowerMsg.includes('saare') || lowerMsg.includes('sabhi') || lowerMsg.includes('every') || (allCartsList.length > 1 && (lowerMsg.includes('abandoned carts') || lowerMsg.includes('carts')) && !lowerMsg.includes('this cart') && !lowerMsg.includes('this abandoned cart')));
+
+    let affectedCartsList = allCartsList;
+    const refCartId = this.extractReferencedCartId(userMessage, history);
+
+    if (!isBulk && allCartsList.length > 0) {
+      if (refCartId) {
+        const matched = allCartsList.find(
+          (c, idx) => c.cartId.toLowerCase().includes(refCartId.toLowerCase()) || String(idx + 1) === refCartId
+        );
+        if (matched) {
+          affectedCartsList = [matched];
+        } else {
+          affectedCartsList = [allCartsList[0]];
+        }
+      } else {
+        affectedCartsList = [allCartsList[0]];
+      }
+    }
 
     if (!targetProduct && cartItemsSummary.length > 0) {
       const topCartProd = merchantProducts.find((p) => p.id === cartItemsSummary[0].productId);
@@ -998,9 +1306,14 @@ ${userMessage}`;
     let dealPriceCents: number | undefined;
 
     if (scope === 'cart') {
-      originalPriceCents = totalCartCents > 0 ? totalCartCents : (targetProduct ? Number(targetProduct.price_cents) : 99900);
-      const discountAmountCents = Math.round(originalPriceCents * (requestedDiscount / 100));
-      dealPriceCents = originalPriceCents - discountAmountCents;
+      if (affectedCartsList.length === 1) {
+        originalPriceCents = affectedCartsList[0].originalCartTotalCents;
+        dealPriceCents = affectedCartsList[0].dealCartTotalCents;
+      } else {
+        originalPriceCents = totalCartCents > 0 ? totalCartCents : (targetProduct ? Number(targetProduct.price_cents) : 99900);
+        const discountAmountCents = Math.round(originalPriceCents * (requestedDiscount / 100));
+        dealPriceCents = originalPriceCents - discountAmountCents;
+      }
     } else {
       if (targetProduct) {
         originalPriceCents = targetProduct.original_price_cents ? Number(targetProduct.original_price_cents) : Number(targetProduct.price_cents);
@@ -1017,13 +1330,15 @@ ${userMessage}`;
       originalPriceCents,
       discountPercent: requestedDiscount,
       dealPriceCents,
+      isBulk,
+      affectedCartsList,
       cartItemsSummary,
       durationValue: durationObj.durationValue,
       durationUnit: durationObj.durationUnit,
       expiresInMinutes: durationObj.expiresInMinutes,
       sendEmail,
       eligibleCustomers,
-      cartInstancesCount,
+      cartInstancesCount: affectedCartsList.length,
       uniqueCustomersCount,
       totalUnitsCount,
     };
@@ -1122,111 +1437,183 @@ ${userMessage}`;
     }
 
     // 5. DEAL & PROMOTIONAL EMAIL ACTION
-    let product: Product | null = null;
-    if (proposal.productId) {
-      product = await productRepo.findOne({
-        where: [{ id: proposal.productId, merchant_id: merchantId }, { id: proposal.productId, merchant_id: IsNull() }],
-      });
-    }
-
     const confirmedDiscount = proposal.discountPercent || 10;
     const expiresInMinutes = proposal.expiresInMinutes || 2880;
     const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
+    const durationDays = Math.ceil(expiresInMinutes / 1440);
 
-    let originalPriceCents = proposal.originalPriceCents || 0;
-    let dealPriceCents = proposal.dealPriceCents || 0;
+    // Re-validate target carts from live DB before execution
+    if (proposal.affectedCartsList && proposal.affectedCartsList.length > 0) {
+      const cartRepo = this.dataSource.getRepository(Cart);
+      const targetCartIds = proposal.affectedCartsList
+        .map((c) => c.cartId)
+        .filter((id) => id && id !== 'single');
 
-    if (product) {
-      const currentPriceCents = Number(product.price_cents);
-      originalPriceCents = product.original_price_cents ? Number(product.original_price_cents) : currentPriceCents;
-      dealPriceCents = Math.round(originalPriceCents * (1 - confirmedDiscount / 100));
+      if (targetCartIds.length > 0) {
+        const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
+          ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
+          : 5;
+        const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
 
-      product.original_price_cents = originalPriceCents;
-      product.price_cents = dealPriceCents;
-      product.discount_percent = confirmedDiscount;
-      product.deal_active = true;
-      product.deal_expires_at = expiresAt;
-      await productRepo.save(product);
+        const liveCarts = await cartRepo
+          .createQueryBuilder('c')
+          .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+          .innerJoin('products', 'p', 'p.id = ci.product_id')
+          .where('c.id IN (:...targetCartIds)', { targetCartIds })
+          .andWhere('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
+          .andWhere("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
+          .getMany();
+
+        if (liveCarts.length === 0) {
+          return {
+            message: 'The targeted abandoned cart(s) are no longer abandoned or active in the database. No deal action was executed.',
+            proposal: null,
+            requiresConfirmation: false,
+            actionExecuted: false,
+          };
+        }
+      }
     }
+
+    const cartsToProcess = proposal.affectedCartsList && proposal.affectedCartsList.length > 0
+      ? proposal.affectedCartsList
+      : (proposal.productId ? [{
+          cartId: proposal.targetCartId || 'single',
+          customerId: proposal.eligibleCustomers?.[0]?.id,
+          customerName: proposal.eligibleCustomers?.[0]?.name || 'Valued Customer',
+          customerEmail: proposal.eligibleCustomers?.[0]?.email || '',
+          productId: proposal.productId,
+          productName: proposal.productName || 'Product',
+          originalPriceCents: proposal.originalPriceCents || 0,
+          dealPriceCents: proposal.dealPriceCents || 0,
+        }] : []);
 
     let sentCount = 0;
     let failedCount = 0;
+    let totalSucceeded = 0;
+    let totalFailed = 0;
+    const executionLines: string[] = [];
 
-    if (proposal.sendEmail && proposal.eligibleCustomers) {
-      const originalPriceDisplay = (originalPriceCents / 100).toFixed(2);
-      const dealPriceDisplay = (dealPriceCents / 100).toFixed(2);
-      const durationDays = Math.ceil(expiresInMinutes / 1440);
+    for (const c of cartsToProcess) {
+      try {
+        const itemsToProcess = (c.items && c.items.length > 0) ? c.items : [{
+          productId: c.productId,
+          productName: c.productName,
+          originalPriceCents: c.originalPriceCents,
+          dealPriceCents: c.dealPriceCents,
+        }];
 
-      for (const cust of proposal.eligibleCustomers) {
-        if (!cust.email || !cust.email.includes('@')) {
-          failedCount++;
-          continue;
+        const cartProductNames: string[] = [];
+
+        for (const item of itemsToProcess) {
+          if (!item.productId) continue;
+          const prod = await productRepo.findOne({
+            where: [{ id: item.productId, merchant_id: merchantId }, { id: item.productId, merchant_id: IsNull() }],
+          });
+
+          if (prod) {
+            const currentPriceCents = Number(prod.price_cents);
+            const origCents = prod.original_price_cents ? Number(prod.original_price_cents) : currentPriceCents;
+            const dealCents = Math.round(origCents * (1 - confirmedDiscount / 100));
+
+            prod.original_price_cents = origCents;
+            prod.price_cents = dealCents;
+            prod.discount_percent = confirmedDiscount;
+            prod.deal_active = true;
+            prod.deal_expires_at = expiresAt;
+            await productRepo.save(prod);
+            cartProductNames.push(prod.name);
+
+            // Auto-expire timer setup
+            const msUntilExpiration = expiresAt.getTime() - Date.now();
+            if (msUntilExpiration > 0 && msUntilExpiration < 2147483647) {
+              const timer = setTimeout(async () => {
+                try {
+                  await this.restoreExpiredDealPrice(prod.id);
+                } catch (err) {
+                  console.error('[MerchantHelperService] Error restoring deal expiration price:', err);
+                }
+              }, Math.max(50, msUntilExpiration));
+              if (timer && typeof timer.unref === 'function') {
+                timer.unref();
+              }
+            }
+          }
         }
-        try {
-          const emailRes = await this.emailService.sendPromotionalDealEmail(
-            cust.email,
-            cust.name || 'Valued Customer',
-            product?.name || 'Entire Abandoned Cart Deal',
-            originalPriceDisplay,
-            dealPriceDisplay,
-            confirmedDiscount,
-            durationDays
-          );
-          if (emailRes.success) sentCount++;
-          else failedCount++;
-        } catch {
-          failedCount++;
+
+        if (cartProductNames.length > 0) {
+          totalSucceeded++;
+          executionLines.push(`✓ Cart — ${cartProductNames.join(', ')} (${c.customerEmail || 'Customer'})`);
+        } else {
+          totalFailed++;
         }
+
+        // Send promotional email to specific customer of this cart
+        if (proposal.sendEmail && c.customerEmail && c.customerEmail.includes('@')) {
+          try {
+            const origDisplay = (((c as any).originalCartTotalCents || c.originalPriceCents || 99900) / 100).toFixed(2);
+            const dealDisplay = (((c as any).dealCartTotalCents || c.dealPriceCents || 59900) / 100).toFixed(2);
+            const productListStr = cartProductNames.join(' & ') || c.productName || 'Entire Abandoned Cart Deal';
+            const emailRes = await this.emailService.sendPromotionalDealEmail(
+              c.customerEmail,
+              c.customerName || 'Valued Customer',
+              productListStr,
+              origDisplay,
+              dealDisplay,
+              confirmedDiscount,
+              durationDays
+            );
+            if (emailRes.success) sentCount++;
+            else failedCount++;
+          } catch {
+            failedCount++;
+          }
+        }
+      } catch (err: any) {
+        totalFailed++;
+        executionLines.push(`✗ Cart — ${c.productName} (${c.customerEmail}): ${err.message || 'Failed'}`);
       }
     }
 
     try {
       await auditRepo.save({
         event_type: 'merchant_manual_email_sent',
-        entity_type: proposal.scope === 'product' ? 'product_deal' : 'cart_deal',
-        entity_id: product?.id || merchantId,
+        entity_type: proposal.isBulk ? 'bulk_cart_deal' : (proposal.scope === 'product' ? 'product_deal' : 'cart_deal'),
+        entity_id: merchantId,
         merchant_id: merchantId,
       });
     } catch {
       // Non-blocking log
     }
 
-    if (product) {
-      const msUntilExpiration = expiresAt.getTime() - Date.now();
-      if (msUntilExpiration > 0 && msUntilExpiration < 2147483647) {
-        const timer = setTimeout(async () => {
-          try {
-            await this.restoreExpiredDealPrice(product!.id);
-          } catch (err) {
-            console.error('[MerchantHelperService] Error restoring deal expiration price:', err);
-          }
-        }, Math.max(50, msUntilExpiration));
-        if (timer && typeof timer.unref === 'function') {
-          timer.unref();
-        }
-      }
+    const durationDisplay = this.formatDurationDisplay(proposal.durationValue || 2, proposal.durationUnit || 'days');
+    const totalTargeted = cartsToProcess.length;
+
+    let responseMsg = '';
+    if (totalFailed === 0) {
+      responseMsg = `Done.\n\n` +
+        `**${confirmedDiscount}% OFF** was successfully applied to ${totalSucceeded} abandoned cart(s).\n\n` +
+        executionLines.map((line) => `${line}`).join('\n') + `\n\n` +
+        `• ${proposal.sendEmail ? sentCount : 0} customer(s) notified.\n` +
+        `• Offer expires in **${durationDisplay}** (Original state will restore automatically on expiration).`;
+    } else {
+      responseMsg = `The **${confirmedDiscount}% OFF** offer was applied to ${totalSucceeded} of ${totalTargeted} abandoned cart(s).\n\n` +
+        executionLines.map((line) => `${line}`).join('\n') + `\n\n` +
+        `• ${proposal.sendEmail ? sentCount : 0} customer(s) notified.\n` +
+        `• Offer expires in **${durationDisplay}**.`;
     }
 
-    const durationDisplay = this.formatDurationDisplay(proposal.durationValue || 2, proposal.durationUnit || 'days');
-    const dealPriceRupees = dealPriceCents ? Number((dealPriceCents / 100).toFixed(2)) : undefined;
-
     return {
-      message: `Done!\n\n` +
-        `• **${proposal.scope === 'product' ? product?.name : 'Entire Abandoned Cart'}** deal executed: **${confirmedDiscount}% OFF**\n` +
-        (dealPriceRupees ? `• Final Deal Price: ${this.formatRupees(dealPriceRupees)}\n` : '') +
-        `• Target: ${proposal.eligibleCustomers?.length || 1} unique customer(s)\n` +
-        `• Promotional emails sent: ${proposal.sendEmail ? sentCount : 0}${failedCount > 0 ? ` (${failedCount} failed)` : ''}\n` +
-        `• Deal scheduled to close in **${durationDisplay}** (Original state will restore automatically with ZERO email sent on expiration).\n\n` +
-        `The action has been executed successfully!`,
+      message: responseMsg,
       proposal: null,
       requiresConfirmation: false,
       actionExecuted: true,
       actionResult: {
-        productName: product?.name || 'Entire Abandoned Cart',
+        productName: proposal.isBulk ? 'All Abandoned Carts' : (proposal.productName || 'Entire Abandoned Cart'),
         scope: proposal.scope,
         discountPercent: confirmedDiscount,
-        dealPriceRupees,
-        eligibleCount: proposal.eligibleCustomers?.length || 1,
+        dealPriceRupees: proposal.dealPriceCents ? Number((proposal.dealPriceCents / 100).toFixed(2)) : undefined,
+        eligibleCount: totalTargeted,
         emailsSentCount: proposal.sendEmail ? sentCount : 0,
         emailsFailedCount: failedCount,
         expiresInMinutes,

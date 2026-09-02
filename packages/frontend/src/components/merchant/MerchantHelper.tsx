@@ -80,19 +80,39 @@ export interface ChatMessage {
   };
 }
 
+const LOCAL_STORAGE_KEY = 'merchant_helper_chat_history';
+
+const DEFAULT_WELCOME_MSG: ChatMessage = {
+  id: 'welcome-1',
+  sender: 'assistant',
+  text: 'Namaste! I am your AI Merchant Operations Assistant. Ask me anything about your orders, returns, refunds, failed payments, abandoned carts, products, or sales analytics in English, Hindi, or Hinglish. You can also instruct me to update order status, initiate refunds, or create custom deals.',
+  timestamp: new Date(),
+};
+
 export default function MerchantHelper() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome-1',
-      sender: 'assistant',
-      text: 'Namaste! I am your AI Merchant Operations Assistant. Ask me anything about your orders, returns, refunds, failed payments, abandoned carts, products, or sales analytics in English, Hindi, or Hinglish. You can also instruct me to update order status, initiate refunds, or create custom deals.',
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((m: any) => ({
+            ...m,
+            timestamp: new Date(m.timestamp),
+          }));
+        }
+      }
+    } catch {
+      // Fallback to default
+    }
+    return [DEFAULT_WELCOME_MSG];
+  });
+
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingProposal, setPendingProposal] = useState<DealActionProposal | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -112,6 +132,28 @@ export default function MerchantHelper() {
     scrollToBottom();
   }, [messages, loading]);
 
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
+      }
+    } catch {
+      // Storage save fallback
+    }
+  }, [messages]);
+
+  const handleClearChat = () => {
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+    setMessages([DEFAULT_WELCOME_MSG]);
+    setPendingProposal(null);
+    setError(null);
+    setShowClearConfirm(false);
+  };
+
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
     if (!text || !text.trim() || loading) return;
@@ -123,10 +165,20 @@ export default function MerchantHelper() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInputText('');
     setLoading(true);
     setError(null);
+
+    // Extract recent 5 exchanges (max 10 messages) to send as context
+    const historyPayload = updatedMessages
+      .filter((m) => m.id !== 'welcome-1' && (m.sender === 'user' || m.sender === 'assistant'))
+      .slice(-10)
+      .map((m) => ({
+        role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+        content: m.text,
+      }));
 
     try {
       const response = await fetch(getApiUrl('/merchant/helper/chat'), {
@@ -138,6 +190,7 @@ export default function MerchantHelper() {
         body: JSON.stringify({
           message: text.trim(),
           proposal: pendingProposal,
+          history: historyPayload,
         }),
       });
 
@@ -245,6 +298,15 @@ export default function MerchantHelper() {
             Full-spectrum database intelligence & operational execution in English, Hindi, and Hinglish.
           </p>
         </div>
+
+        <button
+          onClick={() => setShowClearConfirm(true)}
+          className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-lg transition font-medium cursor-pointer"
+          title="Clear chat history"
+        >
+          <span>🗑️</span>
+          <span>Clear Chat</span>
+        </button>
       </div>
 
       {/* Suggested Chips Header */}
@@ -419,6 +481,40 @@ export default function MerchantHelper() {
           </button>
         </form>
       </div>
+
+      {/* Clear Chat Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn font-sans">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 border border-gray-100">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center font-bold text-lg">
+                🗑️
+              </div>
+              <div>
+                <h3 className="font-extrabold text-gray-900 text-base">Clear this conversation?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Your Merchant Helper chat history will be deleted.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearChat}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+              >
+                Clear Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

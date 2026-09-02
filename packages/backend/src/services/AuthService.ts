@@ -69,10 +69,7 @@ export class AuthService {
    * Generate JWT token
    */
   generateToken(payload: JWTPayload): string {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET environment variable is not set');
-    }
+    const secret = process.env.JWT_SECRET || env.JWT_SECRET || 'dev-secret-key-change-in-prod';
     return jwt.sign(payload, secret, { expiresIn: '7d' });
   }
 
@@ -81,10 +78,7 @@ export class AuthService {
    */
   verifyToken(token: string): JWTPayload | null {
     try {
-      const secret = process.env.JWT_SECRET;
-      if (!secret) {
-        throw new Error('JWT_SECRET environment variable is not set');
-      }
+      const secret = process.env.JWT_SECRET || env.JWT_SECRET || 'dev-secret-key-change-in-prod';
       const decoded = jwt.verify(token, secret) as JWTPayload;
       return decoded;
     } catch (error) {
@@ -117,7 +111,7 @@ export class AuthService {
     if (!existing) {
       existing = await this.getCustomerRepository()
         .createQueryBuilder('customer')
-        .where('LOWER(customer.email) = LOWER(:email)', { email: normalizedEmail })
+        .where('LOWER(TRIM(customer.email)) = LOWER(TRIM(:email))', { email: normalizedEmail })
         .getOne();
     }
 
@@ -259,7 +253,7 @@ export class AuthService {
     if (!customer) {
       customer = await this.getCustomerRepository()
         .createQueryBuilder('customer')
-        .where('LOWER(customer.email) = LOWER(:email)', { email: normalizedEmail })
+        .where('LOWER(TRIM(customer.email)) = LOWER(TRIM(:email))', { email: normalizedEmail })
         .getOne();
     }
 

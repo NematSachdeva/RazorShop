@@ -1351,13 +1351,18 @@ export function createMerchantRouter(
   router.post('/helper/chat', authenticate, requireApprovedMerchant, async (req: Request, res: Response) => {
     try {
       const merchantId = await getAuthenticatedMerchantId(req);
-      const { message, proposal } = req.body;
+      const { message, proposal, history } = req.body;
 
       if (!message || typeof message !== 'string' || !message.trim()) {
         return res.status(400).json({ error: 'Message content is required' });
       }
 
-      const response = await helperService.processChatMessage(merchantId, message.trim(), proposal || null);
+      const response = await helperService.processChatMessage(
+        merchantId,
+        message.trim(),
+        proposal || null,
+        Array.isArray(history) ? history : []
+      );
       return res.json(response);
     } catch (err: any) {
       console.error('[MerchantHelper] Error processing chat message:', err);

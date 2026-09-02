@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService, JWTPayload } from '../services/AuthService.js';
 import { MerchantApplication } from '../models/MerchantApplication.js';
+import { Merchant } from '../models/Merchant.js';
+import { AppDataSource } from '../config/database.js';
 
 // Extend Express Request to include user info
 declare global {
@@ -41,8 +43,12 @@ export function createAuthenticate(service: AuthService = authService) {
       // Verify user exists in database (Customer or Merchant) before proceeding to downstream handlers
       const customer = await service.getCustomerById(decoded.id);
       if (!customer) {
-        const merchantRepo = (service as any)['dataSource']?.getRepository('Merchant');
-        const merchant = merchantRepo ? await merchantRepo.findOne({ where: { id: decoded.id } }) : null;
+        const ds = (service as any)['dataSource'] || AppDataSource;
+        let merchant = null;
+        if (ds && ds.isInitialized) {
+          const merchantRepo = ds.getRepository(Merchant);
+          merchant = await merchantRepo.findOne({ where: { id: decoded.id } });
+        }
         if (!merchant) {
           return res.status(401).json({ error: 'User account no longer exists or session is invalid' });
         }

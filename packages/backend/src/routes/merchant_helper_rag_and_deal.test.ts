@@ -290,4 +290,352 @@ describe('Merchant Operations Assistant Full Suite', () => {
       expect(turn2.requiresConfirmation).toBe(false);
     });
   });
+
+  describe('6. Conversational Memory Context Window', () => {
+    test('Follow-up question "reason for cancellation" resolves order discussed in turn 1', async () => {
+      const history = [
+        { role: 'user' as const, content: 'status of Order #ORD-1002' },
+        { role: 'assistant' as const, content: 'The status of Order #ORD-1002 is order_returned_to_seller.' },
+      ];
+
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'reason for cancellation',
+        null,
+        history
+      );
+
+      expect(turn2.message).toContain('ORD-1002');
+      expect(turn2.message).toContain('Defective power port');
+    });
+  });
+
+  describe('7. Abandoned Carts Data Access & Bulk Deal Targeting', () => {
+    let customerB: Customer;
+    let customerC: Customer;
+    let cart1: Cart;
+    let cart2: Cart;
+
+    beforeEach(async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      customerB = await customerRepo.save(
+        customerRepo.create({
+          email: `customerb-${Date.now()}@domain.com`,
+          name: 'Bob Customer',
+          role: 'customer',
+        })
+      );
+      customerC = await customerRepo.save(
+        customerRepo.create({
+          email: `customerc-${Date.now()}@domain.com`,
+          name: 'Charlie Customer',
+          role: 'customer',
+        })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      // Abandoned Cart 1 (Customer B - Laptop Stand)
+      cart1 = await cartRepo.save(
+        cartRepo.create({
+          customer_id: customerB.id,
+          status: 'abandoned',
+          updated_at: new Date(Date.now() - 10 * 60 * 1000),
+        })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: cart1.id,
+          product_id: productA.id,
+          quantity: 1,
+          price_cents: 500000,
+        })
+      );
+
+      // Abandoned Cart 2 (Customer C - Power Bank)
+      cart2 = await cartRepo.save(
+        cartRepo.create({
+          customer_id: customerC.id,
+          status: 'abandoned',
+          updated_at: new Date(Date.now() - 15 * 60 * 1000),
+        })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: cart2.id,
+          product_id: productPowerBank.id,
+          quantity: 1,
+          price_cents: 99900,
+        })
+      );
+    });
+
+    test('Query "what items are in abandoned carts?" returns real data from both carts', async () => {
+      const res = await helperService.processChatMessage(merchantA.id, 'what items are in abandoned carts?');
+
+      expect(res.message).not.toContain('cannot view abandoned carts');
+      expect(res.message).toContain('Alpha Laptop Stand');
+      expect(res.message).toContain('Power Bank');
+      expect(res.message).toContain(customerB.email);
+      expect(res.message).toContain(customerC.email);
+    });
+
+    test('"Give 40% off on all abandoned carts" targets ALL carts and notifies ALL customers', async () => {
+      // 1. Initial Request
+      const turn1 = await helperService.processChatMessage(
+        merchantA.id,
+        'Give 40% off on all abandoned carts'
+      );
+
+      expect(turn1.requiresConfirmation).toBe(true);
+      expect(turn1.proposal).not.toBeNull();
+      expect(turn1.proposal?.isBulk).toBe(true);
+      expect(turn1.proposal?.affectedCartsList?.length).toBe(2);
+      expect(turn1.message).toContain('2 abandoned cart(s)');
+      expect(turn1.message).toContain(customerB.email);
+      expect(turn1.message).toContain(customerC.email);
+
+      // 2. Explicit Confirmation
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'Yes',
+        turn1.proposal
+      );
+
+      expect(turn2.actionExecuted).toBe(true);
+      expect(turn2.message).toContain('was successfully applied to 2 abandoned cart(s)');
+      expect(turn2.message).toContain(customerB.email);
+      expect(turn2.message).toContain(customerC.email);
+
+      // Verify Database: Products updated with 40% deal
+      const productRepo = TestDataSource.getRepository(Product);
+      const prodA = await productRepo.findOne({ where: { id: productA.id } });
+      const prodB = await productRepo.findOne({ where: { id: productPowerBank.id } });
+
+      expect(prodA?.deal_active).toBe(true);
+      expect(prodA?.discount_percent).toBe(40);
+      expect(prodB?.deal_active).toBe(true);
+      expect(prodB?.discount_percent).toBe(40);
+    });
+  });
+
+  describe('8. Multi-Product Single Abandoned Cart Count & Cart-Level Deal Execution', () => {
+    let customerMulti: Customer;
+    let cartMulti: Cart;
+
+    beforeEach(async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      customerMulti = await customerRepo.save(
+        customerRepo.create({
+          email: `customermulti-${Date.now()}@domain.com`,
+          name: 'Multi Item Customer',
+          role: 'customer',
+        })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      // Single Abandoned Cart containing 2 distinct products
+      cartMulti = await cartRepo.save(
+        cartRepo.create({
+          customer_id: customerMulti.id,
+          status: 'abandoned',
+          updated_at: new Date(Date.now() - 10 * 60 * 1000),
+        })
+      );
+
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: cartMulti.id,
+          product_id: productA.id,
+          quantity: 4,
+          price_cents: 79900,
+        })
+      );
+
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: cartMulti.id,
+          product_id: productPowerBank.id,
+          quantity: 3,
+          price_cents: 39900,
+        })
+      );
+    });
+
+    test('1 abandoned cart containing 2 products returns count = 1 (NOT 2)', async () => {
+      const res = await helperService.processChatMessage(merchantA.id, 'how many abandoned carts?');
+
+      expect(res.message).toContain('1');
+      expect(res.message).not.toContain('2 abandoned');
+    });
+
+    test('"products in abandoned cart" lists all items belonging to that cart', async () => {
+      const res = await helperService.processChatMessage(merchantA.id, 'products in abandoned cart?');
+
+      expect(res.message).toContain('Alpha Laptop Stand');
+      expect(res.message).toContain('Power Bank');
+      expect(res.message).toContain(customerMulti.email);
+    });
+
+    test('"give 40% off on this cart" applies discount to ALL products in the cart and restores them on expiration', async () => {
+      const turn1 = await helperService.processChatMessage(
+        merchantA.id,
+        'give 40% off on this cart'
+      );
+
+      expect(turn1.requiresConfirmation).toBe(true);
+      expect(turn1.proposal).not.toBeNull();
+
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'Yes',
+        turn1.proposal
+      );
+
+      expect(turn2.actionExecuted).toBe(true);
+
+      const productRepo = TestDataSource.getRepository(Product);
+      const prodA = await productRepo.findOne({ where: { id: productA.id } });
+      const prodB = await productRepo.findOne({ where: { id: productPowerBank.id } });
+
+      expect(prodA?.deal_active).toBe(true);
+      expect(prodA?.discount_percent).toBe(40);
+      expect(prodB?.deal_active).toBe(true);
+      expect(prodB?.discount_percent).toBe(40);
+
+      // Verify expiration restoration for both products
+      await helperService.restoreExpiredDealPrice(productA.id);
+      await helperService.restoreExpiredDealPrice(productPowerBank.id);
+
+      const restoredA = await productRepo.findOne({ where: { id: productA.id } });
+      const restoredB = await productRepo.findOne({ where: { id: productPowerBank.id } });
+
+      expect(restoredA?.deal_active).toBe(false);
+      expect(restoredB?.deal_active).toBe(false);
+    });
+  });
+
+  describe('9. Live DB Authority & Stale Execution Revalidation Tests', () => {
+    test('TEST 1 & 11: Zero abandoned carts in DB returns 0 and prevents deal proposal creation', async () => {
+      // Clear any carts for merchant A
+      const cartRepo = TestDataSource.getRepository(Cart);
+      await cartRepo.query('DELETE FROM cart_items');
+      await cartRepo.query('DELETE FROM carts');
+
+      const countRes = await helperService.processChatMessage(merchantA.id, 'how many abandoned carts?');
+      expect(countRes.message).toContain('0');
+
+      const dealRes = await helperService.processChatMessage(merchantA.id, 'give 40% off on all abandoned carts');
+      expect(dealRes.proposal).toBeNull();
+      expect(dealRes.message).toContain('currently 0 abandoned carts');
+    });
+
+    test('TEST 2 & 10: Previous conversation referenced an abandoned cart, but when cart becomes converted/fulfilled helper reports 0', async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      const tempCust = await customerRepo.save(
+        customerRepo.create({
+          email: `tempcust-${Date.now()}@domain.com`,
+          name: 'Temp Customer',
+          role: 'customer',
+        })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      // Create an abandoned cart
+      const tempCart = await cartRepo.save(
+        cartRepo.create({
+          customer_id: tempCust.id,
+          status: 'abandoned',
+          updated_at: new Date(Date.now() - 10 * 60 * 1000),
+        })
+      );
+
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: tempCart.id,
+          product_id: productA.id,
+          quantity: 1,
+          price_cents: 79900,
+        })
+      );
+
+      // Turn 1: Query abandoned carts while cart is abandoned
+      const turn1 = await helperService.processChatMessage(merchantA.id, 'how many abandoned carts?');
+      expect(turn1.message).toContain('1');
+
+      // Now cart gets converted to order / status becomes converted
+      tempCart.status = 'converted';
+      await cartRepo.save(tempCart);
+
+      // Turn 2: Query abandoned carts again — must return 0 from live DB truth
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'how many abandoned carts?',
+        null,
+        [{ role: 'user', content: 'how many abandoned carts?' }, { role: 'assistant', content: turn1.message }]
+      );
+
+      expect(turn2.message).toContain('0');
+      expect(turn2.message).not.toContain('1 abandoned');
+    });
+
+    test('TEST 9: Cart becomes non-abandoned between proposal and confirmation -> execution revalidates and aborts', async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      const tempCust = await customerRepo.save(
+        customerRepo.create({
+          email: `stale-${Date.now()}@domain.com`,
+          name: 'Stale Customer',
+          role: 'customer',
+        })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      const tempCart = await cartRepo.save(
+        cartRepo.create({
+          customer_id: tempCust.id,
+          status: 'abandoned',
+          updated_at: new Date(Date.now() - 10 * 60 * 1000),
+        })
+      );
+
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: tempCart.id,
+          product_id: productA.id,
+          quantity: 1,
+          price_cents: 79900,
+        })
+      );
+
+      // 1. Build Proposal
+      const turn1 = await helperService.processChatMessage(
+        merchantA.id,
+        'give 30% off on this abandoned cart'
+      );
+
+      expect(turn1.requiresConfirmation).toBe(true);
+      expect(turn1.proposal).not.toBeNull();
+
+      // Cart gets completed / converted before confirmation
+      tempCart.status = 'converted';
+      await cartRepo.save(tempCart);
+
+      // 2. User confirms proposal
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'Yes',
+        turn1.proposal
+      );
+
+      expect(turn2.actionExecuted).toBe(false);
+      expect(turn2.message).toContain('no longer abandoned');
+    });
+  });
 });
