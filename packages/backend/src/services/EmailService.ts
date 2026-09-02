@@ -187,6 +187,13 @@ export class EmailService {
       dealExpiresInDays,
     });
 
+    const frontendBaseUrl = (
+      process.env.FRONTEND_URL ||
+      env.FRONTEND_URL ||
+      (process.env.NODE_ENV === 'production' ? 'https://razorshop.app' : 'http://localhost:5173')
+    ).replace(/\/+$/, '');
+    const claimDealUrl = `${frontendBaseUrl}/cart`;
+
     const template: EmailTemplate = {
       subject: generated.subject,
       html: `
@@ -199,10 +206,10 @@ export class EmailService {
             <p style="margin: 5px 0 0 0; color: #4b5563;">Original Price: <span style="text-decoration: line-through;">₹${originalPriceDisplay}</span></p>
             <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #059669;">Special Deal Price: ₹${dealPriceDisplay} (${discountPercent}% OFF)</p>
           </div>
-          <a href="#" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; text-align: center;">${generated.call_to_action || 'Shop Now'}</a>
+          <a href="${claimDealUrl}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; text-align: center;">${generated.call_to_action || 'Claim Deal'}</a>
         </div>
       `,
-      text: `${generated.greeting}\n\n${generated.body}\n\nProduct: ${productName}\nOriginal Price: ₹${originalPriceDisplay}\nDeal Price: ₹${dealPriceDisplay} (${discountPercent}% OFF)`,
+      text: `${generated.greeting}\n\n${generated.body}\n\nProduct: ${productName}\nOriginal Price: ₹${originalPriceDisplay}\nDeal Price: ₹${dealPriceDisplay} (${discountPercent}% OFF)\n\nClaim Deal: ${claimDealUrl}`,
     };
 
     return await this.dispatchEmail(customerEmail, template, options?.source || 'customer');

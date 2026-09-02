@@ -411,7 +411,7 @@ export class MerchantHelperService {
     const answer = await this.generateGroqResponse(merchantId, userMessage, contextData, lang, history);
 
     return {
-      message: answer,
+      message: this.sanitizeMarkdownFormatting(answer),
       proposal: null, // Invalidate stale proposals on unrelated queries
       requiresConfirmation: false,
     };
@@ -1296,7 +1296,11 @@ STRICT GUIDELINES:
 7. OUTPUT CURRENCY FORMATTING: All monetary numbers MUST use the '₹' symbol (e.g. ₹3,492.22). NEVER output 'INR', 'cents', 'paise', 'USD', or raw unformatted numbers.
 8. LANGUAGE MATCHING: Respond in the EXACT language style of the user prompt (English, Hindi, Hinglish).
 9. Keep responses concise, clear, and direct.
-10. ONE ABANDONED CART RECORD = ONE ABANDONED CART regardless of how many products/items are inside it. Count carts, NOT products.`;
+10. ONE ABANDONED CART RECORD = ONE ABANDONED CART regardless of how many products/items are inside it. Count carts, NOT products.
+11. MARKDOWN FORMATTING RULES:
+   - Use bold formatting (**...**) ONLY for key data points: numbers, monetary amounts, percentages, order/cart IDs, statuses, and specific value labels.
+   - Do NOT bold section headers like 'Action:' or entire sentences/bullets unnecessarily.
+   - NEVER output dangling '**' or standalone '* **' lines or unclosed formatting tags.`;
 
     const userPrompt = `REAL MERCHANT DATABASE CONTEXT:
 ${JSON.stringify(contextData, null, 2)}
@@ -1329,7 +1333,7 @@ ${userMessage}`;
         const data: any = await response.json();
         const content = data.choices?.[0]?.message?.content;
         if (content && content.trim()) {
-          return content.trim();
+          return this.sanitizeMarkdownFormatting(content.trim());
         }
       }
     } catch (err) {
@@ -1340,9 +1344,53 @@ ${userMessage}`;
   }
 
   /**
+   * Presentation/response-formatting cleanup for Markdown in Merchant Helper responses.
+   * Removes dangling `**`, `* **`, unnecessary bolding on ordinary header labels like `**Action:**`,
+   * and repairs unmatched bold delimiters while keeping important values/numbers/statuses bold.
+   */
+  public sanitizeMarkdownFormatting(text: string): string {
+    if (!text) return text;
+    let cleaned = text;
+
+    // 1. Remove standalone dangling bullet bold lines (e.g. "* **", "- **")
+    cleaned = cleaned.replace(/^[ \t]*[*|-][ \t]*\*\*[ \t]*$/gm, '');
+
+    // 2. Remove standalone dangling ** lines
+    cleaned = cleaned.replace(/^[ \t]*\*\*[ \t]*$/gm, '');
+
+    // 3. Unbold plain section headers like **Action:** or **Recommended Actions:** or **Next Steps:**
+    cleaned = cleaned.replace(/\*\*(Action|Actions|Recommended Action|Recommended Actions|Note|Summary|Next Steps|Details|Overview):\*\*/gi, '$1:');
+
+    // 4. Remove dangling ** at end of lines or end of string
+    cleaned = cleaned.replace(/\*\*\s*$/g, '');
+
+    // 5. Ensure balanced ** count (repair unmatched bold tags)
+    const count = (cleaned.match(/\*\*/g) || []).length;
+    if (count % 2 !== 0) {
+      const lastIdx = cleaned.lastIndexOf('**');
+      if (lastIdx !== -1) {
+        cleaned = cleaned.substring(0, lastIdx) + cleaned.substring(lastIdx + 2);
+      }
+    }
+
+    // 6. Normalize multiple empty newlines
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+    return cleaned.trim();
+  }
+
+  /**
    * Deterministic grounded fallback responses for tests/offline
    */
   private getFallbackGroundedResponse(
+    userMessage: string,
+    context: Record<string, any>,
+    langStyle: 'english' | 'hindi' | 'hinglish'
+  ): string {
+    return this.sanitizeMarkdownFormatting(this.buildFallbackGroundedResponseText(userMessage, context, langStyle));
+  }
+
+  private buildFallbackGroundedResponseText(
     userMessage: string,
     context: Record<string, any>,
     langStyle: 'english' | 'hindi' | 'hinglish'

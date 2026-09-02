@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { getApiUrl } from '../../config/api';
 import { authService } from '../../services/authService';
 import { IconSend, IconRefresh, IconCheck, IconClose } from '../common/Icons';
+import { FormattedMarkdownText } from './FormattedMarkdownText';
 
 export type HelperActionType =
   | 'CREATE_DEAL_AND_EMAIL'
@@ -346,11 +347,15 @@ export default function MerchantHelper() {
             <div
               className={`max-w-2xl rounded-2xl px-5 py-3.5 text-xs leading-relaxed shadow-xs ${
                 msg.sender === 'user'
-                  ? 'bg-blue-600 text-white font-medium rounded-tr-none'
-                  : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none whitespace-pre-wrap'
+                  ? 'bg-blue-600 text-white font-medium rounded-tr-none whitespace-pre-wrap'
+                  : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
               }`}
             >
-              {msg.text}
+              {msg.sender === 'user' ? (
+                msg.text
+              ) : (
+                <FormattedMarkdownText content={msg.text} />
+              )}
 
               {/* Action Result Card */}
               {msg.actionExecuted && msg.actionResult && (
