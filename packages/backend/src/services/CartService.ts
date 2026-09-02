@@ -329,18 +329,44 @@ export class CartService {
 
   private async cartToResponse(cart: Cart): Promise<CartResponse> {
     let subtotal_cents = 0;
-    const items: CartItemResponse[] = (cart.items || []).map((item) => {
-      const line_total = Number(item.price_cents) * item.quantity;
+    const items: CartItemResponse[] = [];
+    const productRepo = this.dataSource.getRepository(Product);
+    const now = new Date();
+
+    for (const item of cart.items || []) {
+      const product = item.product || (await productRepo.findOne({ where: { id: item.product_id } }));
+      let effectivePriceCents = Number(item.price_cents);
+
+      if (product) {
+        const dealExpired = product.deal_expires_at && new Date(product.deal_expires_at) <= now;
+
+        if (product.deal_active && !dealExpired && product.price_cents !== undefined && product.price_cents !== null) {
+          effectivePriceCents = Number(product.price_cents);
+        } else if (dealExpired && product.original_price_cents) {
+          effectivePriceCents = Number(product.original_price_cents);
+          product.price_cents = Number(product.original_price_cents);
+          product.original_price_cents = null as any;
+          product.discount_percent = null as any;
+          product.deal_active = false;
+          product.deal_expires_at = null as any;
+          await productRepo.save(product);
+        } else if (!product.deal_active && product.price_cents !== undefined && product.price_cents !== null) {
+          effectivePriceCents = Number(product.price_cents);
+        }
+      }
+
+      const line_total = effectivePriceCents * item.quantity;
       subtotal_cents += line_total;
-      return {
+
+      items.push({
         id: item.id,
         product_id: item.product_id,
-        product: item.product,
+        product: product || item.product,
         quantity: item.quantity,
-        price_cents: Number(item.price_cents),
+        price_cents: effectivePriceCents,
         line_total_cents: line_total,
-      };
-    });
+      });
+    }
 
     const discount_percent = Number(cart.discount_percent || 0);
     let discount_cents = 0;
@@ -356,9 +382,9 @@ export class CartService {
         if (bundle && Array.isArray(bundle.products) && bundle.products.length > 0) {
           const bundleProductIds = new Set(bundle.products.map((p: any) => p.id || p.product_id));
           let bundle_subtotal = 0;
-          for (const item of cart.items || []) {
+          for (const item of items) {
             if (bundleProductIds.has(item.product_id)) {
-              bundle_subtotal += Number(item.price_cents) * item.quantity;
+              bundle_subtotal += item.price_cents * item.quantity;
             }
           }
           discount_cents = Math.round(bundle_subtotal * (discount_percent / 100));

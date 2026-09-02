@@ -44,6 +44,8 @@ export interface DealActionProposal {
   newOrderStatus?: string;
   currentReturnStatus?: string;
   newReturnStatus?: string;
+  returnReason?: string;
+  orderAmountCents?: number;
   refundAmountCents?: number;
 
   // Product price / stock fields
@@ -63,7 +65,17 @@ export interface ChatMessage {
   requiresConfirmation?: boolean;
   actionExecuted?: boolean;
   actionResult?: {
-    productName?: string;
+    // Deal fields (canonical — use products array)
+    products?: string[];          // All product names affected (with qty, e.g. 'Power Strip × 7')
+    productName?: string;         // Legacy fallback
+    originalTotalRupees?: number; // Original cart total before discount
+    dealTotalRupees?: number;     // Final total after discount
+    cartId?: string;              // Affected cart ID
+    customerEmail?: string;       // Customer email
+    customerName?: string;        // Customer name
+    expiresAt?: string;           // ISO expiration timestamp
+
+    // Order / refund fields
     orderNumber?: string;
     scope?: 'product' | 'cart';
     discountPercent?: number;
@@ -347,13 +359,53 @@ export default function MerchantHelper() {
                     <IconCheck className="w-4 h-4 text-emerald-600" />
                     <span>Action Successfully Executed</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-1 text-[11px] mt-2">
+                  <div className="space-y-1 text-[11px] mt-2">
+                    {/* Order result */}
                     {msg.actionResult.orderNumber && <div><span className="font-semibold">Order:</span> #{msg.actionResult.orderNumber}</div>}
                     {msg.actionResult.newStatus && <div><span className="font-semibold">Status:</span> {msg.actionResult.newStatus}</div>}
-                    {msg.actionResult.productName && <div><span className="font-semibold">Product:</span> {msg.actionResult.productName}</div>}
-                    {msg.actionResult.discountPercent && <div><span className="font-semibold">Discount:</span> {msg.actionResult.discountPercent}% OFF</div>}
-                    {msg.actionResult.dealPriceRupees && <div><span className="font-semibold">Deal Price:</span> ₹{msg.actionResult.dealPriceRupees.toFixed(2)}</div>}
                     {msg.actionResult.refundAmountRupees && <div><span className="font-semibold">Refund Initiated:</span> ₹{msg.actionResult.refundAmountRupees.toFixed(2)}</div>}
+
+                    {/* Deal result — products array takes priority over legacy productName */}
+                    {msg.actionResult.discountPercent && (
+                      <div><span className="font-semibold">Discount:</span> <span className="font-bold text-emerald-700">{msg.actionResult.discountPercent}% OFF</span></div>
+                    )}
+                    {msg.actionResult.cartId && (
+                      <div><span className="font-semibold">Cart ID:</span> <span className="font-mono text-[10px] text-gray-600">{msg.actionResult.cartId}</span></div>
+                    )}
+                    {msg.actionResult.customerEmail && (
+                      <div><span className="font-semibold">Customer:</span> {msg.actionResult.customerName || ''} ({msg.actionResult.customerEmail})</div>
+                    )}
+                    {/* Products list (canonical) */}
+                    {msg.actionResult.products && msg.actionResult.products.length > 0 ? (
+                      <div>
+                        <span className="font-semibold">Products Discounted:</span>
+                        <ul className="ml-3 mt-0.5 list-disc list-inside space-y-0.5">
+                          {msg.actionResult.products.map((p, i) => <li key={i}>{p}</li>)}
+                        </ul>
+                      </div>
+                    ) : (
+                      msg.actionResult.productName && !msg.actionResult.orderNumber && (
+                        <div><span className="font-semibold">Products:</span> {msg.actionResult.productName}</div>
+                      )
+                    )}
+                    {msg.actionResult.originalTotalRupees && (
+                      <div><span className="font-semibold">Original Total:</span> <span className="line-through text-gray-500">₹{msg.actionResult.originalTotalRupees.toFixed(2)}</span></div>
+                    )}
+                    {msg.actionResult.dealTotalRupees && (
+                      <div><span className="font-semibold">Deal Total:</span> <span className="font-extrabold text-emerald-700">₹{msg.actionResult.dealTotalRupees.toFixed(2)}</span></div>
+                    )}
+                    {!msg.actionResult.dealTotalRupees && msg.actionResult.dealPriceRupees && (
+                      <div><span className="font-semibold">Deal Price:</span> ₹{msg.actionResult.dealPriceRupees.toFixed(2)}</div>
+                    )}
+                    {msg.actionResult.expiresAt && (
+                      <div className="text-amber-700 mt-1">
+                        ⏱️ Expires: {new Date(msg.actionResult.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </div>
+                    )}
+                    {/* Product price update */}
+                    {msg.actionResult.newPriceRupees && (
+                      <div><span className="font-semibold">New Price:</span> ₹{msg.actionResult.newPriceRupees.toFixed(2)}</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -379,11 +431,19 @@ export default function MerchantHelper() {
                     {msg.proposal.newOrderStatus && (
                       <div><span className="font-bold text-gray-700">Requested Status:</span> <span className="font-bold text-blue-800">{msg.proposal.newOrderStatus}</span></div>
                     )}
+                    {msg.proposal.currentReturnStatus && !msg.proposal.currentOrderStatus && (
+                      <div><span className="font-bold text-gray-700">Current Return Status:</span> {msg.proposal.currentReturnStatus}</div>
+                    )}
+                    {msg.proposal.newReturnStatus && !msg.proposal.newOrderStatus && (
+                      <div><span className="font-bold text-gray-700">Action:</span> <span className="font-bold text-emerald-800">{msg.proposal.newReturnStatus === 'return_approved' ? 'Approve / Accept Return' : msg.proposal.newReturnStatus === 'return_rejected' ? 'Reject / Decline Return' : msg.proposal.newReturnStatus}</span></div>
+                    )}
                     {msg.proposal.refundAmountCents && (
                       <div><span className="font-bold text-gray-700">Refund Amount:</span> <span className="font-bold text-emerald-800">₹{(msg.proposal.refundAmountCents / 100).toFixed(2)}</span></div>
                     )}
-                    {msg.proposal.productName && (
-                      <div><span className="font-bold text-gray-700">Product:</span> {msg.proposal.productName}</div>
+                    {msg.proposal.scope === 'cart' ? (
+                      <div><span className="font-bold text-gray-700">Scope:</span> <span className="font-bold text-indigo-700">Entire Abandoned Cart</span></div>
+                    ) : (
+                      msg.proposal.productName && <div><span className="font-bold text-gray-700">Product:</span> {msg.proposal.productName}</div>
                     )}
                     {msg.proposal.currentPriceCents && (
                       <div><span className="font-bold text-gray-700">Current Price:</span> ₹{(msg.proposal.currentPriceCents / 100).toFixed(2)}</div>

@@ -14,6 +14,42 @@ import { PaymentFailure } from '../models/PaymentFailure.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
 import { CustomerInteraction } from '../models/CustomerInteraction.js';
 import { PromiseToPay } from '../models/PromiseToPay.js';
+import { Cart } from '../models/Cart.js';
+
+export interface CanonicalAbandonedCartItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+}
+
+export interface CanonicalAbandonedCartRecord {
+  cartId: string;
+  customerId?: string;
+  customerName: string;
+  customerEmail: string;
+  updatedAt: Date;
+  cartTotalCents: number;
+  items: CanonicalAbandonedCartItem[];
+}
+
+export interface CanonicalAbandonedCartsResult {
+  abandonedCartsCount: number;
+  uniqueCartInstancesCount: number;
+  pendingOrdersCount: number;
+  uniqueCustomersCount: number;
+  totalUnitsCount: number;
+  activeCartsCount: number;
+  cartsReachedCheckoutCount: number;
+  revenueAtRiskCents: number;
+  carts: CanonicalAbandonedCartRecord[];
+  topAbandonedProducts: Array<{
+    product_id: string;
+    product_name: string;
+    abandon_count: number;
+  }>;
+}
 
 export function isUuid(str?: string): boolean {
   if (!str) return false;
@@ -354,53 +390,11 @@ export class AnalyticsService {
       failed_payments_total_cents = fallbackStats?.total_amount ? parseInt(fallbackStats.total_amount, 10) : 0;
     }
 
-    // Abandoned Carts Count
+    // Abandoned Carts Count (Canonical Calculation)
     let abandonedCartsCount = 0;
     try {
-      const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
-        ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
-        : 5;
-      const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
-
-      let cartQb = this.dataSource
-        .createQueryBuilder()
-        .select('COUNT(DISTINCT c.id)', 'count')
-        .from('carts', 'c')
-        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
-        .where("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate });
-      if (startDate && endDate) {
-        cartQb = cartQb.andWhere('c.created_at >= :start AND c.created_at <= :end', { start, end });
-      }
-      const cartResult = await cartQb.getRawOne();
-      const inactiveCount = cartResult?.count ? parseInt(cartResult.count, 10) : 0;
-
-      let pendingOrderQb = this.getOrderRepository()
-        .createQueryBuilder('o')
-        .select('COUNT(o.id)', 'count')
-        .where("o.status = 'pending'")
-        .andWhere('o.created_at <= :cutoffDate', { cutoffDate });
-      if (startDate && endDate) {
-        pendingOrderQb = pendingOrderQb.andWhere('o.created_at >= :start AND o.created_at <= :end', { start, end });
-      }
-      if (hasMerchant) {
-        pendingOrderQb = pendingOrderQb
-          .andWhere((qb) => {
-            const subQuery = qb
-              .subQuery()
-              .select('1')
-              .from(OrderItem, 'item')
-              .innerJoin('item.product', 'product')
-              .where('item.order_id = o.id')
-              .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
-              .getQuery();
-            return `EXISTS ${subQuery}`;
-          })
-          .setParameter('merchantId', merchantId);
-      }
-      const pendingResult = await pendingOrderQb.getRawOne();
-      const pendingCount = pendingResult?.count ? parseInt(pendingResult.count, 10) : 0;
-
-      abandonedCartsCount = inactiveCount + pendingCount;
+      const canonical = await this.getAbandonedCartsCanonical(merchantId, startDate, endDate);
+      abandonedCartsCount = canonical.abandonedCartsCount;
     } catch {
       abandonedCartsCount = 0;
     }
@@ -993,124 +987,211 @@ export class AnalyticsService {
   }
 
   /**
-   * Get comprehensive aggregated merchant analytics for AI insight generation
+   * CANONICAL SOURCE OF TRUTH for abandoned-cart calculations.
+   * Both Analytics Dashboard and Merchant Helper consume this exact method.
    */
-  async getComprehensiveMerchantAnalytics(merchantId?: string): Promise<ComprehensiveMerchantAnalytics> {
-    const targetMerchantId = isUuid(merchantId) ? merchantId! : 'default-merchant';
-    const [metrics, funnel, responseBreakdown, failureReasons] = await Promise.all([
-      this.getDashboardMetrics(merchantId),
-      this.getRecoveryFunnel(merchantId),
-      this.getCustomerResponseBreakdown(merchantId),
-      this.getPaymentFailureReasons(merchantId),
-    ]);
-
-    // Abandonment threshold logic (default 5 minutes, configurable via env.CART_ABANDONMENT_MINUTES)
+  async getAbandonedCartsCanonical(
+    merchantId?: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<CanonicalAbandonedCartsResult> {
     const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
       ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
       : 5;
     const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
 
-    // Query Cart & Checkout metrics
-    let totalCarts = 0;
-    let activeCartsCount = 0;
-    let abandonedCartsCount = 0;
-    let cartsReachedCheckoutCount = 0;
-    let revenueAtRiskCents = 0;
-    let topAbandonedProducts: Array<{ product_id: string; product_name: string; abandon_count: number }> = [];
+    const hasMerchant = !!(merchantId && merchantId !== 'default-merchant');
 
-    try {
-      const cartRepo = this.dataSource.getRepository('Cart');
-      const orderRepo = this.getOrderRepository();
+    const cartRepo = this.dataSource.getRepository(Cart);
+    let cartQb = cartRepo
+      .createQueryBuilder('c')
+      .innerJoinAndSelect('c.items', 'ci')
+      .innerJoinAndSelect('ci.product', 'p')
+      .leftJoinAndSelect('c.customer', 'cust')
+      .where("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate });
 
-      // Total carts with at least 1 item
-      const totalCartsRaw = await this.dataSource
-        .createQueryBuilder()
-        .select('COUNT(DISTINCT c.id)', 'count')
-        .from('carts', 'c')
-        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
-        .getRawOne();
-      totalCarts = totalCartsRaw?.count ? parseInt(totalCartsRaw.count, 10) : 0;
+    if (hasMerchant) {
+      cartQb = cartQb.andWhere('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId });
+    }
 
-      // Carts that reached checkout (converted_to_order_id IS NOT NULL)
-      const checkoutCartsRaw = await cartRepo
-        .createQueryBuilder('c')
-        .select('COUNT(DISTINCT c.id)', 'count')
-        .where('c.converted_to_order_id IS NOT NULL')
-        .getRawOne();
-      cartsReachedCheckoutCount = checkoutCartsRaw?.count ? parseInt(checkoutCartsRaw.count, 10) : 0;
+    if (startDate && endDate) {
+      cartQb = cartQb.andWhere('c.created_at >= :start AND c.created_at <= :end', { start: startDate, end: endDate });
+    }
 
-      // Active carts updated within threshold
-      const activeRaw = await cartRepo
-        .createQueryBuilder('c')
-        .select('COUNT(DISTINCT c.id)', 'count')
-        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
-        .where("c.status = 'active'")
-        .andWhere('c.updated_at > :cutoffDate', { cutoffDate })
-        .getRawOne();
-      activeCartsCount = activeRaw?.count ? parseInt(activeRaw.count, 10) : 0;
+    const abandonedCartEntities = await cartQb
+      .orderBy('c.updated_at', 'DESC')
+      .addOrderBy('c.id', 'ASC')
+      .getMany();
 
-      // 1. Inactive / Abandoned carts (status='abandoned' OR (status='active' AND updated_at <= cutoff))
-      const inactiveCartIdsRaw = await cartRepo
-        .createQueryBuilder('c')
-        .select('c.id', 'id')
-        .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
-        .where("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
-        .getRawMany();
-      const inactiveCartIds = inactiveCartIdsRaw.map((r: any) => r.id);
+    const cartMap = new Map<string, CanonicalAbandonedCartRecord>();
+    const customerSet = new Set<string>();
+    let totalUnitsCount = 0;
+    let inactiveCartsValueCents = 0;
 
-      // Value of inactive carts
-      let inactiveCartsValueCents = 0;
-      if (inactiveCartIds.length > 0) {
-        const valRaw = await this.dataSource
-          .createQueryBuilder()
-          .select('SUM(ci.price_cents * ci.quantity)', 'total')
-          .from('cart_items', 'ci')
-          .where('ci.cart_id IN (:...inactiveCartIds)', { inactiveCartIds })
-          .getRawOne();
-        inactiveCartsValueCents = valRaw?.total ? parseInt(valRaw.total, 10) : 0;
+    for (const c of abandonedCartEntities) {
+      if (c.customer_id) {
+        customerSet.add(c.customer_id);
+      } else if (c.customer?.email) {
+        customerSet.add(c.customer.email);
       }
 
-      // 2. Pending Orders (checkout started, payment pending / exited Razorpay, inactive >= 5 mins)
-      const pendingOrdersRaw = await orderRepo
-        .createQueryBuilder('o')
-        .select('COUNT(o.id)', 'count')
-        .addSelect('SUM(o.total_cents)', 'total')
-        .where("o.status = 'pending'")
-        .andWhere('o.created_at <= :cutoffDate', { cutoffDate })
-        .getRawOne();
-      const pendingOrdersCount = pendingOrdersRaw?.count ? parseInt(pendingOrdersRaw.count, 10) : 0;
-      const pendingOrdersValueCents = pendingOrdersRaw?.total ? parseInt(pendingOrdersRaw.total, 10) : 0;
+      const items: CanonicalAbandonedCartItem[] = [];
+      let cartTotalCents = 0;
 
-      // Total abandoned/at-risk count = inactive carts + pending orders
-      abandonedCartsCount = inactiveCartIds.length + pendingOrdersCount;
-      revenueAtRiskCents = inactiveCartsValueCents + pendingOrdersValueCents;
+      for (const it of c.items || []) {
+        if (hasMerchant && it.product?.merchant_id && it.product.merchant_id !== merchantId) {
+          continue;
+        }
 
-      // Top abandoned products (from inactive carts & pending orders)
-      const abandonedRaw = await this.dataSource
-        .createQueryBuilder()
-        .select('ci.product_id', 'product_id')
-        .addSelect('p.name', 'product_name')
-        .addSelect('SUM(ci.quantity)', 'abandon_count')
-        .from('cart_items', 'ci')
-        .innerJoin('carts', 'c', 'c.id = ci.cart_id')
-        .innerJoin('products', 'p', 'p.id = ci.product_id')
-        .leftJoin('orders', 'o', 'o.id = c.converted_to_order_id')
-        .where("(c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate) OR (o.status = 'pending' AND o.created_at <= :cutoffDate))", { cutoffDate })
-        .groupBy('ci.product_id, p.name')
-        .orderBy('SUM(ci.quantity)', 'DESC')
-        .limit(5)
-        .getRawMany();
+        const unitPriceCents = Number(it.price_cents || it.product?.price_cents || 0);
+        const qty = Number(it.quantity || 1);
+        const lineTotalCents = unitPriceCents * qty;
 
-      topAbandonedProducts = abandonedRaw.map((r: any) => ({
-        product_id: r.product_id,
-        product_name: r.product_name,
-        abandon_count: parseInt(r.abandon_count, 10),
-      }));
-    } catch (err) {
-      console.warn('[AnalyticsService] Error calculating detailed cart abandonment analytics:', err);
-      abandonedCartsCount = metrics.abandoned_carts_count;
-      revenueAtRiskCents = metrics.revenue_at_risk_cents;
+        cartTotalCents += lineTotalCents;
+        totalUnitsCount += qty;
+
+        items.push({
+          productId: it.product_id,
+          productName: it.product?.name || 'Product',
+          quantity: qty,
+          unitPriceCents,
+          lineTotalCents,
+        });
+      }
+
+      if (items.length > 0 && !cartMap.has(c.id)) {
+        inactiveCartsValueCents += cartTotalCents;
+        cartMap.set(c.id, {
+          cartId: c.id,
+          customerId: c.customer_id,
+          customerName: c.customer?.name || 'Customer',
+          customerEmail: c.customer?.email || 'N/A',
+          updatedAt: c.updated_at,
+          cartTotalCents,
+          items,
+        });
+      }
     }
+
+    const cartRecords = Array.from(cartMap.values());
+    const uniqueCartInstancesCount = cartRecords.length;
+
+    // 2. Query Active Carts (status='active' AND updated_at > cutoffDate)
+    let activeQb = cartRepo
+      .createQueryBuilder('c')
+      .select('COUNT(DISTINCT c.id)', 'count')
+      .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+      .innerJoin('products', 'p', 'p.id = ci.product_id')
+      .where("c.status = 'active'")
+      .andWhere('c.updated_at > :cutoffDate', { cutoffDate });
+    if (hasMerchant) {
+      activeQb = activeQb.andWhere('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId });
+    }
+    const activeRaw = await activeQb.getRawOne();
+    const activeCartsCount = activeRaw?.count ? parseInt(activeRaw.count, 10) : 0;
+
+    // 3. Carts reached checkout
+    let checkoutQb = cartRepo
+      .createQueryBuilder('c')
+      .select('COUNT(DISTINCT c.id)', 'count')
+      .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
+      .innerJoin('products', 'p', 'p.id = ci.product_id')
+      .where('c.converted_to_order_id IS NOT NULL');
+    if (hasMerchant) {
+      checkoutQb = checkoutQb.andWhere('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId });
+    }
+    const checkoutRaw = await checkoutQb.getRawOne();
+    const cartsReachedCheckoutCount = checkoutRaw?.count ? parseInt(checkoutRaw.count, 10) : 0;
+
+    // 4. Query Pending Orders (unpaid checkout started > 5 mins ago)
+    const orderRepo = this.getOrderRepository();
+    let pendingOrderQb = orderRepo
+      .createQueryBuilder('o')
+      .select('COUNT(DISTINCT o.id)', 'count')
+      .addSelect('SUM(o.total_cents)', 'total')
+      .where("o.status = 'pending'")
+      .andWhere('o.created_at <= :cutoffDate', { cutoffDate });
+
+    if (startDate && endDate) {
+      pendingOrderQb = pendingOrderQb.andWhere('o.created_at >= :start AND o.created_at <= :end', { start: startDate, end: endDate });
+    }
+
+    if (hasMerchant) {
+      pendingOrderQb = pendingOrderQb
+        .andWhere((qb) => {
+          const subQuery = qb
+            .subQuery()
+            .select('1')
+            .from(OrderItem, 'item')
+            .innerJoin('item.product', 'product')
+            .where('item.order_id = o.id')
+            .andWhere('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)')
+            .getQuery();
+          return `EXISTS ${subQuery}`;
+        })
+        .setParameter('merchantId', merchantId);
+    }
+
+    const pendingResult = await pendingOrderQb.getRawOne();
+    const pendingOrdersCount = pendingResult?.count ? parseInt(pendingResult.count, 10) : 0;
+    const pendingOrdersValueCents = pendingResult?.total ? parseInt(pendingResult.total, 10) : 0;
+
+    const abandonedCartsCount = uniqueCartInstancesCount + pendingOrdersCount;
+    const revenueAtRiskCents = inactiveCartsValueCents + pendingOrdersValueCents;
+
+    // Top abandoned products
+    const topProdMap = new Map<string, { product_id: string; product_name: string; abandon_count: number }>();
+    for (const cr of cartRecords) {
+      for (const item of cr.items) {
+        if (!topProdMap.has(item.productId)) {
+          topProdMap.set(item.productId, {
+            product_id: item.productId,
+            product_name: item.productName,
+            abandon_count: item.quantity,
+          });
+        } else {
+          topProdMap.get(item.productId)!.abandon_count += item.quantity;
+        }
+      }
+    }
+
+    const topAbandonedProducts = Array.from(topProdMap.values())
+      .sort((a, b) => b.abandon_count - a.abandon_count)
+      .slice(0, 5);
+
+    return {
+      abandonedCartsCount,
+      uniqueCartInstancesCount,
+      pendingOrdersCount,
+      uniqueCustomersCount: customerSet.size,
+      totalUnitsCount,
+      activeCartsCount,
+      cartsReachedCheckoutCount,
+      revenueAtRiskCents,
+      carts: cartRecords,
+      topAbandonedProducts,
+    };
+  }
+
+  /**
+   * Get comprehensive aggregated merchant analytics for AI insight generation
+   */
+  async getComprehensiveMerchantAnalytics(merchantId?: string): Promise<ComprehensiveMerchantAnalytics> {
+    const targetMerchantId = isUuid(merchantId) ? merchantId! : 'default-merchant';
+    const [metrics, funnel, responseBreakdown, failureReasons, canonical] = await Promise.all([
+      this.getDashboardMetrics(merchantId),
+      this.getRecoveryFunnel(merchantId),
+      this.getCustomerResponseBreakdown(merchantId),
+      this.getPaymentFailureReasons(merchantId),
+      this.getAbandonedCartsCanonical(merchantId),
+    ]);
+
+    const activeCartsCount = canonical.activeCartsCount;
+    const abandonedCartsCount = canonical.abandonedCartsCount;
+    const cartsReachedCheckoutCount = canonical.cartsReachedCheckoutCount;
+    const revenueAtRiskCents = canonical.revenueAtRiskCents;
+    const topAbandonedProducts = canonical.topAbandonedProducts;
+    const totalCarts = canonical.carts.length + activeCartsCount;
 
     const abandonedRatePercent = totalCarts > 0 ? Math.round((abandonedCartsCount / totalCarts) * 100) : 0;
 

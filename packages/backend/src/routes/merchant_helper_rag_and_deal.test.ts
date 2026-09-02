@@ -638,4 +638,198 @@ describe('Merchant Operations Assistant Full Suite', () => {
       expect(turn2.message).toContain('no longer abandoned');
     });
   });
+
+  describe('10. Exact Cart ID Lookup, "The Other Cart" Swapping & Ambiguity Resolution', () => {
+    test('Exact Cart ID lookup resolves target cart; non-existent Cart ID returns explicit error', async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      const tempCust = await customerRepo.save(
+        customerRepo.create({
+          email: `exactid-${Date.now()}@domain.com`,
+          name: 'Exact ID Customer',
+          role: 'customer',
+        })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      const exactCart = await cartRepo.save(
+        cartRepo.create({
+          customer_id: tempCust.id,
+          status: 'abandoned',
+          updated_at: new Date(Date.now() - 10 * 60 * 1000),
+        })
+      );
+
+      await cartItemRepo.save(
+        cartItemRepo.create({
+          cart_id: exactCart.id,
+          product_id: productA.id,
+          quantity: 2,
+          price_cents: 79900,
+        })
+      );
+
+      // 1. Valid exact Cart ID
+      const res1 = await helperService.processChatMessage(
+        merchantA.id,
+        `give Cart ID ${exactCart.id} a discount of 80%`
+      );
+
+      expect(res1.requiresConfirmation).toBe(true);
+      expect(res1.proposal?.affectedCartsList?.[0]?.cartId).toBe(exactCart.id);
+
+      // 2. Non-existent Cart ID
+      const fakeUuid = '00000000-0000-0000-0000-000000000000';
+      const res2 = await helperService.processChatMessage(
+        merchantA.id,
+        `give Cart ID ${fakeUuid} a discount of 80%`
+      );
+
+      expect(res2.proposal).toBeNull();
+      expect(res2.message).toContain("I couldn't find that cart in your merchant account");
+    });
+
+    test('"the other cart" switches deal target between two abandoned carts', async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      const cust1 = await customerRepo.save(
+        customerRepo.create({ email: `swap1-${Date.now()}@domain.com`, name: 'Swap Cust 1', role: 'customer' })
+      );
+      const cust2 = await customerRepo.save(
+        customerRepo.create({ email: `swap2-${Date.now()}@domain.com`, name: 'Swap Cust 2', role: 'customer' })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      const cart1 = await cartRepo.save(
+        cartRepo.create({ customer_id: cust1.id, status: 'abandoned', updated_at: new Date(Date.now() - 5 * 60 * 1000) })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({ cart_id: cart1.id, product_id: productA.id, quantity: 1, price_cents: 79900 })
+      );
+
+      const cart2 = await cartRepo.save(
+        cartRepo.create({ customer_id: cust2.id, status: 'abandoned', updated_at: new Date(Date.now() - 10 * 60 * 1000) })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({ cart_id: cart2.id, product_id: productPowerBank.id, quantity: 1, price_cents: 39900 })
+      );
+
+      // Turn 1: Target Cart 1
+      const turn1 = await helperService.processChatMessage(merchantA.id, 'give cart 1 50% off');
+      expect(turn1.proposal?.affectedCartsList?.[0]?.cartId).toBe(cart1.id);
+
+      // Turn 2: Switch to "the other cart"
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'no the other cart',
+        turn1.proposal,
+        [{ role: 'user', content: 'give cart 1 50% off' }, { role: 'assistant', content: turn1.message }]
+      );
+
+      expect(turn2.proposal?.affectedCartsList?.[0]?.cartId).toBe(cart2.id);
+    });
+  });
+
+  describe('11. Deterministic Cart Number Indexing, Email Isolation & Multi-Turn Retention', () => {
+    let custTom: Customer;
+    let custNemat: Customer;
+    let cartTom: Cart;
+    let cartNemat: Cart;
+
+    beforeEach(async () => {
+      const customerRepo = TestDataSource.getRepository(Customer);
+      custTom = await customerRepo.save(
+        customerRepo.create({ email: `tom-${Date.now()}@domain.com`, name: 'tom', role: 'customer' })
+      );
+      custNemat = await customerRepo.save(
+        customerRepo.create({ email: `nemat-${Date.now()}@domain.com`, name: 'Nemat Sachdeva', role: 'customer' })
+      );
+
+      const cartRepo = TestDataSource.getRepository(Cart);
+      const cartItemRepo = TestDataSource.getRepository(CartItem);
+
+      // Cart #1: Tom — Magazine Rack ×4 (updated 5 mins ago)
+      cartTom = await cartRepo.save(
+        cartRepo.create({ customer_id: custTom.id, status: 'abandoned', updated_at: new Date(Date.now() - 5 * 60 * 1000) })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({ cart_id: cartTom.id, product_id: productA.id, quantity: 4, price_cents: 29900 })
+      );
+
+      // Cart #2: Nemat Sachdeva — Power Strip ×3 + Extension Cord ×3 (updated 10 mins ago)
+      cartNemat = await cartRepo.save(
+        cartRepo.create({ customer_id: custNemat.id, status: 'abandoned', updated_at: new Date(Date.now() - 10 * 60 * 1000) })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({ cart_id: cartNemat.id, product_id: productPowerBank.id, quantity: 3, price_cents: 39900 })
+      );
+      await cartItemRepo.save(
+        cartItemRepo.create({ cart_id: cartNemat.id, product_id: productA.id, quantity: 3, price_cents: 19900 })
+      );
+    });
+
+    test('"give cart 2 a 90% off" maps deterministically to Cart #2 (Nemat), NOT Cart #1 (Tom)', async () => {
+      const turn1 = await helperService.processChatMessage(merchantA.id, 'give cart 2 a 90% off');
+
+      expect(turn1.requiresConfirmation).toBe(true);
+      expect(turn1.proposal?.affectedCartsList?.[0]?.cartId).toBe(cartNemat.id);
+      expect(turn1.proposal?.affectedCartsList?.[0]?.customerEmail).toBe(custNemat.email);
+
+      // Verify proposal applies 90% to full cart total (3×399 + 3×199 = 1794.00)
+      const origCents = turn1.proposal?.affectedCartsList?.[0]?.originalCartTotalCents || 0;
+      expect(origCents).toBe(179400);
+
+      const dealCents = turn1.proposal?.affectedCartsList?.[0]?.dealCartTotalCents || 0;
+      expect(dealCents).toBe(17940);
+    });
+
+    test('Confirming Cart #2 deal emails ONLY Cart #2 customer (Nemat), NOT Cart #1 (Tom)', async () => {
+      const turn1 = await helperService.processChatMessage(merchantA.id, 'give cart 2 a 90% off');
+      const turn2 = await helperService.processChatMessage(merchantA.id, 'Yes', turn1.proposal);
+
+      expect(turn2.actionExecuted).toBe(true);
+      expect(turn2.proposal).toBeNull();
+    });
+
+    test('Multi-turn modifications ("make it 90%", "expire in 5 minutes") retain Cart #2 target', async () => {
+      // Turn 1: 50% off
+      const turn1 = await helperService.processChatMessage(merchantA.id, 'give cart 2 50% off');
+      expect(turn1.proposal?.affectedCartsList?.[0]?.cartId).toBe(cartNemat.id);
+      expect(turn1.proposal?.discountPercent).toBe(50);
+
+      // Turn 2: "make it 90%"
+      const turn2 = await helperService.processChatMessage(
+        merchantA.id,
+        'make it 90%',
+        turn1.proposal,
+        [{ role: 'user', content: 'give cart 2 50% off' }, { role: 'assistant', content: turn1.message }]
+      );
+      expect(turn2.proposal?.affectedCartsList?.[0]?.cartId).toBe(cartNemat.id);
+      expect(turn2.proposal?.discountPercent).toBe(90);
+
+      // Turn 3: "expire in 5 minutes"
+      const turn3 = await helperService.processChatMessage(
+        merchantA.id,
+        'expire in 5 minutes',
+        turn2.proposal,
+        [
+          { role: 'user', content: 'give cart 2 50% off' },
+          { role: 'assistant', content: turn1.message },
+          { role: 'user', content: 'make it 90%' },
+          { role: 'assistant', content: turn2.message },
+        ]
+      );
+      expect(turn3.proposal?.affectedCartsList?.[0]?.cartId).toBe(cartNemat.id);
+      expect(turn3.proposal?.expiresInMinutes).toBe(5);
+    });
+
+    test('Invalid cart index ("give cart 99 50% off") returns clear resolution error message', async () => {
+      const res = await helperService.processChatMessage(merchantA.id, 'give cart 99 50% off');
+
+      expect(res.proposal).toBeNull();
+      expect(res.message).toContain("couldn't resolve Cart #99");
+    });
+  });
 });

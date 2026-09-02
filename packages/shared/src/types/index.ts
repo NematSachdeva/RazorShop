@@ -28,6 +28,10 @@ export interface ProductDTO {
   name: string;
   description?: string;
   price_cents: number;
+  original_price_cents?: number | null;
+  discount_percent?: number | null;
+  deal_active?: boolean;
+  deal_expires_at?: string | Date | null;
   category?: string;
   image_url?: string | null;
   inventory?: {

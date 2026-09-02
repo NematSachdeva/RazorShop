@@ -1,6 +1,6 @@
 import { DataSource, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/database.js';
-import { AnalyticsService } from './AnalyticsService.js';
+import { AnalyticsService, isUuid } from './AnalyticsService.js';
 import { OrderService } from './OrderService.js';
 import { Product } from '../models/Product.js';
 import { Order, OrderStatus } from '../models/Order.js';
@@ -89,6 +89,8 @@ export interface DealActionProposal {
   newOrderStatus?: OrderStatus;
   currentReturnStatus?: string;
   newReturnStatus?: string;
+  returnReason?: string;
+  orderAmountCents?: number;
   refundAmountCents?: number;
 
   // Product fields
@@ -107,7 +109,17 @@ export interface HelperChatResponse {
   requiresConfirmation: boolean;
   actionExecuted?: boolean;
   actionResult?: {
-    productName?: string;
+    // Deal fields (canonical — use products array, not productName)
+    products?: string[];           // All product names affected by the deal
+    productName?: string;          // Legacy single-product field (kept for compatibility)
+    originalTotalRupees?: number;  // Original cart/product total before discount
+    dealTotalRupees?: number;      // Final total after discount
+    cartId?: string;               // Target cart ID
+    customerEmail?: string;        // Customer who received the deal
+    customerName?: string;         // Customer name
+    expiresAt?: string;            // ISO timestamp of deal expiration
+
+    // Order / refund fields
     orderNumber?: string;
     scope?: 'product' | 'cart';
     discountPercent?: number;
@@ -265,15 +277,30 @@ export class MerchantHelperService {
     userMessage: string,
     history: Array<{ role: string; content: string }> = []
   ): string | null {
-    const directMatch = userMessage.match(/#?(ORD-[A-Za-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-    if (directMatch) return directMatch[1].replace('#', '');
-
-    for (let i = history.length - 1; i >= 0; i--) {
-      const match = history[i].content.match(/#?(ORD-[A-Za-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-      if (match) {
-        return match[1].replace('#', '');
+    const directMatch = userMessage.match(/(?:order|order\s*#|order\s*no\.?|order\s*number)\s*#?\s*([A-Za-z0-9-]+)/i) ||
+                        userMessage.match(/#([A-Za-z0-9-]+)/i) ||
+                        userMessage.match(/#?(ORD-[A-Za-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (directMatch) {
+      const val = directMatch[1].replace('#', '').trim();
+      const ignoreWords = ['dispatched', 'delivered', 'cancelled', 'cancel', 'refund', 'status', 'the', 'details', 'for', 'a', 'this'];
+      if (val.length >= 2 && !ignoreWords.includes(val.toLowerCase())) {
+        return val;
       }
     }
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const match = history[i].content.match(/(?:order|order\s*#|order\s*no\.?|order\s*number)\s*#?\s*([A-Za-z0-9-]+)/i) ||
+                    history[i].content.match(/#([A-Za-z0-9-]+)/i) ||
+                    history[i].content.match(/#?(ORD-[A-Za-z0-9-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (match) {
+        const val = match[1].replace('#', '').trim();
+        const ignoreWords = ['dispatched', 'delivered', 'cancelled', 'cancel', 'refund', 'status', 'the', 'details', 'for', 'a', 'this'];
+        if (val.length >= 2 && !ignoreWords.includes(val.toLowerCase())) {
+          return val;
+        }
+      }
+    }
+
     return null;
   }
 
@@ -416,7 +443,15 @@ export class MerchantHelperService {
 
     // 1A. Order Dispatch Action
     if (isDispatch) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      const matchRes = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      if (matchRes.status === 'NOT_FOUND' && matchRes.searchedRef) {
+        return `I couldn't find order #${matchRes.searchedRef} in your store records. Please check the order number and try again.`;
+      }
+      if (matchRes.status === 'AMBIGUOUS' && matchRes.candidates) {
+        const listText = matchRes.candidates.map((c, i) => `${i + 1}. #${c.order_number} (${c.customer?.name || 'Customer'})`).join('\n');
+        return `I found multiple orders matching '${matchRes.searchedRef}':\n\n${listText}\n\nWhich order number would you like to mark as Dispatched?`;
+      }
+      const order = matchRes.order;
       if (order) {
         if (order.status !== 'confirmed' && order.status !== 'pending') {
           return `Order '${order.order_number}' is currently in '${order.status}' status. Dispatched requires status to be 'confirmed'.`;
@@ -438,7 +473,15 @@ export class MerchantHelperService {
 
     // 1B. Order Delivery Action
     if (isDeliver) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      const matchRes = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      if (matchRes.status === 'NOT_FOUND' && matchRes.searchedRef) {
+        return `I couldn't find order #${matchRes.searchedRef} in your store records. Please check the order number and try again.`;
+      }
+      if (matchRes.status === 'AMBIGUOUS' && matchRes.candidates) {
+        const listText = matchRes.candidates.map((c, i) => `${i + 1}. #${c.order_number} (${c.customer?.name || 'Customer'})`).join('\n');
+        return `I found multiple orders matching '${matchRes.searchedRef}':\n\n${listText}\n\nWhich order number would you like to mark as Delivered?`;
+      }
+      const order = matchRes.order;
       if (order) {
         // STATE MACHINE CHECK: Confirmed -> Delivered directly is INVALID
         if (order.status === 'confirmed' || order.status === 'pending') {
@@ -464,7 +507,15 @@ export class MerchantHelperService {
 
     // 1C. Order Cancellation Action
     if (isCancelOrder) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      const matchRes = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      if (matchRes.status === 'NOT_FOUND' && matchRes.searchedRef) {
+        return `I couldn't find order #${matchRes.searchedRef} in your store records. Please check the order number and try again.`;
+      }
+      if (matchRes.status === 'AMBIGUOUS' && matchRes.candidates) {
+        const listText = matchRes.candidates.map((c, i) => `${i + 1}. #${c.order_number} (${c.customer?.name || 'Customer'})`).join('\n');
+        return `I found multiple orders matching '${matchRes.searchedRef}':\n\n${listText}\n\nWhich order number would you like to cancel?`;
+      }
+      const order = matchRes.order;
       if (order) {
         if (order.status === 'delivered') {
           return `Order '${order.order_number}' cannot be cancelled after delivery.`;
@@ -486,7 +537,15 @@ export class MerchantHelperService {
 
     // 1D. Refund Initiation Action
     if (isRefund) {
-      const order = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      const matchRes = await this.findMatchingMerchantOrder(merchantId, userMessage, history);
+      if (matchRes.status === 'NOT_FOUND' && matchRes.searchedRef) {
+        return `I couldn't find order #${matchRes.searchedRef} in your store records. Please check the order number and try again.`;
+      }
+      if (matchRes.status === 'AMBIGUOUS' && matchRes.candidates) {
+        const listText = matchRes.candidates.map((c, i) => `${i + 1}. #${c.order_number} (${c.customer?.name || 'Customer'})`).join('\n');
+        return `I found multiple orders matching '${matchRes.searchedRef}':\n\n${listText}\n\nWhich order number would you like to initiate a refund for?`;
+      }
+      const order = matchRes.order;
       if (order) {
         const refundAmountCents = Number(order.total_cents);
         return {
@@ -501,6 +560,51 @@ export class MerchantHelperService {
           newReturnStatus: 'refund_initiated',
           refundAmountCents,
           description: `Initiate Refund of ${this.formatRupees(refundAmountCents / 100)} for Order ${order.order_number}`,
+        };
+      }
+    }
+
+    // 1DD. Return Actions (Accept/Approve Return or Reject/Decline Return)
+    const isAcceptReturn = /accept|approve|haan|misaal|pass/i.test(lower) && (lower.includes('return') || lower.includes('wapas') || lower.includes('wali') || lower.includes('one'));
+    const isRejectReturn = /reject|decline|radd|cancel/i.test(lower) && (lower.includes('return') || lower.includes('wapas') || lower.includes('wali') || lower.includes('one'));
+
+    const isReturnActionIntent = (isAcceptReturn || isRejectReturn) ||
+      (lower.includes('return') && (lower.includes('accept') || lower.includes('approve') || lower.includes('reject') || lower.includes('decline'))) ||
+      ((lower.includes('is return ko') || lower.includes('return request ko') || lower.includes('this return') || lower.includes('the return')) && (lower.includes('accept') || lower.includes('approve') || lower.includes('reject') || lower.includes('decline')));
+
+    if (isReturnActionIntent) {
+      const isAccept = lower.includes('accept') || lower.includes('approve') || lower.includes('haan') || (isAcceptReturn && !isRejectReturn);
+      const matchRes = await this.findMatchingReturnRequestOrder(merchantId, userMessage, history);
+
+      if (matchRes.status === 'NOT_FOUND') {
+        return matchRes.searchedRef
+          ? `I couldn't find a pending return request for order #${matchRes.searchedRef} in your store records.`
+          : `There are currently 0 pending return requests in your store records.`;
+      }
+
+      if (matchRes.status === 'AMBIGUOUS' && matchRes.candidates) {
+        const listText = matchRes.candidates.map((c, i) => `${i + 1}. #${c.order_number} (${c.customer?.name || 'Customer'}) — Reason: "${c.return_reason || 'N/A'}"`).join('\n');
+        const verb = isAccept ? 'accept' : 'reject';
+        return `I found multiple pending return requests:\n\n${listText}\n\nWhich order number would you like to ${verb}?`;
+      }
+
+      const order = matchRes.order;
+      if (order) {
+        const newReturnStatus = isAccept ? 'return_approved' : 'return_rejected';
+        const verbName = isAccept ? 'Approve' : 'Reject';
+
+        return {
+          proposalId: randomUUID(),
+          actionType: 'PROCESS_RETURN',
+          orderId: order.id,
+          orderNumber: order.order_number,
+          customerName: order.customer?.name || 'Customer',
+          customerEmail: order.customer?.email || 'N/A',
+          currentReturnStatus: order.return_status || 'return_requested',
+          newReturnStatus,
+          returnReason: order.return_reason || undefined,
+          orderAmountCents: Number(order.total_cents),
+          description: `${verbName} Return Request for Order ${order.order_number}`,
         };
       }
     }
@@ -544,7 +648,13 @@ export class MerchantHelperService {
     }
 
     // 1F. Multi-turn modification of an existing pending proposal or new deal request
-    const isDealIntent = /deal|offer|discount|off|coupon|percent|%|samose|expire|minute|hour|day|kal tak|mail|email|bhej|wanna/i.test(userMessage);
+    const isDealIntent = /deal|offer|discount|off|coupon|percent|%|samose|expire|minute|hour|day|kal tak|mail|email|bhej|wanna|other cart|dusra cart|dusri cart|other|another/i.test(userMessage);
+
+    const isOtherCart = lower.includes('other cart') || lower.includes('dusra cart') || lower.includes('dusri cart') || lower.includes('another cart');
+
+    if (pendingProposal && isOtherCart) {
+      return this.buildDealProposal(merchantId, userMessage, history, pendingProposal);
+    }
 
     if (pendingProposal && isDealIntent) {
       const parsedDisc = this.parseDiscount(userMessage);
@@ -572,8 +682,22 @@ export class MerchantHelperService {
     }
 
     if (isDealIntent) {
-      const prop = await this.buildDealProposal(merchantId, userMessage, history);
-      if (!prop || (prop.affectedCartsList && prop.affectedCartsList.length === 0 && prop.scope === 'cart')) {
+      const prop = await this.buildDealProposal(merchantId, userMessage, history, pendingProposal);
+      if (!prop) {
+        return "There are currently 0 abandoned carts, so there are no customers to target with this deal.";
+      }
+      if (prop.proposalId === 'EXACT_CART_NOT_FOUND') {
+        return "I couldn't find that cart in your merchant account. I have not created or changed any deal.";
+      }
+      if (prop.proposalId.startsWith('INVALID_CART_INDEX:')) {
+        const invalidIdx = prop.proposalId.split(':')[1];
+        return `I couldn't resolve Cart #${invalidIdx} from the current abandoned-cart list. Let me refresh the abandoned-cart data first.`;
+      }
+      if (prop.proposalId.startsWith('AMBIGUOUS_CART_REF:')) {
+        const listText = prop.proposalId.replace('AMBIGUOUS_CART_REF:', '');
+        return `I found multiple abandoned carts matching that description. Which one do you mean?\n\n${listText}`;
+      }
+      if (prop.affectedCartsList && prop.affectedCartsList.length === 0 && prop.scope === 'cart') {
         return "There are currently 0 abandoned carts, so there are no customers to target with this deal.";
       }
       return prop;
@@ -585,65 +709,200 @@ export class MerchantHelperService {
   /**
    * Helper to find matching order by order number, ID, or recent order
    */
+  /**
+   * Helper to find matching order by order number, ID, or recent order
+   */
   private async findMatchingMerchantOrder(
     merchantId: string,
     text: string,
     history: Array<{ role: string; content: string }> = []
-  ): Promise<Order | null> {
+  ): Promise<{ status: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS'; order?: Order; candidates?: Order[]; searchedRef?: string }> {
     const orderRepo = this.dataSource.getRepository(Order);
     const refNum = this.extractReferencedOrderNumber(text, history);
 
     if (refNum) {
-      const whereConditions: any[] = [
-        { order_number: refNum },
-        { order_number: `ORD-${refNum}` },
-        { order_number: `#${refNum}` },
-      ];
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refNum)) {
-        whereConditions.push({ id: refNum });
+      const cleaned = refNum.replace('#', '').trim();
+
+      const qb = orderRepo.createQueryBuilder('o')
+        .innerJoin('o.items', 'item')
+        .innerJoin('item.product', 'product')
+        .leftJoinAndSelect('o.items', 'items')
+        .leftJoinAndSelect('items.product', 'p')
+        .leftJoinAndSelect('o.customer', 'customer')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId });
+
+      // 1. Try exact matches first
+      const exactQb = qb.clone().andWhere(
+        "(o.order_number = :exact OR o.order_number = :ordExact OR o.order_number = :hashExact" +
+        (isUuid(cleaned) ? " OR o.id = :exact" : "") + ")",
+        { exact: cleaned, ordExact: `ORD-${cleaned}`, hashExact: `#${cleaned}` }
+      );
+      const exactOrders = await exactQb.getMany();
+
+      if (exactOrders.length === 1) {
+        return { status: 'FOUND', order: exactOrders[0], searchedRef: cleaned };
+      }
+      if (exactOrders.length > 1) {
+        return { status: 'AMBIGUOUS', candidates: exactOrders, searchedRef: cleaned };
       }
 
-      const order = await orderRepo.findOne({
-        where: whereConditions,
-        relations: ['items', 'items.product', 'customer'],
-      });
-      if (order) return order;
+      // 2. Try partial matches
+      const partialQb = qb.clone().andWhere("o.order_number ILIKE :likeRef", { likeRef: `%${cleaned}%` });
+      const partialOrders = await partialQb.getMany();
+
+      if (partialOrders.length === 1) {
+        return { status: 'FOUND', order: partialOrders[0], searchedRef: cleaned };
+      }
+      if (partialOrders.length > 1) {
+        return { status: 'AMBIGUOUS', candidates: partialOrders, searchedRef: cleaned };
+      }
+
+      return { status: 'NOT_FOUND', searchedRef: cleaned };
     }
 
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const ignoreWords = ['mark', 'order', 'as', 'for', 'initiate', 'the', 'refund', 'dispatched', 'delivered', 'cancel', 'process'];
+    // If NO explicit order reference was given in prompt or history
+    const qb = orderRepo.createQueryBuilder('o')
+      .innerJoin('o.items', 'item')
+      .innerJoin('item.product', 'product')
+      .leftJoinAndSelect('o.items', 'items')
+      .leftJoinAndSelect('items.product', 'p')
+      .leftJoinAndSelect('o.customer', 'customer')
+      .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId })
+      .orderBy('o.created_at', 'DESC');
 
-    const orderNumMatches = text.match(/#?([A-Za-z0-9-]+)/g);
-    if (orderNumMatches) {
-      for (const num of orderNumMatches) {
-        const cleaned = num.replace('#', '').trim();
-        if (cleaned.length >= 3 && !ignoreWords.includes(cleaned.toLowerCase())) {
-          const whereConditions: any[] = [
-            { order_number: cleaned },
-            { order_number: `ORD-${cleaned}` },
-            { order_number: `#${cleaned}` },
-          ];
-          if (uuidRegex.test(cleaned)) {
-            whereConditions.push({ id: cleaned });
-          }
+    const recentOrders = await qb.take(2).getMany();
+    if (recentOrders.length === 1) {
+      return { status: 'FOUND', order: recentOrders[0] };
+    }
+    if (recentOrders.length > 1) {
+      return { status: 'FOUND', order: recentOrders[0] };
+    }
 
-          const order = await orderRepo.findOne({
-            where: whereConditions,
-            relations: ['items', 'items.product', 'customer'],
-          });
-          if (order) return order;
+    return { status: 'NOT_FOUND' };
+  }
+
+  /**
+   * Helper to find matching order with a pending return request (return_status = 'return_requested' OR status = 'return_requested')
+   */
+  private async findMatchingReturnRequestOrder(
+    merchantId: string,
+    text: string,
+    history: Array<{ role: string; content: string }> = []
+  ): Promise<{ status: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS'; order?: Order; candidates?: Order[]; searchedRef?: string }> {
+    const orderRepo = this.dataSource.getRepository(Order);
+    const lower = text.toLowerCase();
+
+    const getPendingQuery = () => {
+      return orderRepo.createQueryBuilder('o')
+        .innerJoin('o.items', 'item')
+        .innerJoin('item.product', 'product')
+        .leftJoinAndSelect('o.items', 'items')
+        .leftJoinAndSelect('items.product', 'p')
+        .leftJoinAndSelect('o.customer', 'customer')
+        .where('(product.merchant_id = :merchantId OR product.merchant_id IS NULL)', { merchantId })
+        .andWhere("(o.return_status = 'return_requested' OR o.status = 'return_requested')")
+        .orderBy('o.return_requested_at', 'DESC')
+        .addOrderBy('o.updated_at', 'DESC');
+    };
+
+    // 1. Explicit order reference (#1234 or ORD-xxx or UUID)
+    const refNum = this.extractReferencedOrderNumber(text, history);
+    if (refNum) {
+      const cleaned = refNum.replace('#', '').trim();
+      const qb = getPendingQuery().andWhere(
+        "(o.order_number = :exact OR o.order_number = :ordExact OR o.order_number = :hashExact OR o.order_number ILIKE :likeRef" +
+        (isUuid(cleaned) ? " OR o.id = :exact" : "") + ")",
+        { exact: cleaned, ordExact: `ORD-${cleaned}`, hashExact: `#${cleaned}`, likeRef: `%${cleaned}%` }
+      );
+      const matched = await qb.getMany();
+      if (matched.length === 1) return { status: 'FOUND', order: matched[0], searchedRef: cleaned };
+      if (matched.length > 1) return { status: 'AMBIGUOUS', candidates: matched, searchedRef: cleaned };
+    }
+
+    // 2. Explicit index/ordinal ("second", "2nd", "2", "first", "1st", "1", "second wali", "2nd return")
+    const pendingOrders = await getPendingQuery().getMany();
+    if (pendingOrders.length === 0) {
+      return { status: 'NOT_FOUND' };
+    }
+
+    let targetIdx: number | null = null;
+    if (lower.includes('second') || lower.includes('2nd') || lower.includes('dusra') || lower.includes('dusri') || lower.includes('cart 2') || lower.includes('order 2') || lower.includes('number 2') || lower.includes('no 2')) {
+      targetIdx = 1; // 0-indexed: 2nd item
+    } else if (lower.includes('first') || lower.includes('1st') || lower.includes('pehla') || lower.includes('pehle') || lower.includes('cart 1') || lower.includes('order 1') || lower.includes('number 1') || lower.includes('no 1')) {
+      targetIdx = 0; // 0-indexed: 1st item
+    } else {
+      const numMatch = lower.match(/(?:number|no|no\.|order|return|wali|one)\s*#?\s*(\d+)/i) ||
+                       lower.match(/(\d+)(?:st|nd|rd|th)\s*(?:one|wali|return)?/i);
+      if (numMatch) {
+        const val = parseInt(numMatch[1], 10);
+        if (!isNaN(val) && val >= 1 && val <= pendingOrders.length) {
+          targetIdx = val - 1;
         }
       }
     }
 
-    // Fallback: Get most recent order for merchant
-    const recentOrder = await orderRepo.findOne({
-      where: {},
-      relations: ['items', 'items.product', 'customer'],
-      order: { created_at: 'DESC' },
-    });
+    if (targetIdx !== null && targetIdx >= 0 && targetIdx < pendingOrders.length) {
+      return { status: 'FOUND', order: pendingOrders[targetIdx] };
+    }
 
-    return recentOrder || null;
+    // 3. Fallback: If exactly 1 pending return request exists in live DB, resolve to that!
+    if (pendingOrders.length === 1) {
+      return { status: 'FOUND', order: pendingOrders[0] };
+    }
+
+    // 4. Multiple pending return requests exist and no specific index was specified -> AMBIGUOUS
+    return { status: 'AMBIGUOUS', candidates: pendingOrders };
+  }
+
+  /**
+   * Parse explicit cart reference (index, ordinal, UUID, or "other") from user message or history
+   */
+  private parseCartReference(
+    userMessage: string,
+    history: Array<{ role: string; content: string }> = []
+  ): { type: 'uuid' | 'index' | 'other'; value?: string | number } | null {
+    const lower = userMessage.toLowerCase();
+
+    // 1. Explicit UUID
+    const uuidMatch = userMessage.match(/#?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (uuidMatch) {
+      return { type: 'uuid', value: uuidMatch[1] };
+    }
+
+    // 2. Direct cart number / index match: cart 1, cart #1, cart number 1, cart no 1, 1st cart, second cart, etc.
+    const directNumMatch = lower.match(/(?:cart|cart\s*#|cart\s*number|cart\s*no\.?)\s*(\d+)/i) ||
+                           lower.match(/(\d+)(?:st|nd|rd|th)\s*cart/i);
+    if (directNumMatch) {
+      return { type: 'index', value: parseInt(directNumMatch[1], 10) };
+    }
+
+    if (lower.includes('first cart') || lower.includes('1st cart') || lower.includes('pehla cart') || lower.includes('pehle cart')) {
+      return { type: 'index', value: 1 };
+    }
+    if (lower.includes('second cart') || lower.includes('2nd cart') || lower.includes('dusra cart') || lower.includes('dusre cart')) {
+      return { type: 'index', value: 2 };
+    }
+    if (lower.includes('third cart') || lower.includes('3rd cart') || lower.includes('teesra cart') || lower.includes('teesre cart')) {
+      return { type: 'index', value: 3 };
+    }
+
+    if (lower.includes('other cart') || lower.includes('another cart') || lower.includes('dusri cart')) {
+      return { type: 'other' };
+    }
+
+    // 3. Fallback: Check ONLY recent USER messages (NOT assistant messages) for explicit index.
+    // We must NOT pick up cart numbers from old assistant responses, which would cause stale targeting.
+    const recentUserMessages = history.filter((h) => h.role === 'user').slice(-3);
+    for (let i = recentUserMessages.length - 1; i >= 0; i--) {
+      const hContent = recentUserMessages[i].content;
+      const hUuidMatch = hContent.match(/#?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (hUuidMatch) return { type: 'uuid', value: hUuidMatch[1] };
+
+      const hIdxMatch = hContent.match(/(?:cart|cart\s*#|cart\s*number|cart\s*no\.?)\s*(\d+)/i);
+      if (hIdxMatch) return { type: 'index', value: parseInt(hIdxMatch[1], 10) };
+    }
+
+    return null;
   }
 
   /**
@@ -727,6 +986,35 @@ export class MerchantHelperService {
         `• New Status: **Cancelled**\n` +
         `• Customer Notification: Existing cancellation notification workflow will run.\n\n` +
         `Please confirm: should I cancel Order #${proposal.orderNumber}?`;
+    }
+
+    if (proposal.actionType === 'PROCESS_RETURN') {
+      const isApprove = proposal.newReturnStatus === 'return_approved';
+      const actionTitle = isApprove ? 'Approve Return' : 'Reject Return';
+      const orderAmountRupees = proposal.orderAmountCents ? Number((proposal.orderAmountCents / 100).toFixed(2)) : undefined;
+
+      if (lang === 'hinglish') {
+        return `Mujhe Order **#${proposal.orderNumber}** (${proposal.customerName}) ki return request mili.\n\n` +
+          `**Proposed Action:**\n` +
+          `• Order: #${proposal.orderNumber}\n` +
+          `• Customer: ${proposal.customerName} (${proposal.customerEmail || 'N/A'})\n` +
+          (proposal.returnReason ? `• Return Reason: "${proposal.returnReason}"\n` : '') +
+          (orderAmountRupees ? `• Order Amount: **${this.formatRupees(orderAmountRupees)}**\n` : '') +
+          `• Current Return Status: ${proposal.currentReturnStatus || 'return_requested'}\n` +
+          `• New Return Status: **${isApprove ? 'return_approved' : 'return_rejected'}** (${actionTitle})\n` +
+          `• Customer Notification: Return status notification email will be sent automatically.\n\n` +
+          `Kya aap confirm karna chahte hain ki Order #${proposal.orderNumber} ki return request ko **${isApprove ? 'Accept' : 'Reject'}** kiya jaye?`;
+      }
+      return `I found the return request for Order **#${proposal.orderNumber}** (${proposal.customerName}).\n\n` +
+        `**Proposed Action:**\n` +
+        `• Order: #${proposal.orderNumber}\n` +
+        `• Customer: ${proposal.customerName} (${proposal.customerEmail || 'N/A'})\n` +
+        (proposal.returnReason ? `• Return Reason: "${proposal.returnReason}"\n` : '') +
+        (orderAmountRupees ? `• Order Amount: **${this.formatRupees(orderAmountRupees)}**\n` : '') +
+        `• Current Return Status: ${proposal.currentReturnStatus || 'return_requested'}\n` +
+        `• New Return Status: **${isApprove ? 'return_approved' : 'return_rejected'}** (${actionTitle})\n` +
+        `• Customer Notification: Return status notification email will be sent automatically.\n\n` +
+        `Please confirm: should I **${isApprove ? 'Approve/Accept' : 'Reject'}** the return request for Order #${proposal.orderNumber}?`;
     }
 
     // Deal proposal message
@@ -832,7 +1120,35 @@ export class MerchantHelperService {
     }
 
     // 2. RETURNS & REFUNDS DETAILS
-    if (lowerMsg.includes('return') || lowerMsg.includes('refund') || lowerMsg.includes('reason') || lowerMsg.includes('wapas')) {
+    if (lowerMsg.includes('return') || lowerMsg.includes('refund') || lowerMsg.includes('reason') || lowerMsg.includes('wapas') || lowerMsg.includes('वापसी')) {
+      // Pending Return Requests specifically (return_status = 'return_requested' OR status = 'return_requested')
+      const pendingReturnOrders = await orderRepo.find({
+        where: [
+          { return_status: 'return_requested' },
+          { status: 'return_requested' },
+        ],
+        relations: ['items', 'items.product', 'customer'],
+        order: { updated_at: 'DESC' },
+        take: 10,
+      });
+
+      context.pending_return_requests_details = pendingReturnOrders.map((o, idx) => ({
+        return_index: idx + 1,
+        order_id: o.id,
+        order_number: o.order_number,
+        customer_name: o.customer?.name || 'Customer',
+        customer_email: o.customer?.email || 'N/A',
+        status: 'Return Requested',
+        return_status: o.return_status || 'return_requested',
+        reason: o.return_reason || 'No reason provided',
+        order_amount: this.formatRupees(Number(o.total_cents) / 100),
+        order_amount_cents: Number(o.total_cents),
+        items: o.items?.map((i) => `${i.product?.name || 'Item'} ×${i.quantity}`) || [],
+        requested_at: o.return_requested_at || o.updated_at,
+      }));
+
+      context.analytics_summary.pending_return_requests_count = context.pending_return_requests_details.length;
+
       const returnedOrders = await orderRepo.find({
         where: [
           { status: 'return_requested' },
@@ -880,83 +1196,73 @@ export class MerchantHelperService {
       }));
     }
 
-    // 4. PRODUCT & INVENTORY LOOKUP
-    const merchantProducts = await productRepo.find({
-      where: [{ merchant_id: merchantId }, { merchant_id: IsNull() }],
-    });
+    // 4. PRODUCT & INVENTORY LOOKUP (Skip for Return/Cart queries to prevent misrouting)
+    const isReturnQuery = lowerMsg.includes('return') || lowerMsg.includes('wapas') || lowerMsg.includes('वापसी');
+    if (!isReturnQuery) {
+      const merchantProducts = await productRepo.find({
+        where: [{ merchant_id: merchantId }, { merchant_id: IsNull() }],
+      });
 
-    let matchedProduct: Product | undefined;
-    for (const p of merchantProducts) {
-      if (lowerMsg.includes(p.name.toLowerCase())) {
-        matchedProduct = p;
-        break;
-      }
-    }
-
-    if (!matchedProduct && (lowerMsg.includes('price') || lowerMsg.includes('cost') || lowerMsg.includes('kitne') || lowerMsg.includes('stock'))) {
-      const words = lowerMsg.split(/\s+/).filter((w) => w.length > 2);
+      let matchedProduct: Product | undefined;
       for (const p of merchantProducts) {
-        if (words.some((w) => p.name.toLowerCase().includes(w))) {
+        if (lowerMsg.includes(p.name.toLowerCase())) {
           matchedProduct = p;
           break;
         }
       }
+
+      if (!matchedProduct && (lowerMsg.includes('price') || lowerMsg.includes('cost') || lowerMsg.includes('kitne') || lowerMsg.includes('stock'))) {
+        const words = lowerMsg.split(/\s+/).filter((w) => w.length > 2);
+        for (const p of merchantProducts) {
+          if (words.some((w) => p.name.toLowerCase().includes(w))) {
+            matchedProduct = p;
+            break;
+          }
+        }
+      }
+
+      if (matchedProduct) {
+        const priceRupees = Number((Number(matchedProduct.price_cents) / 100).toFixed(2));
+        context.queried_product = {
+          id: matchedProduct.id,
+          name: matchedProduct.name,
+          price_cents: Number(matchedProduct.price_cents),
+          price_rupees: priceRupees,
+          price_formatted: this.formatRupees(priceRupees),
+          original_price_rupees: matchedProduct.original_price_cents ? (Number(matchedProduct.original_price_cents) / 100).toFixed(2) : undefined,
+          category: matchedProduct.category || 'General',
+          description: matchedProduct.description || '',
+        };
+      }
     }
 
-    if (matchedProduct) {
-      const priceRupees = Number((Number(matchedProduct.price_cents) / 100).toFixed(2));
-      context.queried_product = {
-        id: matchedProduct.id,
-        name: matchedProduct.name,
-        price_cents: Number(matchedProduct.price_cents),
-        price_rupees: priceRupees,
-        price_formatted: this.formatRupees(priceRupees),
-        original_price_rupees: matchedProduct.original_price_cents ? (Number(matchedProduct.original_price_cents) / 100).toFixed(2) : undefined,
-        category: matchedProduct.category || 'General',
-        description: matchedProduct.description || '',
-      };
-    }
+    // 5. ABANDONED CARTS & ITEMS LOOKUP (Canonical Source of Truth)
+    const canonicalCarts = await this.analyticsService.getAbandonedCartsCanonical(merchantId);
 
-    // 5. ABANDONED CARTS & ITEMS LOOKUP
-    const cartRepo = this.dataSource.getRepository(Cart);
-    const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
-      ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
-      : 5;
-    const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
+    context.abandoned_carts_details = canonicalCarts.carts.map((c, idx) => ({
+      cart_index: idx + 1,
+      cart_id: c.cartId,
+      customer_id: c.customerId,
+      customer_name: c.customerName,
+      customer_email: c.customerEmail,
+      updated_at: c.updatedAt,
+      total_value: this.formatRupees(c.cartTotalCents / 100),
+      total_value_cents: c.cartTotalCents,
+      items: c.items.map((i) => ({
+        product_id: i.productId,
+        product_name: i.productName,
+        quantity: i.quantity,
+        unit_price: this.formatRupees(i.unitPriceCents / 100),
+        unit_price_cents: i.unitPriceCents,
+      })),
+    }));
 
-    const abandonedCarts = await cartRepo
-      .createQueryBuilder('c')
-      .innerJoinAndSelect('c.items', 'ci')
-      .innerJoinAndSelect('ci.product', 'p')
-      .leftJoinAndSelect('c.customer', 'cust')
-      .where('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
-      .andWhere("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
-      .orderBy('c.updated_at', 'DESC')
-      .getMany();
-
-    context.abandoned_carts_details = abandonedCarts.map((c, idx) => {
-      const items = c.items || [];
-      const totalCents = items.reduce((acc, it) => {
-        const itemPrice = Number(it.product?.price_cents || it.price_cents || 0);
-        return acc + itemPrice * (it.quantity || 1);
-      }, 0);
-
-      return {
-        cart_index: idx + 1,
-        cart_id: c.id,
-        customer_id: c.customer_id,
-        customer_name: c.customer?.name || 'Customer',
-        customer_email: c.customer?.email || 'N/A',
-        updated_at: c.updated_at,
-        total_value: this.formatRupees(totalCents / 100),
-        items: items.map((i) => ({
-          product_id: i.product_id,
-          product_name: i.product?.name || 'Product',
-          quantity: i.quantity,
-          unit_price: this.formatRupees(Number(i.product?.price_cents || i.price_cents || 0) / 100),
-        })),
-      };
-    });
+    // IMPORTANT: The AI-facing abandoned_carts_count must equal the number of records in
+    // abandoned_carts_details. The analytics_summary.abandoned_carts_count may include
+    // pending orders (for analytics dashboard use), so we override it here with the
+    // authoritative unique cart record count to prevent count/details mismatch.
+    context.analytics_summary.abandoned_carts_count = context.abandoned_carts_details.length;
+    context.analytics_summary.abandoned_carts_details_count = context.abandoned_carts_details.length;
 
     return context;
   }
@@ -978,14 +1284,19 @@ export class MerchantHelperService {
     }
 
     const systemPrompt = `You are a professional, accurate AI Merchant Operations Assistant for RazorShop.
+You are grounded exclusively in the current store data returned by backend tools/APIs. NEVER invent records, IDs, customers, products, quantities, prices, totals, counts, statuses, or emails. If the required data is not returned by the backend, say that the data is unavailable instead of guessing.
+
 STRICT GUIDELINES:
-1. Base all answers strictly on the supplied REAL MERCHANT DATABASE CONTEXT. NEVER fabricate numbers, orders, products, prices, return reasons, or customers.
-2. Abandoned-cart metrics and cart/product/customer records in this payload are the authoritative CURRENT database state. Do not infer, remember, or reuse abandoned carts from previous messages. If the payload says 0, answer 0.
-3. The target cart/customer/product IDs supplied by the backend are authoritative. Never invent or reuse IDs from previous conversation turns.
-4. If the data exists in context (recent_orders, returns_and_refunds, payment_failure_reasons, queried_product, abandoned_carts_details), answer directly. NEVER tell the merchant to visit another page or say data is unavailable if present.
-5. OUTPUT CURRENCY FORMATTING: All monetary numbers MUST use the '₹' symbol (e.g. ₹3,492.22). NEVER output 'INR', 'cents', 'paise', 'USD', or raw unformatted numbers.
-6. LANGUAGE MATCHING: Respond in the EXACT language style of the user prompt (English, Hindi, Hinglish).
-7. Keep responses concise, clear, and direct.`;
+1. Base ALL answers strictly on the supplied REAL MERCHANT DATABASE CONTEXT payload below. NEVER fabricate or infer data.
+2. ABANDONED CART COUNT = the length of 'abandoned_carts_details' array in the context. This is the authoritative current number. If 'abandoned_carts_details' is empty, there are ZERO abandoned carts — say zero. Do NOT use 'abandoned_carts_count' from analytics_summary as the definitive cart count if it differs.
+3. Do NOT infer, remember, or carry over abandoned cart data from previous conversation messages. Every question must be answered from the CURRENT payload.
+4. If a backend field is null, zero, or absent — answer that value. NEVER substitute with assumptions from memory.
+5. The target cart/customer/product IDs supplied by the backend are authoritative. Never reuse IDs from previous conversation turns.
+6. If the data exists in context (recent_orders, returns_and_refunds, payment_failure_reasons, queried_product, abandoned_carts_details), answer directly from it. NEVER say data is unavailable if it is present in the payload.
+7. OUTPUT CURRENCY FORMATTING: All monetary numbers MUST use the '₹' symbol (e.g. ₹3,492.22). NEVER output 'INR', 'cents', 'paise', 'USD', or raw unformatted numbers.
+8. LANGUAGE MATCHING: Respond in the EXACT language style of the user prompt (English, Hindi, Hinglish).
+9. Keep responses concise, clear, and direct.
+10. ONE ABANDONED CART RECORD = ONE ABANDONED CART regardless of how many products/items are inside it. Count carts, NOT products.`;
 
     const userPrompt = `REAL MERCHANT DATABASE CONTEXT:
 ${JSON.stringify(contextData, null, 2)}
@@ -1039,8 +1350,57 @@ ${userMessage}`;
     const summary = context.analytics_summary || {};
     const lower = userMessage.toLowerCase();
 
-    // 0. Queried Product Price Question
-    if (context.queried_product) {
+    // 0. Return Requests Query (pending return_requested status specifically)
+    const isReturnReqQuery = (
+      lower.includes('return request') ||
+      lower.includes('returns requested') ||
+      lower.includes('pending return') ||
+      lower.includes('return aayi') ||
+      lower.includes('kitne return') ||
+      lower.includes('kitni return') ||
+      lower.includes('number of return') ||
+      lower.includes('how many return')
+    ) || (
+      lower.includes('return') &&
+      !lower.includes('returned') &&
+      !lower.includes('reason') &&
+      !lower.includes('refund') &&
+      !lower.includes('accept') &&
+      !lower.includes('reject') &&
+      !lower.includes('approve') &&
+      !lower.includes('decline')
+    );
+    if (isReturnReqQuery && !lower.includes('accept') && !lower.includes('reject') && !lower.includes('approve') && !lower.includes('decline')) {
+      const details = context.pending_return_requests_details || [];
+      const count = details.length;
+
+      if (count === 0) {
+        if (langStyle === 'hinglish') return `Aapke store par filhal 0 pending return requests hain.`;
+        if (langStyle === 'hindi') return `आपकी दुकान में वर्तमान में 0 लंबित रिटर्न अनुरोध (pending return requests) हैं।`;
+        return `You have 0 pending return requests.`;
+      }
+
+      const formattedDetails = details.map((r: any) => {
+        const itemsStr = Array.isArray(r.items) && r.items.length > 0 ? r.items.join(', ') : 'Item';
+        return `• Order: #${r.order_number}\n` +
+          `  Customer: ${r.customer_name} (${r.customer_email})\n` +
+          `  Items: ${itemsStr}\n` +
+          `  Order Amount: ${r.order_amount}\n` +
+          `  Reason: ${r.reason}\n` +
+          `  Status: Return Requested`;
+      }).join('\n\n');
+
+      if (langStyle === 'hinglish') {
+        return `Aapke paas ${count} pending return request(s) aayi hai:\n\n${formattedDetails}`;
+      }
+      if (langStyle === 'hindi') {
+        return `आपके पास ${count} लंबित रिटर्न अनुरोध हैं:\n\n${formattedDetails}`;
+      }
+      return `You have ${count} pending return request${count > 1 ? 's' : ''}.\n\n${formattedDetails}`;
+    }
+
+    // 0B. Queried Product Price Question (Only if NOT a return query)
+    if (context.queried_product && !isReturnReqQuery) {
       const p = context.queried_product;
       if (lower.includes('price') || lower.includes('cost') || lower.includes('kitne') || lower.includes('kitna')) {
         if (langStyle === 'hinglish') return `${p.name} ki current price ${p.price_formatted} hai.`;
@@ -1119,7 +1479,8 @@ ${userMessage}`;
   private async buildDealProposal(
     merchantId: string,
     userMessage: string,
-    history: Array<{ role: string; content: string }> = []
+    history: Array<{ role: string; content: string }> = [],
+    pendingProposal: DealActionProposal | null = null
   ): Promise<DealActionProposal | null> {
     const productRepo = this.dataSource.getRepository(Product);
     const cartRepo = this.dataSource.getRepository(Cart);
@@ -1149,126 +1510,73 @@ ${userMessage}`;
       scope = hasExplicitProductMatch ? 'product' : 'cart';
     }
 
-    const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
-      ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
-      : 5;
-    const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
-    const abandonedCartRows = await cartRepo
-      .createQueryBuilder('c')
-      .select('c.id', 'cart_id')
-      .addSelect('cust.id', 'customer_id')
-      .addSelect('cust.name', 'customer_name')
-      .addSelect('cust.email', 'customer_email')
-      .addSelect('p.id', 'product_id')
-      .addSelect('p.name', 'product_name')
-      .addSelect('p.price_cents', 'product_price_cents')
-      .addSelect('p.original_price_cents', 'product_original_price_cents')
-      .addSelect('ci.quantity', 'quantity')
-      .addSelect('ci.price_cents', 'item_price_cents')
-      .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
-      .innerJoin('products', 'p', 'p.id = ci.product_id')
-      .leftJoin('customers', 'cust', 'cust.id = c.customer_id')
-      .where('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
-      .andWhere("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
-      .getRawMany();
+    const canonical = await this.analyticsService.getAbandonedCartsCanonical(merchantId);
 
     const customerMap = new Map<string, { id: string; name?: string; email: string }>();
-    const cartSet = new Set<string>();
     const cartItemsMap = new Map<string, { productId: string; productName: string; unitPriceCents: number; quantity: number; lineTotalCents: number }>();
-    const affectedCartsMap = new Map<string, {
-      cartId: string;
-      customerId?: string;
-      customerName: string;
-      customerEmail: string;
-      productId: string;
-      productName: string;
-      unitPriceCents: number;
-      originalPriceCents: number;
-      dealPriceCents: number;
-      items: Array<{
-        productId: string;
-        productName: string;
-        quantity: number;
-        originalPriceCents: number;
-        dealPriceCents: number;
-      }>;
-      originalCartTotalCents: number;
-      dealCartTotalCents: number;
-    }>();
+    const affectedCartsMap = new Map<string, any>();
 
     let totalCartCents = 0;
-    let totalUnitsCount = 0;
 
-    for (const r of abandonedCartRows) {
-      cartSet.add(r.cart_id);
-      if (r.customer_id && !customerMap.has(r.customer_id)) {
-        customerMap.set(r.customer_id, {
-          id: r.customer_id,
-          name: r.customer_name || 'Customer',
-          email: r.customer_email || 'customer@example.com',
+    for (const c of canonical.carts) {
+      if (c.customerId && !customerMap.has(c.customerId)) {
+        customerMap.set(c.customerId, {
+          id: c.customerId,
+          name: c.customerName,
+          email: c.customerEmail,
         });
       }
 
-      const unitPriceCents = Number(r.product_original_price_cents || r.product_price_cents || r.item_price_cents);
-      const qty = Number(r.quantity || 1);
-      const lineTotal = unitPriceCents * qty;
-      const dealPrice = Math.round(unitPriceCents * (1 - requestedDiscount / 100));
+      totalCartCents += c.cartTotalCents;
 
-      totalCartCents += lineTotal;
-      totalUnitsCount += qty;
+      const itemsFormatted = c.items.map((i: any) => {
+        const dealPrice = Math.round(i.unitPriceCents * (1 - requestedDiscount / 100));
 
-      if (!cartItemsMap.has(r.product_id)) {
-        cartItemsMap.set(r.product_id, {
-          productId: r.product_id,
-          productName: r.product_name,
-          unitPriceCents,
-          quantity: qty,
-          lineTotalCents: lineTotal,
-        });
-      } else {
-        const item = cartItemsMap.get(r.product_id)!;
-        item.quantity += qty;
-        item.lineTotalCents += lineTotal;
-      }
+        if (!cartItemsMap.has(i.productId)) {
+          cartItemsMap.set(i.productId, {
+            productId: i.productId,
+            productName: i.productName,
+            unitPriceCents: i.unitPriceCents,
+            quantity: i.quantity,
+            lineTotalCents: i.lineTotalCents,
+          });
+        } else {
+          const item = cartItemsMap.get(i.productId)!;
+          item.quantity += i.quantity;
+          item.lineTotalCents += i.lineTotalCents;
+        }
 
-      if (!affectedCartsMap.has(r.cart_id)) {
-        affectedCartsMap.set(r.cart_id, {
-          cartId: r.cart_id,
-          customerId: r.customer_id,
-          customerName: r.customer_name || 'Customer',
-          customerEmail: r.customer_email || 'customer@example.com',
-          productId: r.product_id,
-          productName: r.product_name || 'Product',
-          unitPriceCents,
-          originalPriceCents: unitPriceCents,
+        return {
+          productId: i.productId,
+          productName: i.productName,
+          quantity: i.quantity,
+          originalPriceCents: i.unitPriceCents,
           dealPriceCents: dealPrice,
-          items: [{
-            productId: r.product_id,
-            productName: r.product_name || 'Product',
-            quantity: qty,
-            originalPriceCents: unitPriceCents,
-            dealPriceCents: dealPrice,
-          }],
-          originalCartTotalCents: lineTotal,
-          dealCartTotalCents: dealPrice * qty,
-        });
-      } else {
-        const existingCart = affectedCartsMap.get(r.cart_id)!;
-        existingCart.items.push({
-          productId: r.product_id,
-          productName: r.product_name || 'Product',
-          quantity: qty,
-          originalPriceCents: unitPriceCents,
-          dealPriceCents: dealPrice,
-        });
-        existingCart.originalCartTotalCents += lineTotal;
-        existingCart.dealCartTotalCents += dealPrice * qty;
-      }
+        };
+      });
+
+      const dealCartTotalCents = Math.round(c.cartTotalCents * (1 - requestedDiscount / 100));
+
+      affectedCartsMap.set(c.cartId, {
+        cartId: c.cartId,
+        customerId: c.customerId,
+        customerName: c.customerName,
+        customerEmail: c.customerEmail,
+        productId: c.items[0]?.productId,
+        productName: c.items[0]?.productName,
+        unitPriceCents: c.items[0]?.unitPriceCents || 0,
+        originalPriceCents: c.cartTotalCents,
+        dealPriceCents: dealCartTotalCents,
+        items: itemsFormatted,
+        originalCartTotalCents: c.cartTotalCents,
+        dealCartTotalCents: dealCartTotalCents,
+      });
     }
 
     const eligibleCustomers = Array.from(customerMap.values());
-    const cartInstancesCount = cartSet.size;
-    const uniqueCustomersCount = eligibleCustomers.length;
+    const cartInstancesCount = canonical.uniqueCartInstancesCount;
+    const uniqueCustomersCount = canonical.uniqueCustomersCount;
+    const totalUnitsCount = canonical.totalUnitsCount;
     const cartItemsSummary = Array.from(cartItemsMap.values());
     const allCartsList = Array.from(affectedCartsMap.values());
 
@@ -1276,20 +1584,91 @@ ${userMessage}`;
       (lowerMsg.includes('all') || lowerMsg.includes('saare') || lowerMsg.includes('sabhi') || lowerMsg.includes('every') || (allCartsList.length > 1 && (lowerMsg.includes('abandoned carts') || lowerMsg.includes('carts')) && !lowerMsg.includes('this cart') && !lowerMsg.includes('this abandoned cart')));
 
     let affectedCartsList = allCartsList;
-    const refCartId = this.extractReferencedCartId(userMessage, history);
 
-    if (!isBulk && allCartsList.length > 0) {
-      if (refCartId) {
-        const matched = allCartsList.find(
-          (c, idx) => c.cartId.toLowerCase().includes(refCartId.toLowerCase()) || String(idx + 1) === refCartId
-        );
-        if (matched) {
-          affectedCartsList = [matched];
+    const refMatch = this.parseCartReference(userMessage, history);
+
+    if (refMatch && refMatch.type === 'uuid') {
+      const exactUuid = String(refMatch.value).toLowerCase();
+      const matched = allCartsList.find((c) => c.cartId.toLowerCase() === exactUuid);
+      if (!matched) {
+        return {
+          proposalId: 'EXACT_CART_NOT_FOUND',
+          actionType: 'CREATE_DEAL_AND_EMAIL',
+          scope,
+          discountPercent: requestedDiscount,
+          affectedCartsList: [],
+        };
+      }
+      affectedCartsList = [matched];
+    } else if (refMatch && refMatch.type === 'index') {
+      const idx = (refMatch.value as number) - 1;
+      if (idx >= 0 && idx < allCartsList.length) {
+        affectedCartsList = [allCartsList[idx]];
+      } else {
+        return {
+          proposalId: `INVALID_CART_INDEX:${refMatch.value}`,
+          actionType: 'CREATE_DEAL_AND_EMAIL',
+          scope,
+          discountPercent: requestedDiscount,
+          affectedCartsList: [],
+        };
+      }
+    } else if (!isBulk && allCartsList.length > 0) {
+      const isOther = (refMatch && refMatch.type === 'other') || lowerMsg.includes('other cart') || lowerMsg.includes('dusra cart') || lowerMsg.includes('dusri cart') || lowerMsg.includes('another cart');
+
+      if (isOther && allCartsList.length > 1) {
+        // Resolve "the other cart" by checking previous targeted cart ID
+        let prevCartId: string | null = null;
+        for (let i = history.length - 1; i >= 0; i--) {
+          const m = history[i].content.match(/#?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+          if (m) { prevCartId = m[1]; break; }
+        }
+        if (prevCartId) {
+          const otherCart = allCartsList.find((c) => c.cartId.toLowerCase() !== prevCartId!.toLowerCase());
+          if (otherCart) affectedCartsList = [otherCart];
+          else affectedCartsList = [allCartsList[0]];
         } else {
-          affectedCartsList = [allCartsList[0]];
+          affectedCartsList = [allCartsList[1]];
         }
       } else {
-        affectedCartsList = [allCartsList[0]];
+        // Try matching product name or customer name
+        let matchedByProduct: typeof allCartsList = [];
+        for (const c of allCartsList) {
+          const hasProd = c.items.some((i: any) => lowerMsg.includes(i.productName.toLowerCase()));
+          if (hasProd) matchedByProduct.push(c);
+        }
+
+        if (matchedByProduct.length === 1) {
+          affectedCartsList = matchedByProduct;
+        } else if (matchedByProduct.length > 1) {
+          const listStr = matchedByProduct.map((c, idx) => {
+            const itemsStr = c.items.map((i: any) => `${i.productName} × ${i.quantity}`).join(' + ');
+            return `${idx + 1}. Cart #${idx + 1} — ${itemsStr} — ${this.formatRupees(c.originalCartTotalCents / 100)}`;
+          }).join('\n');
+          return {
+            proposalId: `AMBIGUOUS_CART_REF:${listStr}`,
+            actionType: 'CREATE_DEAL_AND_EMAIL',
+            scope,
+            affectedCartsList: [],
+          };
+        } else {
+          let matchedByCustomer: typeof allCartsList = [];
+          for (const c of allCartsList) {
+            if (c.customerName && lowerMsg.includes(c.customerName.toLowerCase())) {
+              matchedByCustomer.push(c);
+            }
+          }
+          if (matchedByCustomer.length === 1) {
+            affectedCartsList = matchedByCustomer;
+          } else if (pendingProposal && pendingProposal.affectedCartsList && pendingProposal.affectedCartsList.length === 1) {
+            const prevId = pendingProposal.affectedCartsList[0].cartId;
+            const matchedPrev = allCartsList.find((c) => c.cartId.toLowerCase() === prevId.toLowerCase());
+            if (matchedPrev) affectedCartsList = [matchedPrev];
+            else affectedCartsList = [allCartsList[0]];
+          } else {
+            affectedCartsList = [allCartsList[0]];
+          }
+        }
       }
     }
 
@@ -1436,6 +1815,35 @@ ${userMessage}`;
       };
     }
 
+    // 4B. PROCESS RETURN ACTION (Approve/Accept or Reject/Decline Return)
+    if (proposal.actionType === 'PROCESS_RETURN' && proposal.orderId) {
+      if (proposal.newReturnStatus === 'return_approved') {
+        const updated = await this.orderService.approveReturn(proposal.orderId, merchantId);
+        return {
+          message: `Done! Return request for Order **#${updated.order_number}** has been approved successfully. Customer notification email sent and order timeline updated.`,
+          proposal: null,
+          requiresConfirmation: false,
+          actionExecuted: true,
+          actionResult: {
+            orderNumber: updated.order_number,
+            newStatus: 'return_approved',
+          },
+        };
+      } else if (proposal.newReturnStatus === 'return_rejected') {
+        const updated = await this.orderService.rejectReturn(proposal.orderId, merchantId, proposal.description);
+        return {
+          message: `Done! Return request for Order **#${updated.order_number}** has been rejected successfully. Customer notification email sent and order timeline updated.`,
+          proposal: null,
+          requiresConfirmation: false,
+          actionExecuted: true,
+          actionResult: {
+            orderNumber: updated.order_number,
+            newStatus: 'return_rejected',
+          },
+        };
+      }
+    }
+
     // 5. DEAL & PROMOTIONAL EMAIL ACTION
     const confirmedDiscount = proposal.discountPercent || 10;
     const expiresInMinutes = proposal.expiresInMinutes || 2880;
@@ -1444,27 +1852,16 @@ ${userMessage}`;
 
     // Re-validate target carts from live DB before execution
     if (proposal.affectedCartsList && proposal.affectedCartsList.length > 0) {
-      const cartRepo = this.dataSource.getRepository(Cart);
       const targetCartIds = proposal.affectedCartsList
         .map((c) => c.cartId)
         .filter((id) => id && id !== 'single');
 
       if (targetCartIds.length > 0) {
-        const inactivityMinutes = process.env.CART_ABANDONMENT_MINUTES !== undefined
-          ? parseInt(process.env.CART_ABANDONMENT_MINUTES, 10)
-          : 5;
-        const cutoffDate = new Date(Date.now() - inactivityMinutes * 60 * 1000);
+        const canonical = await this.analyticsService.getAbandonedCartsCanonical(merchantId);
+        const liveCartIds = new Set(canonical.carts.map((c) => c.cartId));
+        const isValid = targetCartIds.some((id) => liveCartIds.has(id));
 
-        const liveCarts = await cartRepo
-          .createQueryBuilder('c')
-          .innerJoin('cart_items', 'ci', 'ci.cart_id = c.id')
-          .innerJoin('products', 'p', 'p.id = ci.product_id')
-          .where('c.id IN (:...targetCartIds)', { targetCartIds })
-          .andWhere('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
-          .andWhere("c.status = 'abandoned' OR (c.status = 'active' AND c.updated_at <= :cutoffDate)", { cutoffDate })
-          .getMany();
-
-        if (liveCarts.length === 0) {
+        if (!isValid) {
           return {
             message: 'The targeted abandoned cart(s) are no longer abandoned or active in the database. No deal action was executed.',
             proposal: null,
@@ -1493,6 +1890,14 @@ ${userMessage}`;
     let totalSucceeded = 0;
     let totalFailed = 0;
     const executionLines: string[] = [];
+    let singleCartResult: {
+      products: string[];
+      originalTotalRupees?: number;
+      dealTotalRupees?: number;
+      cartId?: string;
+      customerEmail?: string;
+      customerName?: string;
+    } | undefined;
 
     for (const c of cartsToProcess) {
       try {
@@ -1504,6 +1909,8 @@ ${userMessage}`;
         }];
 
         const cartProductNames: string[] = [];
+        let cartOriginalTotalCents = (c as any).originalCartTotalCents || c.originalPriceCents || 0;
+        let cartDealTotalCents = 0;
 
         for (const item of itemsToProcess) {
           if (!item.productId) continue;
@@ -1522,7 +1929,14 @@ ${userMessage}`;
             prod.deal_active = true;
             prod.deal_expires_at = expiresAt;
             await productRepo.save(prod);
-            cartProductNames.push(prod.name);
+
+            // Accumulate cart deal total from per-item deal prices
+            const qty = (item as any).quantity || 1;
+            cartDealTotalCents += dealCents * qty;
+
+            // Use displayName with quantity (e.g. "Power Strip × 7")
+            const qtyDisplay = qty > 1 ? ` × ${qty}` : '';
+            cartProductNames.push(`${prod.name}${qtyDisplay}`);
 
             // Auto-expire timer setup
             const msUntilExpiration = expiresAt.getTime() - Date.now();
@@ -1541,18 +1955,38 @@ ${userMessage}`;
           }
         }
 
+        // If we couldn't compute cart total from items, use proposal fallback
+        if (cartOriginalTotalCents === 0 && cartProductNames.length > 0) {
+          cartOriginalTotalCents = (c as any).originalCartTotalCents || c.originalPriceCents || 0;
+        }
+        if (cartDealTotalCents === 0 && cartOriginalTotalCents > 0) {
+          cartDealTotalCents = Math.round(cartOriginalTotalCents * (1 - confirmedDiscount / 100));
+        }
+
         if (cartProductNames.length > 0) {
           totalSucceeded++;
-          executionLines.push(`✓ Cart — ${cartProductNames.join(', ')} (${c.customerEmail || 'Customer'})`);
+          executionLines.push(`✓ Cart (${c.cartId || 'cart'}) — ${cartProductNames.join(', ')} (${c.customerEmail || 'Customer'})`);
         } else {
           totalFailed++;
+        }
+
+        // Accumulate first single-cart data for actionResult (single-cart scenario)
+        if (cartsToProcess.length === 1) {
+          singleCartResult = {
+            products: cartProductNames,
+            originalTotalRupees: cartOriginalTotalCents > 0 ? Number((cartOriginalTotalCents / 100).toFixed(2)) : undefined,
+            dealTotalRupees: cartDealTotalCents > 0 ? Number((cartDealTotalCents / 100).toFixed(2)) : undefined,
+            cartId: c.cartId || undefined,
+            customerEmail: c.customerEmail || undefined,
+            customerName: c.customerName || undefined,
+          };
         }
 
         // Send promotional email to specific customer of this cart
         if (proposal.sendEmail && c.customerEmail && c.customerEmail.includes('@')) {
           try {
-            const origDisplay = (((c as any).originalCartTotalCents || c.originalPriceCents || 99900) / 100).toFixed(2);
-            const dealDisplay = (((c as any).dealCartTotalCents || c.dealPriceCents || 59900) / 100).toFixed(2);
+            const origDisplay = (cartOriginalTotalCents / 100).toFixed(2);
+            const dealDisplay = (cartDealTotalCents / 100).toFixed(2);
             const productListStr = cartProductNames.join(' & ') || c.productName || 'Entire Abandoned Cart Deal';
             const emailRes = await this.emailService.sendPromotionalDealEmail(
               c.customerEmail,
@@ -1571,7 +2005,8 @@ ${userMessage}`;
         }
       } catch (err: any) {
         totalFailed++;
-        executionLines.push(`✗ Cart — ${c.productName} (${c.customerEmail}): ${err.message || 'Failed'}`);
+        const cartLabel = (c as any).cartId || c.productName || 'cart';
+        executionLines.push(`✗ ${cartLabel} (${c.customerEmail}): ${err.message || 'Failed'}`);
       }
     }
 
@@ -1603,16 +2038,33 @@ ${userMessage}`;
         `• Offer expires in **${durationDisplay}**.`;
     }
 
+    // Build actionResult: use actual executed product names from singleCartResult when available
+    const allExecutedProducts = executionLines
+      .filter((l) => l.startsWith('✓'))
+      .flatMap((l) => {
+        const match = l.match(/^✓ Cart \(.*?\) — (.+?) \(/);
+        return match ? match[1].split(', ') : [];
+      });
+
     return {
       message: responseMsg,
       proposal: null,
       requiresConfirmation: false,
       actionExecuted: true,
       actionResult: {
-        productName: proposal.isBulk ? 'All Abandoned Carts' : (proposal.productName || 'Entire Abandoned Cart'),
+        // Canonical products list (actual executed names, including quantities)
+        products: singleCartResult?.products || (allExecutedProducts.length > 0 ? allExecutedProducts : undefined),
+        productName: singleCartResult?.products?.join(', ') || (proposal.isBulk ? 'All Abandoned Carts' : 'Entire Abandoned Cart'),
+        originalTotalRupees: singleCartResult?.originalTotalRupees,
+        dealTotalRupees: singleCartResult?.dealTotalRupees,
+        cartId: singleCartResult?.cartId,
+        customerEmail: singleCartResult?.customerEmail,
+        customerName: singleCartResult?.customerName,
+        expiresAt: expiresAt.toISOString(),
         scope: proposal.scope,
         discountPercent: confirmedDiscount,
-        dealPriceRupees: proposal.dealPriceCents ? Number((proposal.dealPriceCents / 100).toFixed(2)) : undefined,
+        dealPriceRupees: singleCartResult?.dealTotalRupees || (proposal.dealPriceCents ? Number((proposal.dealPriceCents / 100).toFixed(2)) : undefined),
+        originalPriceRupees: singleCartResult?.originalTotalRupees || (proposal.originalPriceCents ? Number((proposal.originalPriceCents / 100).toFixed(2)) : undefined),
         eligibleCount: totalTargeted,
         emailsSentCount: proposal.sendEmail ? sentCount : 0,
         emailsFailedCount: failedCount,

@@ -300,12 +300,50 @@ const products = [
       { name: 'Multimeter', description: 'Digital multimeter', price_cents: 49900, category: 'Electrical & Gadgets' },
     ];
 
+export async function cleanStaleTestFixtures(ds: any = AppDataSource): Promise<void> {
+  try {
+    const queryRunner = ds.createQueryRunner();
+    await queryRunner.query(`
+      DELETE FROM cart_items WHERE cart_id IN (
+        SELECT c.id FROM carts c
+        LEFT JOIN customers cust ON c.customer_id = cust.id
+        WHERE cust.email LIKE '%@domain.com'
+           OR cust.email LIKE '%@test.com'
+           OR cust.email LIKE '%@example-test.com'
+           OR cust.name IN ('Cart Test User', 'Order Test User', 'Recommendation Test User', 'Catalog Tester', 'Comp Tester', 'Test User')
+           OR cust.email LIKE 'customera-%'
+           OR cust.email LIKE 'customerb-%'
+           OR cust.email LIKE 'customerc-%'
+           OR cust.email LIKE 'customermulti-%'
+      )
+    `);
+    await queryRunner.query(`
+      DELETE FROM carts WHERE customer_id IN (
+        SELECT id FROM customers
+        WHERE email LIKE '%@domain.com'
+           OR email LIKE '%@test.com'
+           OR email LIKE '%@example-test.com'
+           OR name IN ('Cart Test User', 'Order Test User', 'Recommendation Test User', 'Catalog Tester', 'Comp Tester', 'Test User')
+           OR email LIKE 'customera-%'
+           OR email LIKE 'customerb-%'
+           OR email LIKE 'customerc-%'
+           OR email LIKE 'customermulti-%'
+      ) OR customer_id IS NULL
+    `);
+    await queryRunner.release();
+    console.log('✓ Cleaned stale test fixtures from local database');
+  } catch (err) {
+    console.warn('Could not clean stale test fixtures:', err);
+  }
+}
+
 export async function seedDatabase(ds: any = AppDataSource) {
   try {
     if (!ds.isInitialized) {
       await ds.initialize();
     }
     console.log('Seeding database...');
+    await cleanStaleTestFixtures(ds);
 
     const demoCustomerPassword = await bcrypt.hash('password123', 10);
 

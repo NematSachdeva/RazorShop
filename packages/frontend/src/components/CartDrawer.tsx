@@ -15,6 +15,35 @@ interface Props {
   onSelectProduct?: (product: any) => void;
 }
 
+function ItemDealTimer({ expiresAtISO }: { expiresAtISO: string }) {
+  const expiresAt = new Date(expiresAtISO).getTime();
+  const [remainingMs, setRemainingMs] = useState<number>(() => Math.max(0, expiresAt - Date.now()));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, expiresAt - Date.now());
+      setRemainingMs(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  if (remainingMs <= 0) return null;
+
+  const totalSecs = Math.floor(remainingMs / 1000);
+  const minutes = Math.floor(totalSecs / 60);
+  const seconds = totalSecs % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1 mt-1">
+      <span>⏱️ Offer expires in {pad(minutes)}:{pad(seconds)}</span>
+    </span>
+  );
+}
+
 export default function CartDrawer({
   isOpen,
   onClose,
@@ -145,6 +174,12 @@ export default function CartDrawer({
                   const isMax = item.quantity >= available;
                   const isUpdating = updatingProductId === item.product_id;
 
+                  const origPriceCents = product.original_price_cents ? Number(product.original_price_cents) : Number(item.price_cents);
+                  const currentPriceCents = Number(item.price_cents);
+                  const isDealActive = (product.deal_active || origPriceCents > currentPriceCents) && origPriceCents > currentPriceCents;
+                  const itemDiscountPercent = product.discount_percent || Math.round((1 - currentPriceCents / origPriceCents) * 100);
+                  const expiresAt = product.deal_expires_at;
+
                   return (
                     <div
                       key={item.id || item.product_id}
@@ -158,10 +193,29 @@ export default function CartDrawer({
                           <span className="text-[11px] font-medium text-gray-500 block mt-0.5 font-body">
                             {product.category || 'General'}
                           </span>
+                          {isDealActive && expiresAt && (
+                            <ItemDealTimer expiresAtISO={String(expiresAt)} />
+                          )}
                         </div>
-                        <span className="font-bold font-price text-blue-700 text-sm sm:text-base shrink-0">
-                          {formatPrice(item.line_total_cents || item.price_cents * item.quantity)}
-                        </span>
+                        <div className="flex flex-col items-end shrink-0">
+                          {isDealActive ? (
+                            <>
+                              <span className="text-xs text-gray-400 line-through font-medium">
+                                {formatPrice(origPriceCents * item.quantity)}
+                              </span>
+                              <span className="font-extrabold font-price text-emerald-700 text-base">
+                                {formatPrice(item.line_total_cents || currentPriceCents * item.quantity)}
+                              </span>
+                              <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded mt-0.5">
+                                {itemDiscountPercent}% OFF
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-bold font-price text-blue-700 text-sm sm:text-base">
+                              {formatPrice(item.line_total_cents || currentPriceCents * item.quantity)}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Quantity Controls & Remove Action */}
