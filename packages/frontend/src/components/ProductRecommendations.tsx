@@ -151,36 +151,36 @@ export default function ProductRecommendations({
   }
 
   return (
-    <div className={`bg-gray-50 p-4 sm:p-5 rounded-2xl border border-gray-100 font-sans ${className}`}>
+    <div className={`p-4 sm:p-5 rounded-2xl border font-sans themed ${className}`} style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}>
       {/* Bundle Deal Card */}
       {bundle && bundle.products && bundle.products.length > 1 && (
-        <div className="mb-6 p-4 bg-blue-50/70 rounded-xl border border-blue-200 shadow-xs">
+        <div className="mb-6 p-4 rounded-xl border shadow-xs" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
           <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
-            <h4 className="font-extrabold text-blue-900 text-sm flex items-center gap-2">
-              <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">COMBO DEAL</span>
+            <h4 className="font-extrabold text-sm flex items-center gap-2 font-display" style={{ color: 'var(--c-text)' }}>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase font-display" style={{ background: 'var(--c-gold)', color: '#0a0908' }}>COMBO DEAL</span>
               <span>{bundle.title || 'Frequently Bought Together'}</span>
             </h4>
-            <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md border border-emerald-200">
+            <span className="text-xs font-bold px-2 py-0.5 rounded-md font-display" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', border: '1px solid var(--c-border-soft)' }}>
               SAVE {formatPrice(bundle.savings_cents)} ({bundle.discount_percent}% OFF)
             </span>
           </div>
 
           <div className="space-y-2 mb-4">
             {bundle.products.map((item: any, idx: number) => (
-              <div key={item.id || idx} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-lg border border-gray-100">
-                <span className="font-medium text-gray-800 truncate max-w-[200px] sm:max-w-xs">
+              <div key={item.id || idx} className="flex justify-between items-center text-xs p-2.5 rounded-lg border themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border-soft)', color: 'var(--c-text)' }}>
+                <span className="font-medium truncate max-w-[200px] sm:max-w-xs font-display">
                   {idx === 0 ? item.name + ' (This item)' : item.name}
                 </span>
-                <span className="text-gray-700 font-bold shrink-0">{formatPrice(item.price_cents)}</span>
+                <span className="font-bold shrink-0 font-display">{formatPrice(item.price_cents)}</span>
               </div>
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between pt-3 border-t border-blue-200 gap-3">
+          <div className="flex flex-wrap items-center justify-between pt-3 border-t gap-3" style={{ borderColor: 'var(--c-border-soft)' }}>
             <div>
-              <span className="text-[11px] text-gray-500 block">Original combined price:</span>
-              <span className="line-through text-gray-400 text-xs font-semibold mr-2">{formatPrice(bundle.original_total_cents)}</span>
-              <span className="text-lg font-black text-emerald-700">{formatPrice(bundle.final_total_cents)}</span>
+              <span className="text-[11px] block font-display" style={{ color: 'var(--c-muted)' }}>Original combined price:</span>
+              <span className="line-through text-xs font-semibold mr-2" style={{ color: 'var(--c-muted)' }}>{formatPrice(bundle.original_total_cents)}</span>
+              <span className="text-lg font-bold font-display" style={{ color: 'var(--c-status-green-text)' }}>{formatPrice(bundle.final_total_cents)}</span>
             </div>
             <button
               onClick={(e) => {
@@ -191,7 +191,8 @@ export default function ProductRecommendations({
                   bundle.products.forEach((p: any) => onAddToCart?.(p.id));
                 }
               }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-bold rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 font-display cursor-pointer"
+              style={{ background: 'var(--c-gold)', color: '#0a0908' }}
             >
               <IconTag className="w-3.5 h-3.5" />
               <span>Add Bundle to Cart</span>
@@ -202,7 +203,7 @@ export default function ProductRecommendations({
 
       {products.length > 0 && (
         <>
-          <h3 className="text-xs font-semibold font-heading mb-3 text-gray-900 uppercase tracking-wider">
+          <h3 className="text-xs font-semibold font-display mb-3 uppercase tracking-wider" style={{ color: 'var(--c-muted)' }}>
             Frequently Bought Together / Complementary
           </h3>
 
@@ -211,24 +212,26 @@ export default function ProductRecommendations({
               <div
                 key={product.id}
                 onClick={(e) => handleViewProduct(product, e)}
-                className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 bg-white rounded-xl border border-gray-200 hover:border-blue-300 shadow-xs transition-all gap-3 cursor-pointer group"
+                className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl border shadow-xs transition-all gap-3 cursor-pointer group themed"
+                style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}
               >
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold font-heading text-gray-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors truncate">
+                  <h4 className="font-semibold font-display text-xs sm:text-sm transition-colors truncate" style={{ color: 'var(--c-text)' }}>
                     {product.name}
                   </h4>
                   {product.description && (
-                    <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1 break-words font-body font-normal">
+                    <p className="text-[11px] mt-0.5 line-clamp-1 break-words font-normal" style={{ color: 'var(--c-muted)' }}>
                       {product.description}
                     </p>
                   )}
-                  <p className="text-xs font-bold font-price text-blue-700 mt-1">{formatPrice(product.price_cents)}</p>
+                  <p className="text-xs font-bold font-display mt-1" style={{ color: 'var(--c-gold)' }}>{formatPrice(product.price_cents)}</p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                   <button
                     onClick={(e) => handleViewProduct(product, e)}
-                    className="px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition"
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg transition font-display cursor-pointer"
+                    style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
                   >
                     View Details
                   </button>
@@ -237,7 +240,8 @@ export default function ProductRecommendations({
                       e.stopPropagation();
                       handleAddToCart(product.id, recommendations[0]?.id || '');
                     }}
-                    className="px-3 py-1.5 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-xs transition active:scale-95 flex items-center gap-1"
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg shadow-xs transition active:scale-95 flex items-center gap-1 font-display cursor-pointer"
+                    style={{ background: 'var(--c-gold)', color: '#0a0908' }}
                   >
                     <IconPlus className="w-3.5 h-3.5" />
                     <span>Add</span>
@@ -250,9 +254,9 @@ export default function ProductRecommendations({
       )}
 
       {recommendations[0]?.reasoning && (
-        <div className="mt-4 text-[11px] text-gray-500 bg-white p-3 rounded-xl border border-gray-200 font-sans">
-          <p className="font-bold text-gray-700 mb-0.5">Recommendation Insights:</p>
-          <p className="italic text-gray-600">{recommendations[0].reasoning.explanation}</p>
+        <div className="mt-4 text-[11px] p-3 rounded-xl border font-sans themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)', color: 'var(--c-muted)' }}>
+          <p className="font-bold mb-0.5 font-display" style={{ color: 'var(--c-text-dim)' }}>Recommendation Insights:</p>
+          <p className="italic">{recommendations[0].reasoning.explanation}</p>
         </div>
       )}
     </div>

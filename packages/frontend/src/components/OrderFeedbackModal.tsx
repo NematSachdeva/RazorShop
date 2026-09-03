@@ -109,25 +109,31 @@ export default function OrderFeedbackModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative border border-gray-100"
+        className="rounded-2xl shadow-2xl w-full max-w-md p-6 relative border themed"
+        style={{
+          background: 'var(--c-surface)',
+          borderColor: 'var(--c-border)',
+          color: 'var(--c-text)',
+        }}
       >
         <button
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-lg font-bold p-1 rounded-full hover:bg-gray-100 transition"
+          className="absolute top-4 right-4 text-lg font-bold p-1 rounded-full transition cursor-pointer"
+          style={{ color: 'var(--c-muted)' }}
         >
           ✕
         </button>
 
-        <h3 className="text-xl font-extrabold text-gray-900 mb-1">
+        <h3 className="text-xl font-extrabold font-display mb-1" style={{ color: 'var(--c-text)' }}>
           {existingFeedbackId ? 'Update Feedback' : 'Order Feedback'}
         </h3>
-        <p className="text-xs text-gray-500 font-mono mb-4">Order #{orderNumber}</p>
+        <p className="text-xs font-mono mb-4" style={{ color: 'var(--c-muted)' }}>Order #{orderNumber}</p>
 
         {error && (
-          <div className="mb-4 p-3.5 bg-rose-50 text-rose-800 text-xs font-semibold rounded-xl border border-rose-200">
+          <div className="mb-4 p-3.5 text-xs font-semibold rounded-xl border" style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)', borderColor: 'var(--c-border)' }}>
             ⚠️ {error}
           </div>
         )}
@@ -135,7 +141,7 @@ export default function OrderFeedbackModal({
         <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           {/* Rating */}
           <div>
-            <label className="block font-bold text-gray-700 mb-2 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-2 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Overall Rating
             </label>
             <div className="flex gap-2 items-center">
@@ -149,20 +155,16 @@ export default function OrderFeedbackModal({
                   }}
                   onMouseEnter={() => setHoverRating(star)}
                   onMouseLeave={() => setHoverRating(0)}
-                  className="text-2xl focus:outline-none transition-transform hover:scale-110"
+                  className="text-2xl focus:outline-none transition-transform hover:scale-110 cursor-pointer"
                 >
                   <span
-                    className={
-                      (hoverRating || rating) >= star
-                        ? 'text-amber-400 font-bold'
-                        : 'text-gray-300'
-                    }
+                    style={{ color: (hoverRating || rating) >= star ? 'var(--c-gold)' : 'var(--c-faint)' }}
                   >
                     ★
                   </span>
                 </button>
               ))}
-              <span className="text-xs font-bold text-gray-600 ml-2">
+              <span className="text-xs font-bold ml-2" style={{ color: 'var(--c-muted)' }}>
                 {rating} of 5 stars
               </span>
             </div>
@@ -170,13 +172,18 @@ export default function OrderFeedbackModal({
 
           {/* Category */}
           <div>
-            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Feedback Category
             </label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+              className="w-full rounded-xl p-2.5 text-xs font-medium outline-none"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             >
               <option value="Overall Experience">Overall Experience</option>
               <option value="Payment">Payment</option>
@@ -188,7 +195,7 @@ export default function OrderFeedbackModal({
 
           {/* Comment */}
           <div>
-            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Comments (Optional)
             </label>
             <textarea
@@ -196,25 +203,32 @@ export default function OrderFeedbackModal({
               onChange={(e) => setComment(e.target.value)}
               placeholder="Tell us about your experience..."
               rows={3}
-              className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-xl p-2.5 text-xs outline-none"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+          <div className="flex justify-end gap-3 pt-3 border-t" style={{ borderColor: 'var(--c-border-soft)' }}>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onClose();
               }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-200 transition"
+              className="px-4 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer font-display"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 bg-blue-600 text-white text-xs font-extrabold rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow transition active:scale-98"
+              className="px-5 py-2.5 text-xs font-extrabold rounded-xl transition cursor-pointer font-display"
+              style={{ background: 'var(--c-gold)', color: '#0a0908' }}
             >
               {loading ? 'Submitting...' : existingFeedbackId ? 'Update Feedback' : 'Submit Feedback'}
             </button>

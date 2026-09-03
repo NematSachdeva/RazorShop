@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { getApiUrl } from '../../config/api';
 import { authService } from '../../services/authService';
-import { IconSend, IconRefresh, IconCheck, IconClose } from '../common/Icons';
+import { IconRefresh, IconCheck, IconClose, IconSpeaker, IconMic } from '../common/Icons';
 import { FormattedMarkdownText } from './FormattedMarkdownText';
 
 export type HelperActionType =
@@ -66,17 +66,14 @@ export interface ChatMessage {
   requiresConfirmation?: boolean;
   actionExecuted?: boolean;
   actionResult?: {
-    // Deal fields (canonical — use products array)
-    products?: string[];          // All product names affected (with qty, e.g. 'Power Strip × 7')
-    productName?: string;         // Legacy fallback
-    originalTotalRupees?: number; // Original cart total before discount
-    dealTotalRupees?: number;     // Final total after discount
-    cartId?: string;              // Affected cart ID
-    customerEmail?: string;       // Customer email
-    customerName?: string;        // Customer name
-    expiresAt?: string;           // ISO expiration timestamp
-
-    // Order / refund fields
+    products?: string[];
+    productName?: string;
+    originalTotalRupees?: number;
+    dealTotalRupees?: number;
+    cartId?: string;
+    customerEmail?: string;
+    customerName?: string;
+    expiresAt?: string;
     orderNumber?: string;
     scope?: 'product' | 'cart';
     discountPercent?: number;
@@ -98,9 +95,16 @@ const LOCAL_STORAGE_KEY = 'merchant_helper_chat_history';
 const DEFAULT_WELCOME_MSG: ChatMessage = {
   id: 'welcome-1',
   sender: 'assistant',
-  text: 'Namaste! I am your AI Merchant Operations Assistant. Ask me anything about your orders, returns, refunds, failed payments, abandoned carts, products, or sales analytics in English, Hindi, or Hinglish. You can also instruct me to update order status, initiate refunds, or create custom deals.',
+  text: 'Hi! I\'m your RazorShop Merchant Assistant. Ask me about your orders, revenue, inventory, or recovery cases — by text or voice.',
   timestamp: new Date(),
 };
+
+const suggestedQuestions = [
+  'Revenue this week',
+  'Pending orders',
+  'Low stock alerts',
+  'Recovery cases',
+];
 
 export default function MerchantHelper() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -116,7 +120,7 @@ export default function MerchantHelper() {
         }
       }
     } catch {
-      // Fallback to default
+      // Fallback
     }
     return [DEFAULT_WELCOME_MSG];
   });
@@ -135,7 +139,6 @@ export default function MerchantHelper() {
   // Text-to-speech audio states
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [loadingTtsMsgId, setLoadingTtsMsgId] = useState<string | null>(null);
-  const [ttsErrorMap, setTtsErrorMap] = useState<Record<string, string>>({});
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -143,7 +146,6 @@ export default function MerchantHelper() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cachedAudioMap = useRef<Map<string, { audio: string; mimeType: string }>>(new Map());
 
-  // Cleanup playing audio on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -153,8 +155,38 @@ export default function MerchantHelper() {
     };
   }, []);
 
+  const isInitialMount = useRef(true);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
+    } catch {
+      // Ignore
+    }
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleClearChat = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingMsgId(null);
+    setMessages([DEFAULT_WELCOME_MSG]);
+    setPendingProposal(null);
+    setShowClearConfirm(false);
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+  };
+
   const handleToggleTTS = async (msg: ChatMessage) => {
-    // If clicking on currently playing message -> stop audio
     if (playingMsgId === msg.id) {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -164,213 +196,140 @@ export default function MerchantHelper() {
       return;
     }
 
-    // Stop any previously playing audio first
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
       setPlayingMsgId(null);
     }
 
-    // Clear previous error for this message
-    setTtsErrorMap((prev) => {
-      const next = { ...prev };
-      delete next[msg.id];
-      return next;
-    });
+    const cached = cachedAudioMap.current.get(msg.id);
+    if (cached) {
+      playAudioData(msg.id, cached.audio, cached.mimeType);
+      return;
+    }
 
     try {
-      let audioData = cachedAudioMap.current.get(msg.id);
+      setLoadingTtsMsgId(msg.id);
 
-      if (!audioData) {
-        setLoadingTtsMsgId(msg.id);
-        const response = await fetch(getApiUrl('/merchant/helper/tts'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authService.getAuthHeader(),
-          },
-          body: JSON.stringify({ text: msg.text }),
-        });
+      const res = await fetch(getApiUrl('/merchant/helper/tts'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authService.getAuthHeader(),
+        },
+        body: JSON.stringify({ text: msg.text }),
+      });
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || 'Failed to generate voice audio');
-        }
-
-        const data = await response.json();
-        audioData = { audio: data.audio, mimeType: data.mimeType || 'audio/wav' };
-        cachedAudioMap.current.set(msg.id, audioData);
+      if (!res.ok) {
+        throw new Error('TTS unavailable');
       }
 
-      const sound = new Audio(`data:${audioData.mimeType};base64,${audioData.audio}`);
-      audioRef.current = sound;
-      setPlayingMsgId(msg.id);
+      const data = await res.json();
+      if (!data.audio) throw new Error('No audio returned');
 
-      sound.onended = () => {
-        setPlayingMsgId(null);
-        audioRef.current = null;
-      };
-
-      sound.onerror = () => {
-        setPlayingMsgId(null);
-        audioRef.current = null;
-        setTtsErrorMap((prev) => ({ ...prev, [msg.id]: 'Playback failed' }));
-      };
-
-      await sound.play();
+      cachedAudioMap.current.set(msg.id, { audio: data.audio, mimeType: data.mimeType || 'audio/mp3' });
+      playAudioData(msg.id, data.audio, data.mimeType || 'audio/mp3');
     } catch (err: any) {
-      console.error('TTS generation error:', err);
-      setTtsErrorMap((prev) => ({ ...prev, [msg.id]: err.message || 'Audio unavailable' }));
+      setError(err.message || 'TTS Error');
     } finally {
       setLoadingTtsMsgId(null);
     }
   };
 
+  const playAudioData = (msgId: string, base64Audio: string, mimeType: string) => {
+    try {
+      const audioUrl = `data:${mimeType};base64,${base64Audio}`;
+      const newAudio = new Audio(audioUrl);
+
+      newAudio.onended = () => {
+        setPlayingMsgId(null);
+        audioRef.current = null;
+      };
+
+      newAudio.onerror = () => {
+        setPlayingMsgId(null);
+        audioRef.current = null;
+      };
+
+      audioRef.current = newAudio;
+      setPlayingMsgId(msgId);
+      newAudio.play().catch(() => {
+        setPlayingMsgId(null);
+        audioRef.current = null;
+      });
+    } catch {
+      setPlayingMsgId(null);
+      audioRef.current = null;
+    }
+  };
+
   const handleStartRecording = async () => {
     setVoiceError(null);
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof window.MediaRecorder === 'undefined') {
-      setVoiceError('Voice recording is not supported in this browser.');
-      return;
-    }
+    audioChunksRef.current = [];
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
 
-      let mimeType = 'audio/webm';
-      if (MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/webm';
-      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        mimeType = 'audio/mp4';
-      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-        mimeType = 'audio/ogg';
-      }
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
         }
       };
 
-      recorder.onstop = async () => {
+      mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        if (audioBlob.size < 100) {
-          setVoiceError('No speech detected in audio. Please try recording again.');
-          return;
-        }
-
-        await processAudioTranscription(audioBlob, mimeType);
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        await handleSendAudioToStt(audioBlob);
       };
 
-      recorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
       setIsRecording(true);
     } catch (err: any) {
-      console.error('[MerchantHelper] Microphone access error:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setVoiceError('Microphone permission was denied. Please allow microphone access in browser settings.');
-      } else {
-        setVoiceError('Failed to access microphone. Please try typing your message.');
-      }
+      setVoiceError('Microphone permission denied or unsupported');
+      setIsRecording(false);
     }
   };
 
   const handleStopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
-    setIsRecording(false);
   };
 
-  const processAudioTranscription = async (blob: Blob, mimeType: string) => {
-    setIsTranscribing(true);
-    setVoiceError(null);
-
+  const handleSendAudioToStt = async (audioBlob: Blob) => {
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onloadend = async () => {
-        try {
-          const base64Data = reader.result as string;
-          const token = authService.getToken();
-          const response = await fetch(getApiUrl('/merchant/helper/transcribe'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              audio: base64Data,
-              mimeType,
-            }),
-          });
+      setIsTranscribing(true);
+      setVoiceError(null);
 
-          if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || 'Speech transcription failed');
-          }
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'speech.webm');
 
-          const data = await response.json();
-          if (data.text && data.text.trim()) {
-            setInputText((prev) => (prev.trim() ? `${prev.trim()} ${data.text.trim()}` : data.text.trim()));
-          } else {
-            setVoiceError('No speech detected. Please try again.');
-          }
-        } catch (err: any) {
-          console.error('[MerchantHelper] Speech transcription error:', err);
-          setVoiceError(err.message || 'Speech transcription failed. Please try again.');
-        } finally {
-          setIsTranscribing(false);
-        }
-      };
+      const response = await fetch(getApiUrl('/merchant/helper/stt'), {
+        method: 'POST',
+        headers: {
+          ...authService.getAuthHeader(),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Speech recognition failed');
+      }
+
+      const data = await response.json();
+      if (data.text && data.text.trim()) {
+        await handleSendMessage(data.text.trim());
+      } else {
+        setVoiceError('No speech detected. Please speak clearly and try again.');
+      }
     } catch (err: any) {
-      console.error('[MerchantHelper] Audio processing error:', err);
-      setVoiceError('Failed to process audio recording.');
+      setVoiceError(err.message || 'Failed to process speech input');
+    } finally {
       setIsTranscribing(false);
     }
-  };
-
-  const suggestedQuestions = [
-    'What were the reasons for returned orders?',
-    'How many failed payments happened?',
-    'Mark order #1234 as dispatched',
-    'Initiate refund for order #1234',
-    'Can we offer 10% off to abandoned cart customers?',
-  ];
-
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, loading]);
-
-  useEffect(() => {
-    try {
-      if (messages.length > 0) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
-      }
-    } catch {
-      // Storage save fallback
-    }
-  }, [messages]);
-
-  const handleClearChat = () => {
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-    } catch {
-      // Ignore
-    }
-    setMessages([DEFAULT_WELCOME_MSG]);
-    setPendingProposal(null);
-    setError(null);
-    setShowClearConfirm(false);
   };
 
   const handleSendMessage = async (textToSend?: string) => {
@@ -390,7 +349,6 @@ export default function MerchantHelper() {
     setLoading(true);
     setError(null);
 
-    // Extract recent 5 exchanges (max 10 messages) to send as context
     const historyPayload = updatedMessages
       .filter((m) => m.id !== 'welcome-1' && (m.sender === 'user' || m.sender === 'assistant'))
       .slice(-10)
@@ -494,292 +452,182 @@ export default function MerchantHelper() {
     setMessages((prev) => [...prev, cancelMsg]);
   };
 
-  const formatDurationDisplay = (val?: number, unit?: string) => {
-    if (!val || !unit) return '2 days';
-    if (unit === 'minutes') return `${val} minute${val > 1 ? 's' : ''}`;
-    if (unit === 'hours') return `${val} hour${val > 1 ? 's' : ''}`;
-    return `${val} day${val > 1 ? 's' : ''}`;
-  };
-
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-5xl mx-auto bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden font-sans">
+    <div className="space-y-6 font-sans">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-6 py-4 flex items-center justify-between shadow-xs">
+      <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🤖</span>
-            <h2 className="text-lg font-bold tracking-tight">Merchant Operations Assistant</h2>
-            <span className="bg-blue-500/30 text-blue-100 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-              AI Operations
-            </span>
-          </div>
-          <p className="text-xs text-blue-100 mt-0.5">
-            Full-spectrum database intelligence & operational execution in English, Hindi, and Hinglish.
+          <span className="text-[10px] font-bold uppercase tracking-widest block font-display" style={{ color: 'var(--c-gold)' }}>
+            AI POWERED
+          </span>
+          <h2 className="text-3xl font-extrabold font-display tracking-tight mt-0.5" style={{ color: 'var(--c-text)' }}>
+            Merchant Helper.
+          </h2>
+          <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>
+            Your store assistant — ask by text or voice.
           </p>
         </div>
 
         <button
           onClick={() => setShowClearConfirm(true)}
-          className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-lg transition font-medium cursor-pointer"
-          title="Clear chat history"
+          className="px-3.5 py-1.5 rounded-full border text-xs font-bold font-display cursor-pointer transition"
+          style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-muted)' }}
         >
-          <span>🗑️</span>
-          <span>Clear Chat</span>
+          Clear Chat
         </button>
       </div>
 
-      {/* Suggested Chips Header */}
-      <div className="bg-gray-50 border-b border-gray-100 px-6 py-3 overflow-x-auto flex items-center gap-2 text-xs">
-        <span className="font-bold text-gray-500 shrink-0">Suggestions:</span>
+      {/* Suggested Prompt Chips */}
+      <div className="flex flex-wrap items-center gap-2 text-xs font-display">
         {suggestedQuestions.map((q, idx) => (
           <button
             key={idx}
             onClick={() => handleSendMessage(q)}
             disabled={loading}
-            className="shrink-0 bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border border-gray-200 hover:border-blue-300 px-3 py-1 rounded-full font-medium transition cursor-pointer disabled:opacity-50 text-xs"
+            className="px-4 py-1.5 rounded-full font-bold transition cursor-pointer disabled:opacity-50"
+            style={{
+              background: 'var(--c-surface2)',
+              color: 'var(--c-muted)',
+              border: '1px solid var(--c-border-soft)',
+            }}
           >
             {q}
           </button>
         ))}
       </div>
 
-      {/* Chat Messages Window */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/50">
+      {/* Chat Messages Feed Container */}
+      <div className="space-y-6 my-6 min-h-[350px] max-h-[620px] overflow-y-auto pr-2 font-sans">
         {messages.map((msg) => (
           <div
             key={msg.id}
             className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
           >
-            <div className="flex items-start gap-2 max-w-2xl">
+            <div className="flex items-start gap-3 max-w-3xl">
+              {msg.sender === 'assistant' && (
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 font-display mt-0.5"
+                  style={{ background: 'var(--c-gold-dim)', color: 'var(--c-gold)', border: '1px solid var(--c-gold)' }}
+                >
+                  AI
+                </div>
+              )}
+
               <div
-                className={`rounded-2xl px-5 py-3.5 text-xs leading-relaxed shadow-xs flex-1 ${
-                  msg.sender === 'user'
-                    ? 'bg-blue-600 text-white font-medium rounded-tr-none whitespace-pre-wrap'
-                    : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
-                }`}
+                className="rounded-2xl p-4 text-xs leading-relaxed transition"
+                style={{
+                  background: msg.sender === 'user' ? 'var(--c-gold)' : 'var(--c-surface2)',
+                  color: msg.sender === 'user' ? '#0a0908' : 'var(--c-text)',
+                  border: msg.sender === 'user' ? 'none' : '1px solid var(--c-border-soft)',
+                }}
               >
                 {msg.sender === 'user' ? (
-                  msg.text
+                  <p className="font-semibold" style={{ color: '#0a0908' }}>{msg.text}</p>
                 ) : (
                   <FormattedMarkdownText content={msg.text} />
                 )}
 
-                {/* Action Result Card */}
+                {/* Action Executed Result */}
                 {msg.actionExecuted && msg.actionResult && (
-                  <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-sans">
-                    <div className="flex items-center gap-1.5 font-bold text-emerald-800 mb-1">
-                      <IconCheck className="w-4 h-4 text-emerald-600" />
-                      <span>Action Successfully Executed</span>
-                    </div>
-                    <div className="space-y-1 text-[11px] mt-2">
-                      {/* Order result */}
-                      {msg.actionResult.orderNumber && <div><span className="font-semibold">Order:</span> #{msg.actionResult.orderNumber}</div>}
-                      {msg.actionResult.newStatus && <div><span className="font-semibold">Status:</span> {msg.actionResult.newStatus}</div>}
-                      {msg.actionResult.refundAmountRupees && <div><span className="font-semibold">Refund Initiated:</span> ₹{msg.actionResult.refundAmountRupees.toFixed(2)}</div>}
-
-                      {/* Deal result — products array takes priority over legacy productName */}
-                      {msg.actionResult.discountPercent && (
-                        <div><span className="font-semibold">Discount:</span> <span className="font-bold text-emerald-700">{msg.actionResult.discountPercent}% OFF</span></div>
-                      )}
-                      {msg.actionResult.cartId && (
-                        <div><span className="font-semibold">Cart ID:</span> <span className="font-mono text-[10px] text-gray-600">{msg.actionResult.cartId}</span></div>
-                      )}
-                      {msg.actionResult.customerEmail && (
-                        <div><span className="font-semibold">Customer:</span> {msg.actionResult.customerName || ''} ({msg.actionResult.customerEmail})</div>
-                      )}
-                      {/* Products list (canonical) */}
-                      {msg.actionResult.products && msg.actionResult.products.length > 0 ? (
-                        <div>
-                          <span className="font-semibold">Products Discounted:</span>
-                          <ul className="ml-3 mt-0.5 list-disc list-inside space-y-0.5">
-                            {msg.actionResult.products.map((p, i) => <li key={i}>{p}</li>)}
-                          </ul>
-                        </div>
-                      ) : (
-                        msg.actionResult.productName && !msg.actionResult.orderNumber && (
-                          <div><span className="font-semibold">Products:</span> {msg.actionResult.productName}</div>
-                        )
-                      )}
-                      {msg.actionResult.originalTotalRupees && (
-                        <div><span className="font-semibold">Original Total:</span> <span className="line-through text-gray-500">₹{msg.actionResult.originalTotalRupees.toFixed(2)}</span></div>
-                      )}
-                      {msg.actionResult.dealTotalRupees && (
-                        <div><span className="font-semibold">Deal Total:</span> <span className="font-extrabold text-emerald-700">₹{msg.actionResult.dealTotalRupees.toFixed(2)}</span></div>
-                      )}
-                      {!msg.actionResult.dealTotalRupees && msg.actionResult.dealPriceRupees && (
-                        <div><span className="font-semibold">Deal Price:</span> ₹{msg.actionResult.dealPriceRupees.toFixed(2)}</div>
-                      )}
-                      {msg.actionResult.expiresAt && (
-                        <div className="text-amber-700 mt-1">
-                          ⏱️ Expires: {new Date(msg.actionResult.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </div>
-                      )}
-                      {/* Product price update */}
-                      {msg.actionResult.newPriceRupees && (
-                        <div><span className="font-semibold">New Price:</span> ₹{msg.actionResult.newPriceRupees.toFixed(2)}</div>
-                      )}
+                  <div className="mt-3 p-3 rounded-xl text-xs space-y-1" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', border: '1px solid var(--c-border-soft)' }}>
+                    <div className="flex items-center gap-1.5 font-bold font-display">
+                      <IconCheck className="w-4 h-4" />
+                      <span>Action Executed</span>
                     </div>
                   </div>
                 )}
 
-                {/* Action Proposal Confirmation Card */}
+                {/* Proposal Confirmation Box */}
                 {msg.proposal && (
-                  <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 font-sans shadow-xs">
-                    <div className="flex items-center justify-between border-b border-amber-200 pb-2 mb-3">
-                      <span className="font-bold text-amber-900 text-sm">⚡ Action Ready for Double Confirmation</span>
-                      <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded">Action Pending</span>
+                  <div className="mt-4 p-4 rounded-xl text-xs space-y-3 font-sans" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-gold)' }}>
+                    <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--c-border-soft)' }}>
+                      <span className="font-bold font-display" style={{ color: 'var(--c-gold)' }}>Action Pending Confirmation</span>
                     </div>
 
-                    <div className="space-y-1.5 text-xs mb-4">
-                      {msg.proposal.orderNumber && (
-                        <div><span className="font-bold text-gray-700">Order:</span> #{msg.proposal.orderNumber}</div>
-                      )}
-                      {msg.proposal.customerName && (
-                        <div><span className="font-bold text-gray-700">Customer:</span> {msg.proposal.customerName} ({msg.proposal.customerEmail || 'N/A'})</div>
-                      )}
-                      {msg.proposal.currentOrderStatus && (
-                        <div><span className="font-bold text-gray-700">Current Status:</span> {msg.proposal.currentOrderStatus}</div>
-                      )}
-                      {msg.proposal.newOrderStatus && (
-                        <div><span className="font-bold text-gray-700">Requested Status:</span> <span className="font-bold text-blue-800">{msg.proposal.newOrderStatus}</span></div>
-                      )}
-                      {msg.proposal.currentReturnStatus && !msg.proposal.currentOrderStatus && (
-                        <div><span className="font-bold text-gray-700">Current Return Status:</span> {msg.proposal.currentReturnStatus}</div>
-                      )}
-                      {msg.proposal.newReturnStatus && !msg.proposal.newOrderStatus && (
-                        <div><span className="font-bold text-gray-700">Action:</span> <span className="font-bold text-emerald-800">{msg.proposal.newReturnStatus === 'return_approved' ? 'Approve / Accept Return' : msg.proposal.newReturnStatus === 'return_rejected' ? 'Reject / Decline Return' : msg.proposal.newReturnStatus}</span></div>
-                      )}
-                      {msg.proposal.refundAmountCents && (
-                        <div><span className="font-bold text-gray-700">Refund Amount:</span> <span className="font-bold text-emerald-800">₹{(msg.proposal.refundAmountCents / 100).toFixed(2)}</span></div>
-                      )}
-                      {msg.proposal.scope === 'cart' ? (
-                        <div><span className="font-bold text-gray-700">Scope:</span> <span className="font-bold text-indigo-700">Entire Abandoned Cart</span></div>
-                      ) : (
-                        msg.proposal.productName && <div><span className="font-bold text-gray-700">Product:</span> {msg.proposal.productName}</div>
-                      )}
-                      {msg.proposal.currentPriceCents && (
-                        <div><span className="font-bold text-gray-700">Current Price:</span> ₹{(msg.proposal.currentPriceCents / 100).toFixed(2)}</div>
-                      )}
-                      {msg.proposal.newPriceCents && (
-                        <div><span className="font-bold text-gray-700">New Price:</span> <span className="font-bold text-blue-800">₹{(msg.proposal.newPriceCents / 100).toFixed(2)}</span></div>
-                      )}
-                      {msg.proposal.discountPercent && (
-                        <div><span className="font-bold text-gray-700">Discount:</span> <span className="font-bold text-emerald-700">{msg.proposal.discountPercent}% OFF</span></div>
-                      )}
-                      {msg.proposal.dealPriceCents && (
-                        <div><span className="font-bold text-gray-700">Deal Price:</span> <span className="font-extrabold text-blue-800">₹{(msg.proposal.dealPriceCents / 100).toFixed(2)}</span></div>
-                      )}
-                      {msg.proposal.durationValue && (
-                        <div><span className="font-bold text-gray-700">Duration:</span> <span className="font-bold text-indigo-700">{formatDurationDisplay(msg.proposal.durationValue, msg.proposal.durationUnit)}</span></div>
-                      )}
-                      <div className="text-[11px] text-amber-800 mt-1 italic">
-                        🔔 Notification: Relevant existing email and timeline workflows will execute automatically upon confirmation.
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pt-1">
                       <button
                         onClick={() => handleConfirmProposal(msg.proposal!)}
                         disabled={loading}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                        className="px-4 py-2 rounded-lg font-bold text-xs transition cursor-pointer font-display"
+                        style={{ background: 'var(--c-gold)', color: '#0a0908' }}
                       >
-                        <IconCheck className="w-4 h-4" />
-                        <span>Confirm & Execute Action</span>
+                        Confirm Action
                       </button>
                       <button
                         onClick={handleCancelProposal}
                         disabled={loading}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+                        className="px-4 py-2 rounded-lg font-bold text-xs transition cursor-pointer font-display"
+                        style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-muted)' }}
                       >
-                        <IconClose className="w-3.5 h-3.5" />
-                        <span>Cancel</span>
+                        Cancel
                       </button>
                     </div>
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Speaker icon button on the RIGHT SIDE of every Merchant Helper assistant message */}
+            {/* Timestamp & Speaker Icon */}
+            <div className="flex items-center gap-2 mt-1.5 text-[11px] pl-11" style={{ color: 'var(--c-text-dim)' }}>
+              <span>
+                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+
               {msg.sender === 'assistant' && (
-                <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleTTS(msg)}
-                    disabled={loadingTtsMsgId === msg.id}
-                    title={
-                      playingMsgId === msg.id
-                        ? 'Stop Audio Playback'
-                        : loadingTtsMsgId === msg.id
-                        ? 'Generating speech...'
-                        : 'Listen to message (Text-to-Speech)'
-                    }
-                    className={`p-2 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer border ${
-                      playingMsgId === msg.id
-                        ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse shadow-xs'
-                        : loadingTtsMsgId === msg.id
-                        ? 'bg-amber-50 border-amber-300 text-amber-600 cursor-not-allowed'
-                        : 'bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300 text-gray-500 hover:text-blue-600 shadow-xs'
-                    }`}
-                  >
-                    {loadingTtsMsgId === msg.id ? (
-                      <IconRefresh className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                    ) : playingMsgId === msg.id ? (
-                      <span className="text-xs leading-none">🔊</span>
-                    ) : (
-                      <span className="text-xs leading-none">🔈</span>
-                    )}
-                  </button>
-                  {ttsErrorMap[msg.id] && (
-                    <span className="text-[9px] text-rose-500 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded whitespace-nowrap">
-                      {ttsErrorMap[msg.id]}
-                    </span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleTTS(msg)}
+                  disabled={loadingTtsMsgId === msg.id}
+                  className="p-1 rounded transition cursor-pointer flex items-center justify-center"
+                  style={{ color: playingMsgId === msg.id ? 'var(--c-gold)' : 'var(--c-muted)' }}
+                  title="Listen to message"
+                >
+                  {loadingTtsMsgId === msg.id ? (
+                    <IconRefresh className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <IconSpeaker className="w-3.5 h-3.5" />
                   )}
-                </div>
+                </button>
               )}
             </div>
-            <span className="text-[10px] text-gray-400 mt-1 px-1">
-              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
           </div>
         ))}
 
         {loading && (
-          <div className="flex items-center gap-2 text-gray-500 text-xs bg-white border border-gray-200 rounded-2xl rounded-tl-none px-4 py-3 w-fit">
-            <IconRefresh className="w-4 h-4 animate-spin text-blue-600" />
-            <span>Merchant Operations Assistant is processing live database metrics...</span>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center justify-between">
-            <span>{error}</span>
-            <button
-              onClick={() => handleSendMessage()}
-              className="font-bold underline cursor-pointer ml-2"
-            >
-              Retry
-            </button>
+          <div className="flex items-center gap-2 text-xs py-2 font-display" style={{ color: 'var(--c-text-dim)' }}>
+            <IconRefresh className="w-4 h-4 animate-spin" style={{ color: 'var(--c-gold)' }} />
+            <span>Merchant Helper is processing live store query...</span>
           </div>
         )}
 
         <div ref={chatEndRef} />
       </div>
 
-      {/* Voice Error Banner */}
-      {voiceError && (
-        <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 text-xs text-amber-800 flex items-center justify-between font-sans">
-          <span>⚠️ {voiceError}</span>
-          <button
-            onClick={() => setVoiceError(null)}
-            className="text-amber-600 hover:text-amber-900 font-bold ml-2 cursor-pointer"
-          >
+      {/* Chat Error Banner */}
+      {error && (
+        <div className="p-3 rounded-xl text-xs flex items-center justify-between font-sans" style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)' }}>
+          <span>⚠️ {error}</span>
+          <button onClick={() => setError(null)} className="font-bold cursor-pointer">
             <IconClose className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* Input Footer */}
-      <div className="bg-white border-t border-gray-200 p-4">
+      {/* Voice Error Banner */}
+      {voiceError && (
+        <div className="p-3 rounded-xl text-xs flex items-center justify-between font-sans" style={{ background: 'var(--c-status-amber-bg)', color: 'var(--c-status-amber-text)' }}>
+          <span>⚠️ {voiceError}</span>
+          <button onClick={() => setVoiceError(null)} className="font-bold cursor-pointer">
+            <IconClose className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Sticky Bottom Input Bar */}
+      <div
+        className="rounded-[24px] border p-2.5 themed font-sans shadow-xs"
+        style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -787,89 +635,69 @@ export default function MerchantHelper() {
           }}
           className="flex items-center gap-2"
         >
-          {/* Microphone Voice Input Button */}
-          <button
-            type="button"
-            onClick={isRecording ? handleStopRecording : handleStartRecording}
-            disabled={loading || isTranscribing}
-            title={isRecording ? 'Click to stop recording' : isTranscribing ? 'Transcribing audio...' : 'Speak message (Speech-to-Text)'}
-            className={`p-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer shrink-0 border ${
-              isRecording
-                ? 'bg-rose-50 border-rose-400 text-rose-600 animate-pulse ring-2 ring-rose-200'
-                : isTranscribing
-                ? 'bg-amber-50 border-amber-300 text-amber-600 cursor-not-allowed'
-                : 'bg-gray-100 hover:bg-blue-50 border-gray-300 hover:border-blue-400 text-gray-700 hover:text-blue-600'
-            }`}
-          >
-            {isRecording ? (
-              <span className="flex items-center gap-1.5 text-rose-700 font-extrabold px-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping inline-block" />
-                <span>Stop</span>
-              </span>
-            ) : isTranscribing ? (
-              <span className="flex items-center gap-1.5 text-amber-700 font-bold px-1">
-                <IconRefresh className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                <span>Transcribing...</span>
-              </span>
-            ) : (
-              <span className="text-base leading-none">🎙️</span>
-            )}
-          </button>
-
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={
               isRecording
-                ? 'Listening... Speak your question or command naturally...'
+                ? 'Listening... Speak naturally...'
                 : isTranscribing
-                ? 'Transcribing speech to text...'
-                : "Ask questions or instruct actions (e.g. 'Mark order #1234 as dispatched', 'Initiate refund')..."
+                ? 'Transcribing speech...'
+                : 'Ask about your store...'
             }
             disabled={loading || isTranscribing}
-            className="flex-1 bg-gray-50 border border-gray-300 focus:border-blue-500 focus:bg-white focus:outline-none rounded-xl px-4 py-2.5 text-xs text-gray-800 transition"
+            className="flex-1 bg-transparent px-4 py-2 text-xs focus:outline-none font-medium placeholder:text-[var(--c-muted)]"
+            style={{ color: 'var(--c-text)' }}
           />
+
+          <button
+            type="button"
+            onClick={isRecording ? handleStopRecording : handleStartRecording}
+            disabled={loading || isTranscribing}
+            className="p-2.5 rounded-xl transition cursor-pointer shrink-0 flex items-center justify-center"
+            style={{ background: 'var(--c-surface2)', color: isRecording ? 'var(--c-status-red-text)' : 'var(--c-text-dim)' }}
+            title="Speech input"
+          >
+            <IconMic className="w-4 h-4" />
+          </button>
 
           <button
             type="submit"
             disabled={!inputText.trim() || loading || isTranscribing}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2.5 rounded-xl text-xs font-bold transition cursor-pointer font-display shrink-0 flex items-center justify-center disabled:opacity-40"
+            style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}
           >
-            <span>Send</span>
-            <IconSend className="w-3.5 h-3.5" />
+            <span className="text-sm leading-none">➜</span>
           </button>
         </form>
       </div>
 
       {/* Clear Chat Confirmation Modal */}
       {showClearConfirm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn font-sans">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 border border-gray-100">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center font-bold text-lg">
-                🗑️
-              </div>
-              <div>
-                <h3 className="font-extrabold text-gray-900 text-base">Clear this conversation?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Your Merchant Helper chat history will be deleted.
-                </p>
-              </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+          <div className="rounded-2xl p-6 max-w-sm w-full space-y-4 border themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}>
+            <div>
+              <h3 className="font-bold text-base font-display">Clear chat history?</h3>
+              <p className="text-xs mt-1" style={{ color: 'var(--c-muted)' }}>
+                Your Merchant Helper chat history will be reset.
+              </p>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowClearConfirm(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer font-display"
+                style={{ background: 'var(--c-surface2)', color: 'var(--c-text)' }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleClearChat}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-95"
+                className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer font-display"
+                style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)' }}
               >
-                Clear Chat
+                Clear
               </button>
             </div>
           </div>

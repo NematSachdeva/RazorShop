@@ -1,6 +1,6 @@
 /**
  * RevenueMetrics Component
- * Displays key revenue indicators
+ * Displays key revenue indicators in a unified grid matching reference screenshots
  */
 
 interface MetricsData {
@@ -35,81 +35,71 @@ export default function RevenueMetrics({ metrics }: RevenueMetricsProps) {
     {
       label: 'Total Revenue',
       value: formatPrice(metrics.total_revenue_cents),
-      accent: 'border-emerald-500 bg-emerald-50/70',
-      badgeColor: 'text-emerald-700 bg-emerald-100',
+      accent: 'var(--c-text)',
     },
     {
       label: 'Revenue at Risk',
       value: formatPrice(metrics.revenue_at_risk_cents),
-      accent: 'border-amber-500 bg-amber-50/70',
-      badgeColor: 'text-amber-700 bg-amber-100',
+      accent: 'var(--c-gold)',
     },
     {
       label: 'Revenue Recovered',
       value: formatPrice(metrics.revenue_recovered_cents),
-      accent: 'border-blue-500 bg-blue-50/70',
-      badgeColor: 'text-blue-700 bg-blue-100',
+      accent: 'var(--c-status-green-text)',
     },
     {
       label: 'Orders Cancelled',
       value: (metrics.orders_cancelled_count || 0).toString(),
-      subtext: 'Customer cancellations',
-      accent: 'border-rose-500 bg-rose-50/70',
-      badgeColor: 'text-rose-700 bg-rose-100',
+      accent: 'var(--c-status-red-text)',
     },
     {
       label: 'Orders Returned',
       value: (metrics.orders_returned_count || 0).toString(),
-      subtext: 'Returned to seller',
-      accent: 'border-purple-500 bg-purple-50/70',
-      badgeColor: 'text-purple-700 bg-purple-100',
+      accent: 'var(--c-text)',
     },
     {
       label: 'Failed Payments',
       value: metrics.failed_payments_count.toString(),
-      subtext: formatPrice(metrics.failed_payments_total_cents),
-      accent: 'border-red-500 bg-red-50/70',
-      badgeColor: 'text-red-700 bg-red-100',
+      accent: 'var(--c-status-red-text)',
     },
     {
       label: 'Abandoned Carts',
       value: metrics.abandoned_carts_count.toString(),
-      accent: 'border-orange-500 bg-orange-50/70',
-      badgeColor: 'text-orange-700 bg-orange-100',
+      accent: 'var(--c-gold)',
     },
     {
       label: 'Recovery Rate',
       value: `${metrics.recovery_rate_percent}%`,
-      accent: 'border-indigo-500 bg-indigo-50/70',
-      badgeColor: 'text-indigo-700 bg-indigo-100',
+      accent: 'var(--c-status-green-text)',
     },
   ];
 
   return (
-    <div className="mb-8 font-sans">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">Financial Overview</span>
-          <h2 className="text-xl sm:text-2xl font-black text-gray-900">Revenue & Order Metrics</h2>
-        </div>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border rounded-2xl overflow-hidden themed font-sans" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+      {metricCards.map((card, idx) => {
+        const isBottomRow = idx >= 4;
+        const isRightmostCol = (idx + 1) % 4 === 0;
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {metricCards.map((card, idx) => (
+        return (
           <div
             key={idx}
-            className={`border border-gray-200 border-l-4 rounded-2xl p-5 shadow-xs bg-white transition hover:shadow-md ${card.accent}`}
+            className="p-6 space-y-2 font-display"
+            style={{
+              borderColor: 'var(--c-border-soft)',
+              borderBottomWidth: isBottomRow ? '0px' : '1px',
+              borderRightWidth: isRightmostCol ? '0px' : '1px',
+              borderStyle: 'solid',
+            }}
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-1">{card.label}</p>
-                <p className="text-2xl font-black text-gray-900">{card.value}</p>
-                {card.subtext && <p className="text-xs font-semibold text-gray-600 mt-1">{card.subtext}</p>}
-              </div>
-            </div>
+            <p className="text-3xl font-extrabold tracking-tight" style={{ color: card.accent }}>
+              {card.value}
+            </p>
+            <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>
+              {card.label}
+            </p>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }

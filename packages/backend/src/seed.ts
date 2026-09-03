@@ -303,33 +303,106 @@ const products = [
 export async function cleanStaleTestFixtures(ds: any = AppDataSource): Promise<void> {
   try {
     const queryRunner = ds.createQueryRunner();
-    await queryRunner.query(`
-      DELETE FROM cart_items WHERE cart_id IN (
-        SELECT c.id FROM carts c
-        LEFT JOIN customers cust ON c.customer_id = cust.id
-        WHERE cust.email LIKE '%@domain.com'
-           OR cust.email LIKE '%@test.com'
-           OR cust.email LIKE '%@example-test.com'
-           OR cust.name IN ('Cart Test User', 'Order Test User', 'Recommendation Test User', 'Catalog Tester', 'Comp Tester', 'Test User')
-           OR cust.email LIKE 'customera-%'
-           OR cust.email LIKE 'customerb-%'
-           OR cust.email LIKE 'customerc-%'
-           OR cust.email LIKE 'customermulti-%'
-      )
+
+    // Identify test customer IDs (written by test suites that share the dev DB)
+    const testCustomerRows: { id: string }[] = await queryRunner.query(`
+      SELECT id FROM customers
+      WHERE email LIKE '%@test.com'
+         OR email LIKE '%@example-test.com'
+         OR email LIKE '%@domain.com'
+         OR email LIKE 'customera-%'
+         OR email LIKE 'customerb-%'
+         OR email LIKE 'customerc-%'
+         OR email LIKE 'customermulti-%'
+         OR name IN ('Cart Test User', 'Order Test User', 'Recommendation Test User',
+                     'Catalog Tester', 'Comp Tester', 'Test User',
+                     'Purchase Test User', 'Purchase Test User 2',
+                     'Customer Acct Tester', 'Merchant Tester')
     `);
-    await queryRunner.query(`
-      DELETE FROM carts WHERE customer_id IN (
-        SELECT id FROM customers
-        WHERE email LIKE '%@domain.com'
-           OR email LIKE '%@test.com'
-           OR email LIKE '%@example-test.com'
-           OR name IN ('Cart Test User', 'Order Test User', 'Recommendation Test User', 'Catalog Tester', 'Comp Tester', 'Test User')
-           OR email LIKE 'customera-%'
-           OR email LIKE 'customerb-%'
-           OR email LIKE 'customerc-%'
-           OR email LIKE 'customermulti-%'
-      ) OR customer_id IS NULL
-    `);
+    const custIds = testCustomerRows.map((r) => r.id);
+
+    if (custIds.length > 0) {
+      const idList = custIds.map((id) => `'${id}'`).join(',');
+
+      // Collect dependent order IDs
+      const orderRows: { id: string }[] = await queryRunner.query(
+        `SELECT id FROM orders WHERE customer_id IN (${idList})`
+      );
+      const orderIds = orderRows.map((r) => r.id);
+
+      if (orderIds.length > 0) {
+        const oList = orderIds.map((id) => `'${id}'`).join(',');
+
+        // Collect dependent payment IDs
+        const paymentRows: { id: string }[] = await queryRunner.query(
+          `SELECT id FROM payments WHERE order_id IN (${oList})`
+        );
+        const paymentIds = paymentRows.map((r) => r.id);
+
+        if (paymentIds.length > 0) {
+          const pmList = paymentIds.map((id) => `'${id}'`).join(',');
+
+          // Collect payment_failure IDs
+          const pfRows: { id: string }[] = await queryRunner.query(
+            `SELECT id FROM payment_failures WHERE payment_id IN (${pmList})`
+          );
+          const pfIds = pfRows.map((r) => r.id);
+
+          if (pfIds.length > 0) {
+            const pfList = pfIds.map((id) => `'${id}'`).join(',');
+
+            // Collect recovery_case IDs
+            const rcRows: { id: string }[] = await queryRunner.query(
+              `SELECT id FROM recovery_cases WHERE payment_failure_id IN (${pfList})`
+            );
+            const rcIds = rcRows.map((r) => r.id);
+
+            if (rcIds.length > 0) {
+              const rcList = rcIds.map((id) => `'${id}'`).join(',');
+              await queryRunner.query(`DELETE FROM recovery_actions WHERE recovery_case_id IN (${rcList})`);
+              await queryRunner.query(`DELETE FROM agent_decisions WHERE recovery_case_id IN (${rcList})`);
+              await queryRunner.query(`DELETE FROM customer_interactions WHERE recovery_case_id IN (${rcList})`);
+              await queryRunner.query(`DELETE FROM promises_to_pay WHERE recovery_case_id IN (${rcList})`);
+              await queryRunner.query(`DELETE FROM recovery_cases WHERE id IN (${rcList})`);
+            }
+            await queryRunner.query(`DELETE FROM payment_failures WHERE id IN (${pfList})`);
+          }
+
+          await queryRunner.query(`DELETE FROM payment_attempts WHERE order_id IN (${oList})`);
+          await queryRunner.query(`DELETE FROM payments WHERE id IN (${pmList})`);
+        }
+
+        // Delete order child records then the orders themselves
+        await queryRunner.query(`DELETE FROM order_timeline WHERE order_id IN (${oList})`);
+        await queryRunner.query(`DELETE FROM order_items WHERE order_id IN (${oList})`);
+        await queryRunner.query(`DELETE FROM order_feedbacks WHERE order_id IN (${oList})`);
+        await queryRunner.query(`DELETE FROM orders WHERE id IN (${oList})`);
+      }
+
+      // Delete carts and cart_items for test customers
+      const cartRows: { id: string }[] = await queryRunner.query(
+        `SELECT id FROM carts WHERE customer_id IN (${idList})`
+      );
+      if (cartRows.length > 0) {
+        const cList = cartRows.map((r) => `'${r.id}'`).join(',');
+        await queryRunner.query(`DELETE FROM cart_items WHERE cart_id IN (${cList})`);
+        await queryRunner.query(`DELETE FROM carts WHERE id IN (${cList})`);
+      }
+
+      // Finally, delete the test customer rows
+      await queryRunner.query(`DELETE FROM customers WHERE id IN (${idList})`);
+    }
+
+    // Clean orphan carts with no customer
+    await queryRunner.query(`DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE customer_id IS NULL)`);
+    await queryRunner.query(`DELETE FROM carts WHERE customer_id IS NULL`);
+
+    // Clean test-category products (created by catalog test suites)
+    await queryRunner.query(`DELETE FROM recommendation_events WHERE recommendation_id IN (SELECT id FROM recommendations WHERE product_id IN (SELECT id FROM products WHERE category = 'test'))`);
+    await queryRunner.query(`DELETE FROM recommendations WHERE product_id IN (SELECT id FROM products WHERE category = 'test')`);
+    await queryRunner.query(`DELETE FROM inventory WHERE product_id IN (SELECT id FROM products WHERE category = 'test')`);
+    await queryRunner.query(`DELETE FROM products WHERE category = 'test'`);
+
     await queryRunner.release();
     console.log('✓ Cleaned stale test fixtures from local database');
   } catch (err) {

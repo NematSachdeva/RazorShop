@@ -367,22 +367,30 @@ export const MerchantOrdersTab: React.FC = () => {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow border border-gray-200 p-6 space-y-6">
+    <div
+      className="rounded-2xl border p-6 space-y-6 shadow-xs themed"
+      style={{
+        background: 'var(--c-surface)',
+        borderColor: 'var(--c-border)',
+        color: 'var(--c-text)',
+      }}
+    >
       {/* Header & Filter Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b" style={{ borderColor: 'var(--c-border)' }}>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Merchant Order Fulfillment</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-xl sm:text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>Seller Order Fulfillment</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>
             View orders, manage customer return requests, and track fulfillment/return status.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-700">Filter by Status:</span>
+          <span className="text-xs font-bold uppercase tracking-wider font-display" style={{ color: 'var(--c-muted)' }}>Filter Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs font-semibold"
+            className="rounded-xl px-3.5 py-2 text-xs font-bold border focus:outline-none focus:ring-1 focus:ring-amber-500 font-display"
+            style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
           >
             <option value="all">All Orders</option>
             <option value="confirmed">Confirmed / Paid</option>
@@ -402,13 +410,14 @@ export const MerchantOrdersTab: React.FC = () => {
       </div>
 
       {error && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm font-medium flex items-center justify-between gap-3">
+        <div className="p-4 rounded-xl text-xs font-bold flex items-center justify-between gap-3 border" style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)', borderColor: 'var(--c-border)' }}>
           <div className="flex items-center gap-2">
             <span>{error}</span>
           </div>
           <button
             onClick={fetchOrders}
-            className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-xs font-bold transition"
+            className="px-3 py-1.5 rounded-lg text-xs font-extrabold font-display transition cursor-pointer"
+            style={{ background: 'var(--c-gold)', color: '#0a0908' }}
           >
             Retry
           </button>
@@ -417,328 +426,144 @@ export const MerchantOrdersTab: React.FC = () => {
 
       {/* Orders List */}
       {loading ? (
-        <div className="text-center py-16 text-gray-500 bg-gray-50 rounded-xl border border-gray-200 flex flex-col items-center justify-center gap-2">
-          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm font-medium">Loading merchant store orders...</span>
+        <div className="text-center py-16 rounded-2xl border flex flex-col items-center justify-center gap-2" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+          <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--c-gold)', borderTopColor: 'transparent' }} />
+          <span className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>Loading seller store orders...</span>
         </div>
       ) : orders.length === 0 ? (
-        <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-300 space-y-3">
-          <h3 className="text-base font-bold text-gray-900">No merchant orders found</h3>
-          <p className="text-xs text-gray-500 max-w-sm mx-auto">
+        <div className="text-center py-16 rounded-2xl border space-y-2" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+          <h3 className="text-base font-bold font-display" style={{ color: 'var(--c-text)' }}>No seller orders found</h3>
+          <p className="text-xs max-w-sm mx-auto" style={{ color: 'var(--c-muted)' }}>
             When customers purchase products from your catalog, orders will appear here for fulfillment.
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {orders.map((order) => {
-            const rawStatus = (order.status || 'pending').toLowerCase();
-            const isCancelled = rawStatus === 'cancelled';
-            const isPending = rawStatus === 'pending';
-            const isConfirmed = rawStatus === 'confirmed';
-            const isDispatched = rawStatus === 'dispatched' || rawStatus === 'shipped';
-            const isDelivered = rawStatus === 'delivered' && (!order.return_status || order.return_status === 'none');
+        <div className="overflow-x-auto rounded-2xl border themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+          <table className="w-full text-left text-xs font-sans border-collapse">
+            <thead className="border-b font-bold uppercase text-[10px] tracking-wider font-display" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border-soft)', color: 'var(--c-muted)' }}>
+              <tr>
+                <th className="py-3.5 px-4">ORDER NUMBER</th>
+                <th className="py-3.5 px-4">STATUS</th>
+                <th className="py-3.5 px-4">CUSTOMER</th>
+                <th className="py-3.5 px-4">DATE</th>
+                <th className="py-3.5 px-4 text-right">TOTAL</th>
+                <th className="py-3.5 px-4 text-right">ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => {
+                const rawStatus = (order.status || 'pending').toLowerCase();
+                const isCancelled = rawStatus === 'cancelled';
+                const isPending = rawStatus === 'pending';
 
-            const isReturnRequested = order.return_status === 'return_requested' || rawStatus === 'return_requested';
-            const isReturnApproved = order.return_status === 'return_approved' || rawStatus === 'return_approved';
-            const isReturnRejected = order.return_status === 'return_rejected' || rawStatus === 'return_rejected';
-            const isPickupScheduled = order.return_status === 'pickup_scheduled' || rawStatus === 'pickup_scheduled';
-            const isPickedUp = order.return_status === 'order_picked_up' || rawStatus === 'order_picked_up';
-            const isReturnInTransit = order.return_status === 'return_in_transit' || rawStatus === 'return_in_transit';
-            const isReturnedToSeller = order.return_status === 'order_returned_to_seller' || rawStatus === 'order_returned_to_seller';
-            const isRefundInitiated = order.return_status === 'refund_initiated' || rawStatus === 'refund_initiated';
+                const isReturnRequested = order.return_status === 'return_requested' || rawStatus === 'return_requested';
+                const isReturnApproved = order.return_status === 'return_approved' || rawStatus === 'return_approved';
+                const isReturnRejected = order.return_status === 'return_rejected' || rawStatus === 'return_rejected';
+                const isPickupScheduled = order.return_status === 'pickup_scheduled' || rawStatus === 'pickup_scheduled';
+                const isPickedUp = order.return_status === 'order_picked_up' || rawStatus === 'order_picked_up';
+                const isReturnInTransit = order.return_status === 'return_in_transit' || rawStatus === 'return_in_transit';
+                const isReturnedToSeller = order.return_status === 'order_returned_to_seller' || rawStatus === 'order_returned_to_seller';
+                const isRefundInitiated = order.return_status === 'refund_initiated' || rawStatus === 'refund_initiated';
 
-            const itemsList = order.merchant_items || order.items || [];
+                return (
+                  <tr
+                    key={order.id}
+                    onClick={() => handleOpenDetails(order)}
+                    className="border-b last:border-b-0 hover:bg-amber-500/5 cursor-pointer transition select-none"
+                    style={{ borderColor: 'var(--c-border-soft)', color: 'var(--c-text)' }}
+                  >
+                    <td className="py-4 px-4 font-bold font-display" style={{ color: 'var(--c-gold)' }}>
+                      ORD-{order.order_number}
+                    </td>
 
-            return (
-              <div
-                key={order.id}
-                className={`bg-white border rounded-xl p-5 hover:border-gray-300 transition shadow-2xs space-y-4 font-sans ${
-                  isCancelled ? 'border-rose-200 bg-rose-50/10' : isReturnRequested ? 'border-amber-200 bg-amber-50/10' : isRefundInitiated ? 'border-emerald-200 bg-emerald-50/10' : 'border-gray-200'
-                }`}
-              >
-                {/* Header Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-sm text-gray-900">Order #{order.order_number}</span>
+                    <td className="py-4 px-4">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {isCancelled ? (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)', border: '1px solid var(--c-border-soft)' }}>
+                            CANCELLED
+                          </span>
+                        ) : isPending ? (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-amber-bg)', color: 'var(--c-status-amber-text)', border: '1px solid var(--c-border-soft)' }}>
+                            PENDING
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', border: '1px solid var(--c-border-soft)' }}>
+                            PAID
+                          </span>
+                        )}
 
-                      {/* Payment / Cancelled Status Badge */}
-                      {isCancelled ? (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                          Cancelled
-                        </span>
-                      ) : isPending ? (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                          Payment Pending
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Paid
-                        </span>
-                      )}
+                        {isReturnRequested && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-amber-bg)', color: 'var(--c-status-amber-text)', border: '1px solid var(--c-border-soft)' }}>
+                            RETURN REQUESTED
+                          </span>
+                        )}
+                        {isReturnApproved && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-blue-bg)', color: 'var(--c-status-blue-text)', border: '1px solid var(--c-border-soft)' }}>
+                            RETURN APPROVED
+                          </span>
+                        )}
+                        {isReturnRejected && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)', border: '1px solid var(--c-border-soft)' }}>
+                            RETURN REJECTED
+                          </span>
+                        )}
+                        {isPickupScheduled && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-blue-bg)', color: 'var(--c-status-blue-text)', border: '1px solid var(--c-border-soft)' }}>
+                            PICKUP SCHEDULED
+                          </span>
+                        )}
+                        {isPickedUp && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-blue-bg)', color: 'var(--c-status-blue-text)', border: '1px solid var(--c-border-soft)' }}>
+                            PICKED UP
+                          </span>
+                        )}
+                        {isReturnInTransit && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-blue-bg)', color: 'var(--c-status-blue-text)', border: '1px solid var(--c-border-soft)' }}>
+                            RETURN IN TRANSIT
+                          </span>
+                        )}
+                        {isReturnedToSeller && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', border: '1px solid var(--c-border-soft)' }}>
+                            RETURNED TO SELLER
+                          </span>
+                        )}
+                        {isRefundInitiated && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', border: '1px solid var(--c-border-soft)' }}>
+                            REFUND INITIATED
+                          </span>
+                        )}
 
-                      {/* Return Badges */}
-                      {isReturnRequested && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                          Return Requested
-                        </span>
-                      )}
-                      {isReturnApproved && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                          Return Approved
-                        </span>
-                      )}
-                      {isReturnRejected && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                          Return Rejected
-                        </span>
-                      )}
-                      {isPickupScheduled && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
-                          Pickup Scheduled
-                        </span>
-                      )}
-                      {isPickedUp && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
-                          Order Picked Up
-                        </span>
-                      )}
-                      {isReturnInTransit && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-violet-100 text-violet-800 border border-violet-200">
-                          Return In Transit
-                        </span>
-                      )}
-                      {isReturnedToSeller && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Returned to Seller
-                        </span>
-                      )}
-                      {isRefundInitiated && (
-                        <span className="px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Refund Initiated
-                        </span>
-                      )}
-
-                      {!isCancelled && !order.return_status && (
-                        <span
-                          className={`px-2.5 py-0.5 text-[11px] font-extrabold uppercase rounded-full border ${
-                            isDelivered
-                              ? 'bg-purple-100 text-purple-800 border-purple-200'
-                              : isDispatched
-                              ? 'bg-blue-100 text-blue-800 border-blue-200'
-                              : isConfirmed
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-gray-100 text-gray-600 border-gray-200'
-                          }`}
-                        >
-                          Status: {order.status}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 font-medium">
-                      Placed on: {new Date(order.created_at).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <span className="text-base font-black text-blue-700">
-                      ₹{(order.merchant_total_cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </span>
-                    <p className="text-[11px] text-gray-500 font-semibold">Your Store Revenue</p>
-                  </div>
-                </div>
-
-                {/* Cancelled Info Bar */}
-                {isCancelled && (
-                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1 text-rose-900">
-                    <p className="font-extrabold text-rose-800">Cancelled by {order.cancelled_by || 'Customer'}</p>
-                    {order.cancellation_reason && (
-                      <p><span className="font-bold">Reason:</span> {order.cancellation_reason}</p>
-                    )}
-                    {order.cancellation_timestamp && (
-                      <p className="text-[11px] text-rose-700 font-mono">Date: {new Date(order.cancellation_timestamp).toLocaleString()}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Return Request Info Bar */}
-                {order.return_status && order.return_status !== 'none' && (
-                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1 text-amber-900">
-                    <p className="font-bold text-amber-900 text-sm">
-                      Return Status: {order.return_status.replace(/_/g, ' ').toUpperCase()}
-                    </p>
-                    {order.return_reason && (
-                      <p><span className="font-bold">Reason:</span> {order.return_reason}</p>
-                    )}
-                    {order.return_requested_at && (
-                      <p className="text-[11px] text-amber-800 font-mono">Requested At: {new Date(order.return_requested_at).toLocaleString()}</p>
-                    )}
-                    {order.return_rejection_reason && (
-                      <p className="text-rose-700 font-medium"><span className="font-bold">Rejection Reason:</span> {order.return_rejection_reason}</p>
-                    )}
-                    {order.pickup_notes && (
-                      <p className="text-amber-900"><span className="font-bold">Pickup Notes:</span> {order.pickup_notes}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Details Body */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-                  {/* Customer & Shipping Address */}
-                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 space-y-1.5">
-                    <span className="font-extrabold text-gray-700 block text-[11px] uppercase tracking-wider">
-                      Customer & Delivery Address
-                    </span>
-                    <p className="text-gray-900 font-bold">{order.customer?.name || 'Customer'}</p>
-                    <p className="text-gray-600 font-medium">{order.customer?.email || 'N/A'}</p>
-
-                    {order.shipping_address ? (
-                      <div className="mt-2 pt-2 border-t border-gray-200/60 space-y-0.5 text-gray-700">
-                        <p className="font-semibold text-gray-900">{order.shipping_address.full_address}</p>
-                        <p className="text-gray-600">
-                          {order.shipping_address.state} — {order.shipping_address.pin_code}
-                        </p>
-                        {order.shipping_address.phone && (
-                          <p className="text-gray-500 font-medium">Phone: {order.shipping_address.phone}</p>
+                        {!isCancelled && !order.return_status && (
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-status-blue-bg)', color: 'var(--c-status-blue-text)', border: '1px solid var(--c-border-soft)' }}>
+                            {order.status.toUpperCase()}
+                          </span>
                         )}
                       </div>
-                    ) : (
-                      <p className="text-gray-400 italic text-[11px] mt-1">No shipping address recorded</p>
-                    )}
-                  </div>
+                    </td>
 
-                  {/* Merchant Items Summary */}
-                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 space-y-2">
-                    <span className="font-extrabold text-gray-700 block text-[11px] uppercase tracking-wider">
-                      Merchant Catalog Items ({itemsList.length})
-                    </span>
-                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                      {itemsList.map((item) => (
-                        <div key={item.id || item.product_id} className="flex justify-between items-center text-gray-800">
-                          <span className="font-medium truncate max-w-[220px]">
-                            {item.quantity}x {item.name || 'Product'}
-                          </span>
-                          <span className="font-bold text-gray-900 shrink-0">
-                            ₹{(item.line_total_cents / 100).toLocaleString('en-IN')}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                    <td className="py-4 px-4 font-medium">
+                      <p className="font-bold font-display" style={{ color: 'var(--c-text)' }}>{order.customer?.name || 'Customer'}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--c-muted)' }}>{order.customer?.email || 'N/A'}</p>
+                    </td>
 
-                {/* Footer Action Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
-                  <button
-                    onClick={() => handleOpenDetails(order)}
-                    className="px-3.5 py-2 text-xs font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition"
-                  >
-                    View Full Details & Timeline
-                  </button>
+                    <td className="py-4 px-4 font-mono text-[11px]" style={{ color: 'var(--c-muted)' }}>
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </td>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Merchant Return Approval / Rejection Controls */}
-                    {isReturnRequested && (
-                      <>
-                        <button
-                          onClick={() => handleApproveReturn(order.id)}
-                          disabled={actionLoading === order.id}
-                          className="px-4 py-2 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                        >
-                          Approve Return
-                        </button>
-                        <button
-                          onClick={() => {
-                            setRejectionReason('');
-                            setRejectModalState({ isOpen: true, orderId: order.id, orderNumber: order.order_number });
-                          }}
-                          disabled={actionLoading === order.id}
-                          className="px-4 py-2 text-xs font-extrabold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition"
-                        >
-                          Reject Return
-                        </button>
-                      </>
-                    )}
+                    <td className="py-4 px-4 text-right font-bold font-display text-sm" style={{ color: 'var(--c-text)' }}>
+                      ₹{(order.merchant_total_cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
 
-                    {/* Return Logistics Progression */}
-                    {isReturnApproved && (
-                      <button
-                        onClick={() => {
-                          setPickupNotesInput('');
-                          setPickupModalState({ isOpen: true, orderId: order.id, orderNumber: order.order_number });
-                        }}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        Schedule Pickup
-                      </button>
-                    )}
-
-                    {isPickupScheduled && (
-                      <button
-                        onClick={() => handleUpdateLogistics(order.id, 'order_picked_up')}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        Mark Picked Up
-                      </button>
-                    )}
-
-                    {isPickedUp && (
-                      <button
-                        onClick={() => handleUpdateLogistics(order.id, 'return_in_transit')}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        Mark Return In Transit
-                      </button>
-                    )}
-
-                    {isReturnInTransit && (
-                      <button
-                        onClick={() => handleUpdateLogistics(order.id, 'order_returned_to_seller')}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        Mark Returned to Seller
-                      </button>
-                    )}
-
-                    {isReturnedToSeller && (
-                      <button
-                        onClick={() => handleOpenRefundModal(order.id, order.order_number, order.merchant_total_cents || order.total_cents)}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        Initiate Refund
-                      </button>
-                    )}
-
-                    {/* Fulfillment Controls */}
-                    {isConfirmed && !order.return_status && (
-                      <button
-                        onClick={() => handleUpdateStatus(order.id, 'dispatched')}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        {actionLoading === order.id ? 'Updating...' : 'Mark as Dispatched'}
-                      </button>
-                    )}
-
-                    {isDispatched && !order.return_status && (
-                      <button
-                        onClick={() => handleUpdateStatus(order.id, 'delivered')}
-                        disabled={actionLoading === order.id}
-                        className="px-4 py-2 text-xs font-extrabold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg shadow-sm transition"
-                      >
-                        {actionLoading === order.id ? 'Updating...' : 'Mark as Delivered'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    <td className="py-4 px-4 text-right">
+                      <span className="inline-block px-3 py-1.5 text-xs font-bold rounded-lg font-display transition" style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}>
+                        View Details →
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -891,29 +716,39 @@ export const MerchantOrdersTab: React.FC = () => {
             }}
           >
             <div
-              className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-2xl p-5 sm:p-6 space-y-5 max-h-[90vh] overflow-y-auto my-auto font-sans"
+              className="w-full max-w-2xl rounded-2xl border shadow-2xl p-5 sm:p-6 space-y-5 max-h-[90vh] overflow-y-auto my-auto font-sans themed"
+              style={{
+                background: 'var(--c-surface)',
+                borderColor: 'var(--c-border)',
+                color: 'var(--c-text)',
+              }}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+              <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--c-border-soft)' }}>
                 <div>
-                  <h3 className="text-xl font-black text-gray-900">Order #{selectedOrder.order_number}</h3>
-                  <p className="text-xs text-gray-500 font-medium">Merchant Fulfillment Details & Activity Timeline</p>
+                  <h3 className="text-xl font-bold font-display" style={{ color: 'var(--c-text)' }}>Order #{selectedOrder.order_number}</h3>
+                  <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>Merchant Fulfillment Details & Activity Timeline</p>
                 </div>
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition"
+                  className="p-1.5 rounded-full transition cursor-pointer font-bold"
+                  style={{ color: 'var(--c-muted)', background: 'var(--c-surface2)' }}
                 >
                   ✕
                 </button>
               </div>
 
               {modalError && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-medium flex items-center justify-between">
+                <div
+                  className="p-3.5 border rounded-xl text-xs font-medium flex items-center justify-between"
+                  style={{ background: 'var(--c-status-red-bg)', borderColor: 'var(--c-border-soft)', color: 'var(--c-status-red-text)' }}
+                >
                   <span>{modalError}</span>
                   <button
                     onClick={() => handleOpenDetails(selectedOrder)}
-                    className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded font-bold"
+                    className="px-2.5 py-1 rounded font-bold transition"
+                    style={{ background: 'var(--c-surface2)', color: 'var(--c-text)' }}
                   >
                     Retry
                   </button>
@@ -921,8 +756,8 @@ export const MerchantOrdersTab: React.FC = () => {
               )}
 
               {modalLoading ? (
-                <div className="py-12 text-center text-gray-500 flex flex-col items-center gap-2">
-                  <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <div className="py-12 text-center flex flex-col items-center gap-2" style={{ color: 'var(--c-muted)' }}>
+                  <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
                   <span className="text-xs font-medium">Loading full order details...</span>
                 </div>
               ) : (
@@ -932,8 +767,15 @@ export const MerchantOrdersTab: React.FC = () => {
 
                   {/* Cancellation Details Section (only when cancelled) */}
                   {selectedOrder.status === 'cancelled' && (
-                    <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl space-y-1.5 text-xs text-rose-900">
-                      <span className="font-extrabold text-rose-800 block uppercase tracking-wider text-[11px]">
+                    <div
+                      className="p-4 rounded-xl space-y-1.5 text-xs border"
+                      style={{
+                        background: 'var(--c-status-red-bg)',
+                        borderColor: 'var(--c-border-soft)',
+                        color: 'var(--c-status-red-text)',
+                      }}
+                    >
+                      <span className="font-extrabold block uppercase tracking-wider text-[11px] font-display">
                         Cancellation Audit Details
                       </span>
                       <p><span className="font-bold">Cancelled By:</span> {selectedOrder.cancelled_by || 'Customer'}</p>
@@ -941,15 +783,22 @@ export const MerchantOrdersTab: React.FC = () => {
                         <p><span className="font-bold">Reason:</span> {selectedOrder.cancellation_reason}</p>
                       )}
                       {selectedOrder.cancellation_timestamp && (
-                        <p className="font-mono text-[11px] text-rose-700">Timestamp: {new Date(selectedOrder.cancellation_timestamp).toLocaleString()}</p>
+                        <p className="font-mono text-[11px]" style={{ opacity: 0.9 }}>Timestamp: {new Date(selectedOrder.cancellation_timestamp).toLocaleString()}</p>
                       )}
                     </div>
                   )}
 
                   {/* Return Details Section (only when return is requested/active) */}
                   {selectedOrder.return_status && selectedOrder.return_status !== 'none' && (
-                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-1.5 text-xs text-amber-900">
-                      <span className="font-extrabold text-amber-800 block uppercase tracking-wider text-[11px]">
+                    <div
+                      className="p-4 rounded-xl space-y-1.5 text-xs border"
+                      style={{
+                        background: 'var(--c-status-amber-bg)',
+                        borderColor: 'var(--c-border-soft)',
+                        color: 'var(--c-status-amber-text)',
+                      }}
+                    >
+                      <span className="font-extrabold block uppercase tracking-wider text-[11px] font-display">
                         Return Request & Logistics Details
                       </span>
                       <p><span className="font-bold">Status:</span> {selectedOrder.return_status.replace(/_/g, ' ').toUpperCase()}</p>
@@ -957,10 +806,10 @@ export const MerchantOrdersTab: React.FC = () => {
                         <p><span className="font-bold">Return Reason:</span> {selectedOrder.return_reason}</p>
                       )}
                       {selectedOrder.return_requested_at && (
-                        <p className="font-mono text-[11px] text-amber-800">Requested At: {new Date(selectedOrder.return_requested_at).toLocaleString()}</p>
+                        <p className="font-mono text-[11px]" style={{ opacity: 0.9 }}>Requested At: {new Date(selectedOrder.return_requested_at).toLocaleString()}</p>
                       )}
                       {selectedOrder.return_rejection_reason && (
-                        <p className="text-rose-700 font-medium"><span className="font-bold">Rejection Reason:</span> {selectedOrder.return_rejection_reason}</p>
+                        <p style={{ color: 'var(--c-status-red-text)' }}><span className="font-bold">Rejection Reason:</span> {selectedOrder.return_rejection_reason}</p>
                       )}
                       {selectedOrder.pickup_notes && (
                         <p><span className="font-bold">Pickup Notes:</span> {selectedOrder.pickup_notes}</p>
@@ -970,8 +819,15 @@ export const MerchantOrdersTab: React.FC = () => {
 
                   {/* Refund Details Section (only when refund is initiated or present) */}
                   {(selectedOrder.refund_status || selectedOrder.refund_initiated_at || selectedOrder.refund_amount_cents) && (
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-1.5 text-xs text-emerald-900">
-                      <span className="font-extrabold text-emerald-800 block uppercase tracking-wider text-[11px]">
+                    <div
+                      className="p-4 rounded-xl space-y-1.5 text-xs border"
+                      style={{
+                        background: 'var(--c-status-green-bg)',
+                        borderColor: 'var(--c-border-soft)',
+                        color: 'var(--c-status-green-text)',
+                      }}
+                    >
+                      <span className="font-extrabold block uppercase tracking-wider text-[11px] font-display">
                         Refund Audit Details
                       </span>
                       <p><span className="font-bold">Refund Status:</span> {selectedOrder.refund_status || 'Initiated'}</p>
@@ -979,55 +835,72 @@ export const MerchantOrdersTab: React.FC = () => {
                         <p><span className="font-bold">Refund Amount:</span> ₹{(Number(selectedOrder.refund_amount_cents) / 100).toFixed(2)}</p>
                       )}
                       {selectedOrder.refund_initiated_at && (
-                        <p className="font-mono text-[11px] text-emerald-700">Initiated At: {new Date(selectedOrder.refund_initiated_at).toLocaleString()}</p>
+                        <p className="font-mono text-[11px]" style={{ opacity: 0.9 }}>Initiated At: {new Date(selectedOrder.refund_initiated_at).toLocaleString()}</p>
                       )}
                     </div>
                   )}
 
                   {/* Shipping Address */}
                   {selectedOrder.shipping_address ? (
-                    <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-1 text-xs">
-                      <span className="font-extrabold text-blue-900 block uppercase tracking-wider text-[11px]">
+                    <div
+                      className="p-4 rounded-xl space-y-1 text-xs border"
+                      style={{
+                        background: 'var(--c-surface2)',
+                        borderColor: 'var(--c-border-soft)',
+                        color: 'var(--c-text)',
+                      }}
+                    >
+                      <span className="font-extrabold block uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-gold)' }}>
                         Delivery Address Snapshot
                       </span>
-                      <p className="font-bold text-gray-900">{selectedOrder.shipping_address.full_address}</p>
-                      <p className="text-gray-600">
+                      <p className="font-bold" style={{ color: 'var(--c-text)' }}>{selectedOrder.shipping_address.full_address}</p>
+                      <p style={{ color: 'var(--c-muted)' }}>
                         {selectedOrder.shipping_address.state} — {selectedOrder.shipping_address.pin_code}
                       </p>
                       {selectedOrder.shipping_address.phone && (
-                        <p className="text-gray-500 font-medium">Phone: {selectedOrder.shipping_address.phone}</p>
+                        <p className="font-medium" style={{ color: 'var(--c-muted)' }}>Phone: {selectedOrder.shipping_address.phone}</p>
                       )}
                     </div>
                   ) : (
-                    <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl text-xs text-gray-500 italic">
+                    <div
+                      className="p-3 rounded-xl text-xs italic border"
+                      style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border-soft)', color: 'var(--c-muted)' }}
+                    >
                       No shipping address snapshot attached to this order.
                     </div>
                   )}
 
                   {/* Items List */}
                   <div className="space-y-3">
-                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-gray-700">
+                    <h4 className="text-xs font-bold uppercase tracking-wider font-display" style={{ color: 'var(--c-muted)' }}>
                       Merchant Order Items ({ (selectedOrder.merchant_items || selectedOrder.items || []).length })
                     </h4>
 
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2 text-xs">
+                    <div
+                      className="p-4 rounded-xl border space-y-2 text-xs"
+                      style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border-soft)' }}
+                    >
                       {(selectedOrder.merchant_items || selectedOrder.items || []).length === 0 ? (
-                        <p className="text-gray-500 italic text-center py-2">No merchant items found for this order.</p>
+                        <p className="italic text-center py-2" style={{ color: 'var(--c-muted)' }}>No merchant items found for this order.</p>
                       ) : (
                         (selectedOrder.merchant_items || selectedOrder.items || []).map((item) => (
-                          <div key={item.id || item.product_id} className="flex justify-between items-center text-gray-900 py-1 border-b border-gray-200/50 last:border-0">
+                          <div
+                            key={item.id || item.product_id}
+                            className="flex justify-between items-center py-1 border-b last:border-0"
+                            style={{ borderColor: 'var(--c-border-soft)', color: 'var(--c-text)' }}
+                          >
                             <div>
-                              <span className="font-bold text-gray-900">{item.name || 'Product'}</span>
-                              <span className="text-gray-500 ml-2 font-medium">x{item.quantity}</span>
+                              <span className="font-bold" style={{ color: 'var(--c-text)' }}>{item.name || 'Product'}</span>
+                              <span className="ml-2 font-medium" style={{ color: 'var(--c-muted)' }}>x{item.quantity}</span>
                             </div>
-                            <span className="font-extrabold text-gray-900">
+                            <span className="font-extrabold font-display" style={{ color: 'var(--c-text)' }}>
                               ₹{(item.line_total_cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </span>
                           </div>
                         ))
                       )}
 
-                      <div className="border-t border-gray-200 pt-3 flex justify-between items-center text-sm font-black text-blue-700">
+                      <div className="border-t pt-3 flex justify-between items-center text-sm font-bold font-display" style={{ borderColor: 'var(--c-border-soft)', color: 'var(--c-gold)' }}>
                         <span>Merchant Revenue Subtotal</span>
                         <span>₹{(selectedOrder.merchant_total_cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                       </div>
@@ -1035,15 +908,85 @@ export const MerchantOrdersTab: React.FC = () => {
                   </div>
 
                   {/* Footer Controls */}
-                  <div className="pt-4 border-t border-gray-200 flex justify-between items-center">
+                  <div className="pt-4 border-t flex justify-between items-center" style={{ borderColor: 'var(--c-border-soft)' }}>
                     <button
                       onClick={() => setSelectedOrder(null)}
-                      className="px-4 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                      className="px-4 py-2 text-xs font-bold rounded-xl transition font-display cursor-pointer"
+                      style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}
                     >
                       Close
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {selectedOrder.return_status === 'return_requested' && (
+                        <>
+                          <button
+                            onClick={() => handleApproveReturn(selectedOrder.id)}
+                            disabled={actionLoading === selectedOrder.id}
+                            className="px-4 py-2 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl shadow-sm transition"
+                          >
+                            Approve Return
+                          </button>
+                          <button
+                            onClick={() => {
+                              const ord = selectedOrder;
+                              setSelectedOrder(null);
+                              setRejectionReason('');
+                              setRejectModalState({ isOpen: true, orderId: ord.id, orderNumber: ord.order_number });
+                            }}
+                            disabled={actionLoading === selectedOrder.id}
+                            className="px-4 py-2 text-xs font-extrabold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition"
+                          >
+                            Reject Return
+                          </button>
+                        </>
+                      )}
+
+                      {selectedOrder.return_status === 'return_approved' && (
+                        <button
+                          onClick={() => {
+                            const ord = selectedOrder;
+                            setSelectedOrder(null);
+                            setPickupNotesInput('');
+                            setPickupModalState({ isOpen: true, orderId: ord.id, orderNumber: ord.order_number });
+                          }}
+                          disabled={actionLoading === selectedOrder.id}
+                          className="px-4 py-2 text-xs font-extrabold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-xl shadow-sm transition"
+                        >
+                          Schedule Pickup
+                        </button>
+                      )}
+
+                      {selectedOrder.return_status === 'pickup_scheduled' && (
+                        <button
+                          onClick={() => handleUpdateLogistics(selectedOrder.id, 'order_picked_up')}
+                          disabled={actionLoading === selectedOrder.id}
+                          className="px-4 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition"
+                        >
+                          Mark Picked Up
+                        </button>
+                      )}
+
+                      {selectedOrder.return_status === 'order_picked_up' && (
+                        <button
+                          onClick={() => handleUpdateLogistics(selectedOrder.id, 'return_in_transit')}
+                          disabled={actionLoading === selectedOrder.id}
+                          className="px-4 py-2 text-xs font-extrabold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-xl shadow-sm transition"
+                        >
+                          Mark Return In Transit
+                        </button>
+                      )}
+
+                      {selectedOrder.return_status === 'return_in_transit' && (
+                        <button
+                          onClick={() => handleUpdateLogistics(selectedOrder.id, 'order_returned_to_seller')}
+                          disabled={actionLoading === selectedOrder.id}
+                          className="px-4 py-2 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl shadow-sm transition"
+                        >
+                          Mark Returned to Seller
+                        </button>
+                      )}
+
                       {selectedOrder.return_status === 'order_returned_to_seller' && (
                         <button
                           onClick={() => {

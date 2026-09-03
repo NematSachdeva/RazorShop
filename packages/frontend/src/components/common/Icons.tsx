@@ -1,6 +1,7 @@
 interface IconProps {
   className?: string;
   size?: number;
+  style?: React.CSSProperties;
 }
 
 export function IconSearch({ className = 'w-4 h-4', size }: IconProps) {
@@ -482,3 +483,46 @@ export function IconSend({ className = 'w-4 h-4', size }: IconProps) {
     </svg>
   );
 }
+
+export function IconSpeaker({ className = 'w-4 h-4', size, style }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      style={style}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"
+      />
+    </svg>
+  );
+}
+
+export function IconMic({ className = 'w-4 h-4', size, style }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      style={style}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v3"
+      />
+    </svg>
+  );
+}
+

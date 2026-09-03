@@ -36,11 +36,16 @@ export default function ProductDetailModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fadeIn font-sans"
+      className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto animate-fadeIn font-sans"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-5 sm:p-8 relative my-auto max-h-[90vh] sm:max-h-[85vh] overflow-y-auto border border-gray-100 font-sans"
+        className="rounded-2xl shadow-2xl max-w-2xl w-full p-5 sm:p-8 relative my-auto max-h-[90vh] sm:max-h-[85vh] overflow-y-auto themed"
+        style={{
+          background: 'var(--c-surface)',
+          border: '1px solid var(--c-border)',
+          color: 'var(--c-text)',
+        }}
       >
         {/* Close button */}
         <button
@@ -48,20 +53,31 @@ export default function ProductDetailModal({
             e.stopPropagation();
             onClose();
           }}
-          className="absolute top-4 right-4 sm:top-5 sm:right-5 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full w-8 h-8 flex items-center justify-center transition-colors z-10"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-xl transition-colors z-10 cursor-pointer"
+          style={{
+            background: 'var(--c-surface2)',
+            border: '1px solid var(--c-border)',
+            color: 'var(--c-muted)',
+          }}
           aria-label="Close detail modal"
         >
           <IconClose className="w-4 h-4" />
         </button>
 
         {/* Product Image Hero */}
-        <div className="mb-6 h-64 sm:h-72 w-full overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center p-3 relative">
+        <div
+          className="mb-6 h-64 sm:h-72 w-full overflow-hidden rounded-2xl flex items-center justify-center p-3 relative"
+          style={{
+            background: 'var(--c-surface2)',
+            border: '1px solid var(--c-border)',
+          }}
+        >
           {getImageUrl(product.image_url || (product as any).imageUrl) ? (
             <img
               src={getImageUrl(product.image_url || (product as any).imageUrl)}
               alt={product.name}
               referrerPolicy="no-referrer"
-              className="max-h-full max-w-full object-contain transition-transform duration-300"
+              className="max-h-full max-w-full object-contain transition-transform duration-300 opacity-90"
               onError={(e) => {
                 e.currentTarget.onerror = null;
                 e.currentTarget.style.display = 'none';
@@ -72,30 +88,52 @@ export default function ProductDetailModal({
             />
           ) : null}
           <div
-            className="flex flex-col items-center justify-center text-gray-400 space-y-1.5"
-            style={{ display: getImageUrl(product.image_url || (product as any).imageUrl) ? 'none' : 'flex' }}
+            className="flex flex-col items-center justify-center space-y-1.5"
+            style={{
+              display: getImageUrl(product.image_url || (product as any).imageUrl) ? 'none' : 'flex',
+              color: 'var(--c-muted)',
+            }}
           >
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ background: 'var(--c-surface)' }}
+            >
               📦
             </div>
-            <span className="text-xs font-semibold text-gray-400">No image available</span>
+            <span className="text-xs font-semibold">No image available</span>
           </div>
         </div>
 
         {/* Category & Title */}
         <div className="mb-4 pr-8">
-          <span className="bg-blue-50 text-blue-700 text-[11px] font-medium px-3 py-1 rounded-full uppercase tracking-wider font-body">
+          <span
+            className="text-[10px] font-extrabold px-3 py-1 rounded uppercase tracking-wider font-display"
+            style={{
+              background: 'var(--c-gold-dim)',
+              color: 'var(--c-gold)',
+              border: '1px solid var(--c-gold)',
+            }}
+          >
             {product.category || 'General'}
           </span>
-          <h2 className="text-xl sm:text-3xl font-bold font-heading tracking-tight text-gray-900 mt-2 break-words">
+          <h2
+            className="text-xl sm:text-3xl font-bold font-display tracking-tight mt-3 break-words"
+            style={{ color: 'var(--c-text)' }}
+          >
             {product.name}
           </h2>
         </div>
 
         {/* Price & Stock Badge */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
+        <div
+          className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b"
+          style={{ borderColor: 'var(--c-border-soft)' }}
+        >
           <div>
-            <span className="text-2xl sm:text-3xl font-bold font-price text-blue-700">
+            <span
+              className="text-2xl sm:text-3xl font-bold font-display"
+              style={{ color: 'var(--c-text)' }}
+            >
               ₹{(product.price_cents / 100).toFixed(2)}
             </span>
           </div>
@@ -106,10 +144,16 @@ export default function ProductDetailModal({
 
         {/* Description */}
         <div className="mb-6">
-          <h4 className="text-xs font-semibold font-heading text-gray-400 uppercase tracking-wider mb-1">
+          <h4
+            className="text-xs font-semibold font-display uppercase tracking-wider mb-2"
+            style={{ color: 'var(--c-muted)' }}
+          >
             Product Overview
           </h4>
-          <p className="text-gray-700 leading-relaxed text-xs sm:text-sm break-words font-normal font-body">
+          <p
+            className="leading-relaxed text-xs sm:text-sm break-words font-normal"
+            style={{ color: 'var(--c-text-dim)' }}
+          >
             {product.description || 'No product description available.'}
           </p>
         </div>
@@ -122,19 +166,30 @@ export default function ProductDetailModal({
               e.stopPropagation();
               onAddToCart(product.id);
             }}
-            className={`w-full py-3.5 px-6 rounded-xl font-semibold text-sm sm:text-base shadow-md flex items-center justify-center gap-2 transition-all font-body ${
-              stockInfo.canAddToCart
-                ? 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-lg active:scale-[0.99]'
-                : 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'
-            }`}
+            className="w-full py-3.5 px-6 rounded-xl font-bold text-sm sm:text-base shadow-sm flex items-center justify-center gap-2 transition-all font-display cursor-pointer"
+            style={{
+              background: stockInfo.canAddToCart ? 'var(--c-gold)' : 'var(--c-surface2)',
+              color: stockInfo.canAddToCart ? '#0a0908' : 'var(--c-muted)',
+              border: stockInfo.canAddToCart ? 'none' : '1px solid var(--c-border)',
+            }}
+            onMouseEnter={(e) => {
+              if (stockInfo.canAddToCart) e.currentTarget.style.background = 'var(--c-gold-lt)';
+            }}
+            onMouseLeave={(e) => {
+              if (stockInfo.canAddToCart) e.currentTarget.style.background = 'var(--c-gold)';
+            }}
           >
             <IconCart className="w-5 h-5" />
-            <span>{stockInfo.canAddToCart ? 'Add Product to Cart' : 'Out of Stock'}</span>
+            <span>
+              {stockInfo.canAddToCart
+                ? `Add to Cart — ₹${(product.price_cents / 100).toFixed(2)}`
+                : 'Out of Stock'}
+            </span>
           </button>
         </div>
 
         {/* AI Recommendation & Bundle Section */}
-        <div className="border-t border-gray-100 pt-6">
+        <div className="border-t pt-6" style={{ borderColor: 'var(--c-border-soft)' }}>
           <ProductRecommendations
             productId={product.id}
             onAddBundleToCart={onAddBundleToCart}

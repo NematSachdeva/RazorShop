@@ -1,18 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import { IconStore, IconPackage, IconMapPin, IconCart, IconUser } from './Icons';
+import { IconStore, IconPackage, IconCart, IconUser } from './Icons';
 
-interface Props {
+interface ProfilePopoverProps {
   user: {
-    id?: string;
-    name?: string;
     email: string;
-    role: 'customer' | 'merchant' | 'admin';
+    first_name?: string;
+    last_name?: string;
+    merchant_id?: string;
+    role?: string;
   };
   onLogout: () => void;
   onNavigateToOrders?: () => void;
+  onNavigateToStore?: () => void;
   onNavigateToAddresses?: () => void;
   onOpenCart?: () => void;
-  onNavigateToStore?: () => void;
   onNavigateToMerchant?: () => void;
 }
 
@@ -20,63 +21,59 @@ export default function ProfilePopover({
   user,
   onLogout,
   onNavigateToOrders,
-  onNavigateToAddresses,
-  onOpenCart,
   onNavigateToStore,
+  onNavigateToAddresses: _onNavigateToAddresses,
+  onOpenCart,
   onNavigateToMerchant,
-}: Props) {
+}: ProfilePopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const displayName = user.name || user.email.split('@')[0];
-  const initial = (displayName.charAt(0) || 'U').toUpperCase();
-  const isMerchant = user.role === 'merchant';
-
-  // Handle click outside and Escape key
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    }
-
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email;
+  const initial = (user.first_name?.[0] || user.email[0] || 'U').toUpperCase();
+
+  const role = user.role || (user.merchant_id ? 'merchant' : 'customer');
+  const isMerchant = role === 'merchant' || Boolean(user.merchant_id);
+  const isAdmin = role === 'admin';
+
+  const roleLabel = isAdmin
+    ? 'ADMIN ACCOUNT'
+    : isMerchant
+    ? 'MERCHANT ACCOUNT'
+    : 'CUSTOMER ACCOUNT';
 
   return (
     <div className="relative inline-block text-left font-sans" ref={containerRef}>
-      {/* Avatar Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 rounded-full p-1 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-        aria-expanded={isOpen}
-        aria-label="User Profile Menu"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all cursor-pointer font-display"
+        style={{
+          background: 'var(--c-surface2)',
+          border: '1px solid var(--c-border)',
+        }}
       >
         <div
-          className={`w-9 h-9 rounded-full font-extrabold text-sm flex items-center justify-center shadow-sm text-white ${
-            isMerchant
-              ? 'bg-gradient-to-tr from-purple-600 to-indigo-600'
-              : 'bg-gradient-to-tr from-blue-600 to-indigo-600'
-          }`}
+          className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs font-display"
+          style={{ background: 'var(--c-gold)', color: '#0a0908' }}
         >
           {initial}
         </div>
-        <span className="hidden md:inline-block text-xs font-semibold text-gray-700 max-w-[120px] truncate">
+        <span className="hidden md:inline-block text-xs font-semibold max-w-[120px] truncate" style={{ color: 'var(--c-text)' }}>
           {displayName}
         </span>
         <svg
-          className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          style={{ color: 'var(--c-muted)' }}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -87,20 +84,36 @@ export default function ProfilePopover({
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white shadow-2xl border border-gray-100 z-50 py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div
+          className="absolute right-0 mt-2 w-64 rounded-2xl shadow-2xl z-50 py-2 animate-fadeIn font-sans themed"
+          style={{
+            background: 'var(--c-surface)',
+            border: '1px solid var(--c-border)',
+            color: 'var(--c-text)',
+          }}
+        >
           {/* User Info Header */}
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
-            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+          <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--c-border-soft)' }}>
+            <p className="text-sm font-bold truncate font-display" style={{ color: 'var(--c-text)' }}>{displayName}</p>
+            <p className="text-xs truncate" style={{ color: 'var(--c-muted)' }}>{user.email}</p>
             <div className="mt-2">
               <span
-                className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                  isMerchant
-                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                    : 'bg-blue-100 text-blue-800 border border-blue-200'
-                }`}
+                className="inline-block text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider font-display"
+                style={{
+                  background: isAdmin
+                    ? 'rgba(239, 68, 68, 0.15)'
+                    : isMerchant
+                    ? 'var(--c-status-blue-bg)'
+                    : 'var(--c-status-amber-bg)',
+                  color: isAdmin
+                    ? '#ef4444'
+                    : isMerchant
+                    ? 'var(--c-status-blue-text)'
+                    : 'var(--c-status-amber-text)',
+                  border: '1px solid var(--c-border-soft)',
+                }}
               >
-                {isMerchant ? 'Merchant Account' : 'Customer Account'}
+                {roleLabel}
               </span>
             </div>
           </div>
@@ -113,9 +126,12 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onNavigateToStore();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
+                className="w-full text-left px-4 py-2 text-xs font-semibold flex items-center gap-2.5 cursor-pointer font-display transition-colors"
+                style={{ color: 'var(--c-text)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--c-surface2)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <IconStore className="w-4 h-4 text-blue-600" />
+                <IconStore className="w-4 h-4 text-[var(--c-gold)]" />
                 <span>Browse Store</span>
               </button>
             )}
@@ -126,23 +142,13 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onNavigateToOrders();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
+                className="w-full text-left px-4 py-2 text-xs font-semibold flex items-center gap-2.5 cursor-pointer font-display transition-colors"
+                style={{ color: 'var(--c-text)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--c-surface2)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <IconPackage className="w-4 h-4 text-blue-600" />
+                <IconPackage className="w-4 h-4 text-[var(--c-gold)]" />
                 <span>My Orders</span>
-              </button>
-            )}
-
-            {!isMerchant && (
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  if (onNavigateToAddresses) onNavigateToAddresses();
-                }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
-              >
-                <IconMapPin className="w-4 h-4 text-blue-600" />
-                <span>Saved Addresses</span>
               </button>
             )}
 
@@ -152,9 +158,12 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onOpenCart();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
+                className="w-full text-left px-4 py-2 text-xs font-semibold flex items-center gap-2.5 cursor-pointer font-display transition-colors"
+                style={{ color: 'var(--c-text)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--c-surface2)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <IconCart className="w-4 h-4 text-blue-600" />
+                <IconCart className="w-4 h-4 text-[var(--c-gold)]" />
                 <span>Shopping Cart</span>
               </button>
             )}
@@ -165,24 +174,30 @@ export default function ProfilePopover({
                   setIsOpen(false);
                   onNavigateToMerchant();
                 }}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2.5"
+                className="w-full text-left px-4 py-2 text-xs font-semibold flex items-center gap-2.5 cursor-pointer font-display transition-colors"
+                style={{ color: 'var(--c-text)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--c-surface2)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <IconUser className="w-4 h-4 text-purple-600" />
+                <IconUser className="w-4 h-4 text-[var(--c-gold)]" />
                 <span>Merchant Portal</span>
               </button>
             )}
           </div>
 
           {/* Logout Action */}
-          <div className="pt-1 border-t border-gray-100">
+          <div className="pt-1 border-t" style={{ borderColor: 'var(--c-border-soft)' }}>
             <button
               onClick={() => {
                 setIsOpen(false);
                 onLogout();
               }}
-              className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2.5"
+              className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2.5 cursor-pointer font-display transition-colors"
+              style={{ color: 'var(--c-status-red-text)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--c-status-red-bg)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
-              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-[var(--c-status-red-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
               <span>Sign Out</span>

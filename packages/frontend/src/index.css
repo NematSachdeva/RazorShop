@@ -1,57 +1,195 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Dark theme (default Figma design) ─────────────────────────────────── */
 :root {
-  --font-heading: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --c-bg:          #100f0d;
+  --c-bg-deep:     #0a0908;
+  --c-surface:     #181510;
+  --c-surface2:    #1e1a14;
+  --c-border-soft: #1f1c16;
+  --c-border:      #2a2620;
+  --c-border2:     #3a352b;
+  --c-text:        #f0ead8;
+  --c-text-dim:    #9a9080;
+  --c-muted:       #5e574c;
+  --c-faint:       #302c24;
+  --c-gold:        #c9963a;
+  --c-gold-lt:     #dba84a;
+  --c-gold-dim:    #1e160a;
+
+  --c-cta-bg:      #f0ead8;
+  --c-cta-text:    #100f0d;
+
+  --c-hero-overlay-from: rgba(10,9,8,0.78);
+  --c-hero-overlay-via:  rgba(10,9,8,0.52);
+  --c-hero-overlay-to:   rgba(10,9,8,0.88);
+  --c-hero-text:   #f0ead8;
+  --c-hero-sub:    #9a9080;
+  --c-hero-muted:  #5e574c;
+
+  --c-status-green-bg:   rgba(20,83,45,0.35);
+  --c-status-green-text: #4ade80;
+  --c-status-blue-bg:    rgba(30,64,175,0.3);
+  --c-status-blue-text:  #93c5fd;
+  --c-status-amber-bg:   rgba(120,53,15,0.35);
+  --c-status-amber-text: #fbbf24;
+  --c-status-red-bg:     rgba(127,29,29,0.35);
+  --c-status-red-text:   #fca5a5;
+  --c-status-gray-bg:    #1e1a14;
+  --c-status-gray-text:  #5e574c;
+  --c-status-orange-bg:  rgba(124,45,18,0.35);
+  --c-status-orange-text:#fdba74;
+
+  --c-timeline-line:     #4e463a;
+
+  --font-display: 'Bricolage Grotesque', 'Poppins', system-ui, sans-serif;
+  --font-heading: 'Bricolage Grotesque', 'Poppins', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+/* ── Light theme mode ─────────────────────────────────────────────────── */
+html.light {
+  --c-bg:          #f4f0e7;
+  --c-bg-deep:     #ede8dc;
+  --c-surface:     #faf7f1;
+  --c-surface2:    #ede9df;
+  --c-border-soft: #e4dfd4;
+  --c-border:      #d6d0c4;
+  --c-border2:     #c2bab0;
+  --c-text:        #18160f;
+  --c-text-dim:    #504a40;
+  --c-muted:       #8a8274;
+  --c-faint:       #ccc6ba;
+  --c-gold:        #9a6e1a;
+  --c-gold-lt:     #a87820;
+  --c-gold-dim:    #faecd0;
+
+  --c-cta-bg:      #18160f;
+  --c-cta-text:    #f4f0e7;
+
+  --c-hero-overlay-from: rgba(10,9,8,0.68);
+  --c-hero-overlay-via:  rgba(10,9,8,0.44);
+  --c-hero-overlay-to:   rgba(10,9,8,0.78);
+  --c-hero-text:   #f0ead8;
+  --c-hero-sub:    #b8b0a0;
+  --c-hero-muted:  #7a7468;
+
+  --c-status-green-bg:   #d1fae5;
+  --c-status-green-text: #15803d;
+  --c-status-blue-bg:    #dbeafe;
+  --c-status-blue-text:  #1d4ed8;
+  --c-status-amber-bg:   #fef3c7;
+  --c-status-amber-text: #92400e;
+  --c-status-red-bg:     #fee2e2;
+  --c-status-red-text:   #b91c1c;
+  --c-status-gray-bg:    #ede9df;
+  --c-status-gray-text:  #8a8274;
+  --c-status-orange-bg:  #ffedd5;
+  --c-status-orange-text:#c2410c;
+
+  --c-timeline-line:     #b2a898;
 }
 
 body {
   margin: 0;
   font-family: var(--font-body);
+  background-color: var(--c-bg);
+  color: var(--c-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 button, input, select, textarea {
   font-family: inherit;
 }
 
-h1, h2, h3, h4, h5, h6, .font-heading {
-  font-family: var(--font-heading);
+h1, h2, h3, h4, h5, h6, .font-display, .font-heading, .font-price {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
-h1 {
-  letter-spacing: -0.5px;
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: 999px;
 }
 
-h2 {
-  letter-spacing: -0.4px;
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-h3 {
-  letter-spacing: -0.3px;
-}
-
-.font-price {
-  font-family: var(--font-heading);
-  letter-spacing: -0.3px;
-}
+.animate-fadeUp { animation: fadeUp 0.4s ease-out forwards; }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fadeIn { animation: fadeIn 0.25s ease-out forwards; }
+
+@keyframes cartPop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.animate-cartPop { animation: cartPop 0.35s ease-out; }
+
+@keyframes scrollBounce {
+  0%, 100% { transform: translateY(0); }
+  50%     { transform: translateY(6px); }
+}
+.animate-scrollBounce { animation: scrollBounce 1.6s ease-in-out infinite; }
+
+.themed {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
 }
 
-.animate-fadeIn {
-  animation: fadeIn 0.15s ease-out forwards;
+.nav-link {
+  color: var(--c-text-dim);
+  transition: color 0.2s ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.nav-link:hover {
+  color: var(--c-gold);
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.reveal.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.group:hover .group-hover\:scale-105 {
+  transform: scale(1.05);
 }

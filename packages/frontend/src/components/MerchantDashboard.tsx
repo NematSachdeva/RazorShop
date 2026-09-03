@@ -17,11 +17,6 @@ import Footer from './Footer';
 import ProfilePopover from './common/ProfilePopover';
 import {
   IconStore,
-  IconPackage,
-  IconCart,
-  IconShield,
-  IconInfo,
-  IconRefresh,
   IconClose,
 } from './common/Icons';
 
@@ -118,7 +113,7 @@ interface MerchantDashboardProps {
 
 export default function MerchantDashboard({
   onLogout,
-  onShowApplicationTimeline,
+  onShowApplicationTimeline: _onShowApplicationTimeline,
   onNavigateToPath,
 }: MerchantDashboardProps) {
   const [viewState, setViewState] = useState<ViewState>('dashboard');
@@ -134,6 +129,8 @@ export default function MerchantDashboard({
     return date.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const [isLightMode, setIsLightMode] = useState(() => document.documentElement.classList.contains('light'));
 
   const currentUser = authService.getUser();
 
@@ -193,11 +190,6 @@ export default function MerchantDashboard({
     fetchDashboard();
   }, [startDate, endDate]);
 
-  const handleViewProducts = () => {
-    setViewState('products');
-    setMobileMenuOpen(false);
-  };
-
   const handleViewRecoveryCases = () => {
     setSelectedCaseId(null);
     setViewState('recovery-cases');
@@ -218,82 +210,62 @@ export default function MerchantDashboard({
     }
   };
 
+  const handleViewStore = () => {
+    authService.logout();
+    if (onLogout) {
+      onLogout();
+    }
+    if (onNavigateToPath) {
+      onNavigateToPath('/');
+    } else {
+      window.location.href = '/';
+    }
+  };
+
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: IconStore },
-    { id: 'analytics', label: 'Analytics', icon: IconInfo },
-    { id: 'orders', label: 'Orders & Fulfillment', icon: IconPackage },
-    { id: 'products', label: 'Products & Stock', icon: IconCart },
-    { id: 'recovery-cases', label: 'Recovery Cases', icon: IconShield },
-    { id: 'insights', label: 'Insights', icon: IconInfo },
-    { id: 'merchant-helper', label: 'Merchant Helper', icon: IconInfo },
-    { id: 'config', label: 'Config', icon: IconInfo },
+    { id: 'dashboard', num: '01', label: 'Dashboard' },
+    { id: 'analytics', num: '02', label: 'Analytics' },
+    { id: 'orders', num: '03', label: 'Orders & Fulfillment' },
+    { id: 'products', num: '04', label: 'Products & Stock' },
+    { id: 'recovery-cases', num: '05', label: 'Recovery Cases' },
+    { id: 'insights', num: '06', label: 'Insights' },
+    { id: 'merchant-helper', num: '07', label: 'Merchant Helper' },
   ] as const;
 
-  const sectionTitles: Record<ViewState, { title: string; subtitle: string }> = {
-    dashboard: {
-      title: 'Store Dashboard Overview',
-      subtitle: 'Real-time sales performance, active catalog inventory, and revenue metrics.',
-    },
-    analytics: {
-      title: 'Merchant Business Analytics',
-      subtitle: 'Detailed revenue funnels, customer response breakdowns, and failure analysis.',
-    },
-    orders: {
-      title: 'Orders & Fulfillment',
-      subtitle: 'Track catalog customer orders, dispatch items, and manage fulfillment milestones.',
-    },
-    products: {
-      title: 'Products & Stock Management',
-      subtitle: 'Manage catalog item listings, prices, inventory levels, and stock on hand.',
-    },
-    'recovery-cases': {
-      title: 'Revenue Recovery Cases',
-      subtitle: 'Audit and process automated revenue recovery workflows for failed payments.',
-    },
-    'recovery-case-detail': {
-      title: 'Recovery Case Audit Detail',
-      subtitle: 'Inspect agent diagnostic decisions, customer activity, and recovery history.',
-    },
-    insights: {
-      title: 'AI Insights & Recommendations',
-      subtitle: 'Actionable catalog recommendations generated for your store.',
-    },
-    'merchant-helper': {
-      title: 'Merchant Helper',
-      subtitle: 'AI Business Assistant & Deal Creation (English, Hindi, Hinglish)',
-    },
-    config: {
-      title: 'Merchant Guard Rails & Settings',
-      subtitle: 'Configure automated recovery thresholds, channels, and AI parameters.',
-    },
+  const sectionTitles: Record<ViewState, { title: string; subtitle?: string }> = {
+    dashboard: { title: 'Dashboard' },
+    analytics: { title: 'Analytics' },
+    orders: { title: 'Orders & Fulfillment' },
+    products: { title: 'Products & Stock' },
+    'recovery-cases': { title: 'Recovery Cases' },
+    'recovery-case-detail': { title: 'Recovery Case Detail' },
+    insights: { title: 'Insights' },
+    'merchant-helper': { title: 'Merchant Helper' },
+    config: { title: 'Merchant Settings' },
   };
 
   const renderSidebarContent = () => (
-    <div className="flex flex-col h-full justify-between p-5 font-sans">
-      <div className="space-y-6">
+    <div className="p-6 flex flex-col justify-between h-full space-y-6 themed select-none" style={{ background: 'var(--c-surface)', color: 'var(--c-text)' }}>
+      <div className="space-y-8">
         {/* Brand Logo Header */}
-        <div className="pb-4 border-b border-gray-100">
+        <div>
           <div
-            onClick={() => setViewState('dashboard')}
-            className="cursor-pointer flex items-center gap-2 select-none"
-            title="Merchant Dashboard Home"
+            onClick={() => onNavigateToPath ? onNavigateToPath('/') : setViewState('dashboard')}
+            className="cursor-pointer select-none"
+            title="RazorShop Merchant Portal"
           >
-            <span className="text-2xl font-black tracking-tight text-gray-900">
-              Razor<span className="text-blue-600">Shop</span>
+            <span className="text-xl font-extrabold tracking-tight font-display" style={{ color: 'var(--c-text)' }}>
+              Razor<span style={{ color: 'var(--c-gold)' }}>Shop</span>
             </span>
           </div>
-          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded uppercase tracking-wider block mt-1.5 w-fit">
+          <span className="text-[11px] font-medium block mt-0.5 font-display" style={{ color: 'var(--c-muted)' }}>
             Merchant Portal
           </span>
         </div>
 
-        {/* Navigation Items */}
+        {/* Numbered Navigation Items */}
         <nav className="space-y-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-gray-400 block px-3 mb-2">
-            Merchant Management
-          </span>
           {navItems.map((item) => {
-            const Icon = item.icon;
             const isActive =
               viewState === item.id ||
               (item.id === 'recovery-cases' && viewState === 'recovery-case-detail');
@@ -306,13 +278,15 @@ export default function MerchantDashboard({
                   else setViewState(item.id as ViewState);
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700 shadow-xs border-l-4 border-blue-600'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-all text-left font-display cursor-pointer"
+                style={{
+                  background: isActive ? 'var(--c-surface2)' : 'transparent',
+                  color: isActive ? 'var(--c-gold)' : 'var(--c-muted)',
+                }}
               >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                <span className="text-[11px] font-mono shrink-0" style={{ color: isActive ? 'var(--c-gold)' : 'var(--c-muted)' }}>
+                  {item.num}
+                </span>
                 <span>{item.label}</span>
               </button>
             );
@@ -320,44 +294,54 @@ export default function MerchantDashboard({
         </nav>
       </div>
 
-      {/* Bottom Navigation Utilities */}
-      <div className="pt-6 border-t border-gray-100 space-y-3">
+      {/* Bottom Navigation Links */}
+      <div className="pt-6 border-t space-y-2 font-display text-xs" style={{ borderColor: 'var(--c-border-soft)' }}>
+        <button
+          onClick={() => setViewState('config')}
+          className="w-full text-left px-3 py-1.5 font-medium transition cursor-pointer"
+          style={{ color: viewState === 'config' ? 'var(--c-gold)' : 'var(--c-muted)' }}
+        >
+          Config
+        </button>
+
         <a
           href="mailto:nnnnsachdeva@gmail.com"
-          className="flex items-center gap-2 text-xs font-semibold text-gray-600 hover:text-blue-600 transition px-3 py-1.5 rounded-lg hover:bg-gray-50"
+          className="block px-3 py-1.5 font-medium transition"
+          style={{ color: 'var(--c-muted)' }}
         >
-          <IconInfo className="w-4 h-4 text-gray-400" />
-          <span>Support Contact</span>
+          Support
         </a>
 
         <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition"
+          onClick={handleViewStore}
+          className="w-full text-left px-3 py-1.5 font-medium transition cursor-pointer"
+          style={{ color: 'var(--c-muted)' }}
         >
-          <span>Sign Out</span>
+          View Store
         </button>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex w-full font-sans text-gray-900">
+    <div className="min-h-screen flex w-full font-sans themed" style={{ background: 'var(--c-bg)', color: 'var(--c-text)' }}>
       {/* Desktop Persistent Left Sidebar */}
-      <aside className="hidden lg:flex w-64 bg-white border-r border-gray-200 shrink-0 sticky top-0 h-screen overflow-y-auto">
+      <aside className="hidden lg:flex w-64 border-r shrink-0 sticky top-0 h-screen overflow-y-auto" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
         {renderSidebarContent()}
       </aside>
 
-      {/* Mobile Sidebar Overlay Drawer */}
+      {/* Mobile Sidebar Drawer Overlay */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-xs"
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <aside className="relative w-64 bg-white h-full z-10 shadow-2xl flex flex-col">
+          <aside className="relative w-64 h-full z-10 shadow-2xl flex flex-col" style={{ background: 'var(--c-surface)' }}>
             <button
               onClick={() => setMobileMenuOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1"
+              className="absolute top-4 right-4 p-1"
+              style={{ color: 'var(--c-muted)' }}
             >
               <IconClose className="w-5 h-5" />
             </button>
@@ -369,47 +353,46 @@ export default function MerchantDashboard({
       {/* Main Workspace Container */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header Bar */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
-          <div className="px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <header className="sticky top-0 z-30 themed" style={{ background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)' }}>
+          <div className="px-6 sm:px-8 py-5 flex justify-between items-center gap-4">
             <div className="flex items-center gap-3">
-              {/* Mobile Menu Toggle Button */}
               <button
                 onClick={() => setMobileMenuOpen(true)}
-                className="lg:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200"
+                className="lg:hidden p-2 rounded-lg border"
+                style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
               >
                 <IconStore className="w-5 h-5" />
               </button>
 
               <div>
-                <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">
-                  RazorShop Merchant Portal
+                <span className="text-[10px] font-bold uppercase tracking-widest block font-display" style={{ color: 'var(--c-gold)' }}>
+                  RAZORSHOP — MERCHANT PORTAL
                 </span>
-                <h1 className="text-lg sm:text-xl font-black text-gray-900 mt-0.5">
+                <h1 className="text-2xl font-black mt-0.5 font-display tracking-tight" style={{ color: 'var(--c-text)' }}>
                   {sectionTitles[viewState].title}
                 </h1>
-                <p className="text-xs text-gray-500 font-medium hidden sm:block">
-                  {sectionTitles[viewState].subtitle}
-                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 self-end sm:self-auto">
-              {onShowApplicationTimeline && (
-                <button
-                  onClick={onShowApplicationTimeline}
-                  className="px-3.5 py-2 text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 rounded-xl transition"
-                >
-                  View Application Timeline
-                </button>
-              )}
-
+            <div className="flex items-center gap-3">
               <button
-                onClick={fetchDashboard}
-                disabled={loading}
-                className="px-3.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-2"
+                onClick={() => {
+                  const isLight = document.documentElement.classList.contains('light');
+                  if (isLight) {
+                    document.documentElement.classList.remove('light');
+                    localStorage.setItem('theme', 'dark');
+                    setIsLightMode(false);
+                  } else {
+                    document.documentElement.classList.add('light');
+                    localStorage.setItem('theme', 'light');
+                    setIsLightMode(true);
+                  }
+                }}
+                className="p-2 rounded-xl border transition cursor-pointer flex items-center justify-center text-sm"
+                style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-gold)' }}
+                title={isLightMode ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
               >
-                <IconRefresh className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
+                {isLightMode ? '🌙' : '☀️'}
               </button>
 
               {currentUser && (
@@ -424,7 +407,7 @@ export default function MerchantDashboard({
         </header>
 
         {/* Workspace Body Content */}
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <main className="flex-1 px-6 sm:px-8 py-6 space-y-6">
           {viewState === 'orders' && <MerchantOrdersTab />}
           {viewState === 'products' && <MerchantProducts />}
           {viewState === 'recovery-cases' && (
@@ -439,89 +422,88 @@ export default function MerchantDashboard({
 
           {(viewState === 'dashboard' || viewState === 'analytics') && (
             <>
-              {/* Date Filter Control Box */}
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-end justify-between gap-4">
-                <div className="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="px-3 py-1.5 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
-                      End Date
-                    </label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="px-3 py-1.5 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50"
-                    />
-                  </div>
+              {/* Date Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-4 font-sans">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-display">
+                  <span className="text-xs mr-1" style={{ color: 'var(--c-muted)' }}>From</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-medium focus:outline-none themed"
+                    style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
+                  />
+                  <span className="text-xs mx-1" style={{ color: 'var(--c-muted)' }}>To</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-medium focus:outline-none themed"
+                    style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
+                  />
                   <button
                     onClick={fetchDashboard}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition shadow-xs"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold transition font-display cursor-pointer"
+                    style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
                   >
-                    Apply Filter
+                    Apply
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl text-xs">
+                <div className="flex items-center gap-2 text-xs font-display">
                   <button
                     onClick={() => handleRangeChange(5)}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                      activeRangeDays === 5
-                        ? 'bg-white text-blue-700 shadow-xs'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    className="px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer"
+                    style={{
+                      background: activeRangeDays === 5 ? 'var(--c-surface2)' : 'transparent',
+                      borderColor: activeRangeDays === 5 ? 'var(--c-border)' : 'transparent',
+                      color: activeRangeDays === 5 ? 'var(--c-text)' : 'var(--c-muted)',
+                    }}
                   >
-                    5 Days
+                    Last 5 Days
                   </button>
                   <button
                     onClick={() => handleRangeChange(14)}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                      activeRangeDays === 14
-                        ? 'bg-white text-blue-700 shadow-xs'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    className="px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer"
+                    style={{
+                      background: activeRangeDays === 14 ? 'var(--c-surface2)' : 'transparent',
+                      borderColor: activeRangeDays === 14 ? 'var(--c-border)' : 'transparent',
+                      color: activeRangeDays === 14 ? 'var(--c-text)' : 'var(--c-muted)',
+                    }}
                   >
-                    14 Days
+                    Last 14 Days
                   </button>
                   <button
                     onClick={() => handleRangeChange(30)}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                      activeRangeDays === 30
-                        ? 'bg-white text-blue-700 shadow-xs'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    className="px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer"
+                    style={{
+                      background: activeRangeDays === 30 ? 'var(--c-surface2)' : 'transparent',
+                      borderColor: activeRangeDays === 30 ? 'var(--c-border)' : 'transparent',
+                      color: activeRangeDays === 30 ? 'var(--c-text)' : 'var(--c-muted)',
+                    }}
                   >
-                    30 Days
+                    Last 30 Days
                   </button>
                 </div>
               </div>
 
               {/* Loading State */}
               {loading && (
-                <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 space-y-2">
-                  <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-xs font-medium text-gray-500">Loading merchant dashboard metrics...</p>
+                <div className="text-center py-16 rounded-2xl border space-y-2 themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+                  <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto" style={{ borderColor: 'var(--c-gold)' }} />
+                  <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>Loading merchant dashboard metrics...</p>
                 </div>
               )}
 
               {/* Error State */}
               {error && !loading && (
-                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-xs text-rose-800 space-y-2">
-                  <p className="font-bold text-sm">Dashboard Data Alert</p>
+                <div className="rounded-2xl p-5 text-xs space-y-2" style={{ background: 'var(--c-status-red-bg)', border: '1px solid var(--c-border)', color: 'var(--c-status-red-text)' }}>
+                  <p className="font-bold text-sm font-display">Dashboard Data Alert</p>
                   <p>{error}</p>
                   <button
                     onClick={fetchDashboard}
-                    className="px-4 py-2 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition"
+                    className="px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer font-display"
+                    style={{ background: 'var(--c-status-red-text)', color: '#0a0908' }}
                   >
                     Retry Loading
                   </button>
@@ -530,9 +512,14 @@ export default function MerchantDashboard({
 
               {/* Dashboard Content */}
               {!loading && dashboardData && (
-                <div className="space-y-6">
-                  {/* Revenue Metrics Cards */}
-                  <RevenueMetrics metrics={dashboardData.metrics} />
+                <div className="space-y-8">
+                  {/* Financial Metrics Section */}
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-widest font-display" style={{ color: 'var(--c-muted)' }}>
+                      FINANCIAL METRICS
+                    </h3>
+                    <RevenueMetrics metrics={dashboardData.metrics} />
+                  </div>
 
                   {viewState === 'analytics' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -545,87 +532,73 @@ export default function MerchantDashboard({
                     <PaymentFailureReasons reasons={dashboardData.failure_reasons} />
                   )}
 
-                  {/* Store Catalog & Inventory Overview Summary Card */}
+                  {/* Store Catalog & Inventory Overview Section */}
                   {(dashboardData as any).inventory_summary && (
-                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-5">
-                      <div className="flex flex-wrap justify-between items-center gap-4 border-b border-gray-100 pb-4">
-                        <div>
-                          <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">
-                            Authoritative Database Snapshot
-                          </span>
-                          <h3 className="text-xl font-black text-gray-900 mt-0.5">
-                            Store Catalog & Inventory Overview
-                          </h3>
-                        </div>
-                        <button
-                          onClick={handleViewProducts}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
-                        >
-                          View All Products & Stock
-                        </button>
-                      </div>
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-widest font-display" style={{ color: 'var(--c-muted)' }}>
+                        STORE CATALOG & INVENTORY
+                      </h3>
 
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200">
-                          <p className="text-[11px] text-blue-800 font-bold uppercase tracking-wider">
-                            Products Listed
-                          </p>
-                          <p className="text-2xl font-black text-blue-950 mt-1">
+                      <div className="grid grid-cols-2 md:grid-cols-5 border rounded-2xl overflow-hidden themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+                        <div className="p-5 space-y-1" style={{ borderColor: 'var(--c-border-soft)', borderRightWidth: '1px', borderStyle: 'solid' }}>
+                          <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>
                             {(dashboardData as any).inventory_summary.total_listed || 0}
                           </p>
+                          <p className="text-xs font-medium font-display" style={{ color: 'var(--c-muted)' }}>
+                            Total Products
+                          </p>
                         </div>
 
-                        <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
-                          <p className="text-[11px] text-emerald-800 font-bold uppercase tracking-wider">
-                            Stock Units
-                          </p>
-                          <p className="text-2xl font-black text-emerald-950 mt-1">
+                        <div className="p-5 space-y-1" style={{ borderColor: 'var(--c-border-soft)', borderRightWidth: '1px', borderStyle: 'solid' }}>
+                          <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>
                             {(dashboardData as any).inventory_summary.total_units_in_stock || 0}
                           </p>
-                        </div>
-
-                        <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200">
-                          <p className="text-[11px] text-amber-800 font-bold uppercase tracking-wider">
-                            Low Stock
-                          </p>
-                          <p className="text-2xl font-black text-amber-950 mt-1">
-                            {(dashboardData as any).inventory_summary.low_stock_count || 0}
+                          <p className="text-xs font-medium font-display" style={{ color: 'var(--c-muted)' }}>
+                            In Stock
                           </p>
                         </div>
 
-                        <div className="bg-rose-50/70 p-4 rounded-xl border border-rose-200">
-                          <p className="text-[11px] text-rose-800 font-bold uppercase tracking-wider">
-                            Out of Stock
-                          </p>
-                          <p className="text-2xl font-black text-rose-950 mt-1">
+                        <div className="p-5 space-y-1" style={{ borderColor: 'var(--c-border-soft)', borderRightWidth: '1px', borderStyle: 'solid' }}>
+                          <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-status-red-text)' }}>
                             {(dashboardData as any).inventory_summary.out_of_stock_count || 0}
                           </p>
+                          <p className="text-xs font-medium font-display" style={{ color: 'var(--c-muted)' }}>
+                            Out of Stock
+                          </p>
                         </div>
 
-                        <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-200 col-span-2 md:col-span-1">
-                          <p className="text-[11px] text-purple-800 font-bold uppercase tracking-wider">
-                            Units Sold
-                          </p>
-                          <p className="text-2xl font-black text-purple-950 mt-1">
+                        <div className="p-5 space-y-1" style={{ borderColor: 'var(--c-border-soft)', borderRightWidth: '1px', borderStyle: 'solid' }}>
+                          <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>
                             {(dashboardData as any).inventory_summary.total_sold || 0}
+                          </p>
+                          <p className="text-xs font-medium font-display" style={{ color: 'var(--c-muted)' }}>
+                            Total Sold
+                          </p>
+                        </div>
+
+                        <div className="p-5 space-y-1">
+                          <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>
+                            {(dashboardData as any).inventory_summary.reserved || 0}
+                          </p>
+                          <p className="text-xs font-medium font-display" style={{ color: 'var(--c-muted)' }}>
+                            Reserved
                           </p>
                         </div>
                       </div>
 
                       {/* Products Summary Table */}
-                      <div className="overflow-x-auto rounded-xl border border-gray-200">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-gray-50 text-gray-700 font-bold border-b border-gray-200 uppercase text-[10px] tracking-wider">
+                      <div className="overflow-x-auto rounded-2xl border themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+                        <table className="w-full text-left text-xs font-sans">
+                          <thead className="border-b font-bold uppercase text-[10px] tracking-wider font-display" style={{ borderColor: 'var(--c-border-soft)', color: 'var(--c-muted)' }}>
                             <tr>
-                              <th className="py-3 px-4">Product Name</th>
-                              <th className="py-3 px-4">Category</th>
-                              <th className="py-3 px-4 text-right">Price</th>
-                              <th className="py-3 px-4 text-center">Available Stock</th>
-                              <th className="py-3 px-4 text-right">Units Sold</th>
-                              <th className="py-3 px-4 text-center">Stock Status</th>
+                              <th className="py-3.5 px-5">PRODUCT</th>
+                              <th className="py-3.5 px-5">CATEGORY</th>
+                              <th className="py-3.5 px-5">PRICE</th>
+                              <th className="py-3.5 px-5">AVAILABLE</th>
+                              <th className="py-3.5 px-5">SOLD</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-100 font-medium">
+                          <tbody className="font-medium">
                             {((dashboardData as any).inventory_summary.products || []).map(
                               (item: any) => {
                                 const available =
@@ -634,42 +607,23 @@ export default function MerchantDashboard({
                                     0,
                                     (item.quantity_on_hand || 0) - (item.reserved || 0)
                                   );
-                                const isLow = available > 0 && available <= 5;
-                                const isOut = available === 0;
 
                                 return (
-                                  <tr key={item.id} className="hover:bg-gray-50 transition">
-                                    <td className="py-3 px-4 font-bold text-gray-900">
+                                  <tr key={item.id} className="border-b last:border-b-0 transition" style={{ borderColor: 'var(--c-border-soft)', color: 'var(--c-text)' }}>
+                                    <td className="py-4 px-5 font-bold font-display">
                                       {item.name}
                                     </td>
-                                    <td className="py-3 px-4">
-                                      <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
-                                        {item.category || 'General'}
-                                      </span>
+                                    <td className="py-4 px-5" style={{ color: 'var(--c-muted)' }}>
+                                      {item.category || 'General'}
                                     </td>
-                                    <td className="py-3 px-4 text-right font-bold text-blue-700">
+                                    <td className="py-4 px-5 font-bold font-display" style={{ color: 'var(--c-text)' }}>
                                       ₹{(item.price_cents / 100).toFixed(2)}
                                     </td>
-                                    <td className="py-3 px-4 text-center font-bold text-gray-900">
+                                    <td className="py-4 px-5 font-bold font-display" style={{ color: 'var(--c-status-green-text)' }}>
                                       {available}
                                     </td>
-                                    <td className="py-3 px-4 text-right font-bold text-emerald-700">
-                                      {item.units_sold}
-                                    </td>
-                                    <td className="py-3 px-4 text-center">
-                                      {isOut ? (
-                                        <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                                          Out of Stock
-                                        </span>
-                                      ) : isLow ? (
-                                        <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                                          Low Stock ({available})
-                                        </span>
-                                      ) : (
-                                        <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                                          In Stock
-                                        </span>
-                                      )}
+                                    <td className="py-4 px-5 font-bold font-display" style={{ color: 'var(--c-text)' }}>
+                                      {item.units_sold ?? 0}
                                     </td>
                                   </tr>
                                 );

@@ -1,6 +1,7 @@
 /**
  * RecoveryCasesList Component
- * Lists merchant recovery cases with status filtering, rich order & customer metadata, and pagination.
+ * Lists seller recovery cases with status filtering, rich order & customer metadata, and pagination.
+ * Redesigned using Figma theme tokens.
  */
 
 import { useState, useEffect } from 'react';
@@ -81,19 +82,19 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
     fetchCases();
   }, [statusFilter, offset]);
 
-  const getStatusColor = (status: string) => {
-    const colors: { [key: string]: string } = {
-      open: 'bg-blue-100 text-blue-800 border-blue-300',
-      in_progress: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      resolved: 'bg-green-100 text-green-800 border-green-300',
-      abandoned: 'bg-gray-100 text-gray-800 border-gray-300',
-      customer_declined: 'bg-red-100 text-red-800 border-red-300',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getStatusIcon = (_status: string) => {
-    return '';
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'resolved':
+        return { bg: 'var(--c-status-green-bg)', text: 'var(--c-status-green-text)' };
+      case 'in_progress':
+        return { bg: 'var(--c-status-amber-bg)', text: 'var(--c-status-amber-text)' };
+      case 'open':
+        return { bg: 'var(--c-status-blue-bg)', text: 'var(--c-status-blue-text)' };
+      case 'customer_declined':
+        return { bg: 'var(--c-status-red-bg)', text: 'var(--c-status-red-text)' };
+      default:
+        return { bg: 'var(--c-surface2)', text: 'var(--c-muted)' };
+    }
   };
 
   const formatPrice = (cents?: number) => {
@@ -118,16 +119,26 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
   return (
     <div className="space-y-6 font-sans">
       {/* Filters Header */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap justify-between items-center gap-4">
+      <div
+        className="p-4 rounded-2xl border flex flex-wrap justify-between items-center gap-4 themed"
+        style={{
+          background: 'var(--c-surface)',
+          borderColor: 'var(--c-border)',
+          color: 'var(--c-text)',
+        }}
+      >
         <div className="flex items-center gap-3">
-          <label className="text-sm font-semibold text-gray-700">Filter Status:</label>
+          <label className="text-xs font-bold uppercase tracking-wider font-display" style={{ color: 'var(--c-muted)' }}>
+            Filter Status:
+          </label>
           <select
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
               setOffset(0);
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white font-medium"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold border focus:outline-none focus:ring-1 focus:ring-amber-500 font-display"
+            style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
           >
             <option value="">All Recovery Statuses</option>
             <option value="open">Open</option>
@@ -140,7 +151,8 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
 
         <button
           onClick={() => fetchCases()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition"
+          className="px-4 py-2 rounded-xl text-xs font-bold transition font-display cursor-pointer"
+          style={{ background: 'var(--c-gold)', color: '#0a0908' }}
         >
           Refresh Cases
         </button>
@@ -148,19 +160,20 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
 
       {/* Loading State */}
       {loading && (
-        <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-200">
-          <p className="text-gray-600 font-medium">Loading merchant recovery cases...</p>
+        <div className="rounded-2xl p-12 text-center border" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+          <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>Loading recovery cases...</p>
         </div>
       )}
 
       {/* Error State */}
       {error && !loading && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-800 font-bold mb-2">Failed to load recovery cases</p>
-          <p className="text-xs text-red-600 mb-4">{error}</p>
+        <div className="rounded-2xl p-6 text-center border" style={{ background: 'var(--c-status-red-bg)', borderColor: 'var(--c-border)', color: 'var(--c-status-red-text)' }}>
+          <p className="font-bold text-sm mb-2 font-display">Failed to load recovery cases</p>
+          <p className="text-xs mb-4">{error}</p>
           <button
             onClick={() => fetchCases()}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700"
+            className="px-4 py-2 rounded-xl text-xs font-bold font-display transition cursor-pointer"
+            style={{ background: 'var(--c-gold)', color: '#0a0908' }}
           >
             Retry Loading
           </button>
@@ -169,83 +182,78 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
 
       {/* Empty State */}
       {!loading && !error && cases.length === 0 && (
-        <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-200">
-          <p className="text-gray-700 font-bold text-lg mb-1">No recovery cases yet</p>
-          <p className="text-xs text-gray-500">Recovery cases will automatically appear when payment failures occur.</p>
+        <div className="rounded-2xl p-12 text-center border space-y-1" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+          <p className="font-bold text-lg font-display" style={{ color: 'var(--c-text)' }}>No recovery cases yet</p>
+          <p className="text-xs" style={{ color: 'var(--c-muted)' }}>Recovery cases will automatically appear when payment failures occur.</p>
         </div>
       )}
 
       {/* Cases Table */}
       {!loading && cases.length > 0 && (
         <>
-          <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 border-b border-gray-200 text-gray-700 font-bold">
+          <div className="overflow-x-auto rounded-2xl border themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+            <table className="w-full text-left text-xs font-sans">
+              <thead className="border-b font-bold font-display uppercase tracking-wider text-[10px]" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border-soft)', color: 'var(--c-muted)' }}>
                 <tr>
-                  <th className="py-3.5 px-4">Order Number</th>
-                  <th className="py-3.5 px-4">Customer Details</th>
-                  <th className="py-3.5 px-4 text-right">Order Amount</th>
-                  <th className="py-3.5 px-4">Failure Reason</th>
-                  <th className="py-3.5 px-4">Recovery Status</th>
-                  <th className="py-3.5 px-4 text-center">Attempts</th>
-                  <th className="py-3.5 px-4 text-center">Email Status</th>
-                  <th className="py-3.5 px-4">Created Date</th>
-                  <th className="py-3.5 px-4 text-center">Action</th>
+                  <th className="py-3.5 px-4">ORDER</th>
+                  <th className="py-3.5 px-4">CUSTOMER</th>
+                  <th className="py-3.5 px-4 text-right">AMOUNT</th>
+                  <th className="py-3.5 px-4">REASON</th>
+                  <th className="py-3.5 px-4">STATUS</th>
+                  <th className="py-3.5 px-4 text-center">ATTEMPTS</th>
+                  <th className="py-3.5 px-4 text-center">EMAIL</th>
+                  <th className="py-3.5 px-4">CREATED</th>
+                  <th className="py-3.5 px-4 text-center">ACTION</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {cases.map((caseItem) => {
                   const hasAttempts = caseItem.recovery_attempts > 0;
                   const failureReasonText = caseItem.payment_failure?.reason
                     ? caseItem.payment_failure.reason.replace(/_/g, ' ')
-                    : 'payment failure';
+                    : 'Payment Failed';
+
+                  const badge = getStatusBadge(caseItem.status);
 
                   return (
-                    <tr key={caseItem.id} className="hover:bg-blue-50/50 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-blue-900">
-                        #{caseItem.order?.order_number || caseItem.order_id.substring(0, 8)}
+                    <tr key={caseItem.id} className="border-b last:border-b-0 transition" style={{ borderColor: 'var(--c-border-soft)' }}>
+                      <td className="py-4 px-4 font-mono font-bold" style={{ color: 'var(--c-gold)' }}>
+                        {caseItem.order?.order_number ? `${caseItem.order.order_number.split('-').pop() || caseItem.order.order_number}` : caseItem.order_id.substring(0, 8)}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <p className="font-bold text-gray-900">{caseItem.customer?.name || 'Customer'}</p>
-                        <p className="text-[11px] text-gray-500 font-mono">{caseItem.customer?.email || 'No Email'}</p>
+                      <td className="py-4 px-4">
+                        <p className="font-bold font-display" style={{ color: 'var(--c-text)' }}>{caseItem.customer?.name || 'Customer'}</p>
+                        <p className="text-[11px] font-mono" style={{ color: 'var(--c-muted)' }}>{caseItem.customer?.email || 'No Email'}</p>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-extrabold text-gray-900">
+                      <td className="py-4 px-4 text-right font-bold font-display" style={{ color: 'var(--c-text)' }}>
                         {formatPrice(caseItem.order?.total_cents)}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className="capitalize text-gray-700 font-medium">{failureReasonText}</span>
+                      <td className="py-4 px-4">
+                        <span className="capitalize font-medium" style={{ color: 'var(--c-muted)' }}>{failureReasonText}</span>
                       </td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-4 px-4">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${getStatusColor(
-                            caseItem.status
-                          )}`}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold font-display uppercase"
+                          style={{ background: badge.bg, color: badge.text }}
                         >
-                          <span>{getStatusIcon(caseItem.status)}</span>
                           {caseItem.status.replace(/_/g, ' ').toUpperCase()}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-center font-bold text-gray-900">
-                        {caseItem.recovery_attempts} / {caseItem.max_recovery_attempts}
+                      <td className="py-4 px-4 text-center font-medium font-mono" style={{ color: 'var(--c-muted)' }}>
+                        {caseItem.recovery_attempts}/{caseItem.max_recovery_attempts}
                       </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            hasAttempts
-                              ? 'bg-green-100 text-green-800 border border-green-200'
-                              : 'bg-gray-100 text-gray-600 border border-gray-200'
-                          }`}
-                        >
-                          {hasAttempts ? 'Dispatched' : 'Pending'}
+                      <td className="py-4 px-4 text-center">
+                        <span className="text-xs font-mono font-medium" style={{ color: hasAttempts ? 'var(--c-gold)' : 'var(--c-muted)' }}>
+                          {hasAttempts ? 'dispatched' : 'pending'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-gray-600 font-medium">{formatDate(caseItem.created_at)}</td>
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-4 px-4 text-xs font-medium" style={{ color: 'var(--c-muted)' }}>{formatDate(caseItem.created_at)}</td>
+                      <td className="py-4 px-4 text-center">
                         <button
                           onClick={() => onCaseSelected(caseItem.id)}
-                          className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition-all text-xs"
+                          className="font-bold transition text-xs font-display cursor-pointer underline"
+                          style={{ color: 'var(--c-gold)' }}
                         >
-                          View Detail
+                          View
                         </button>
                       </td>
                     </tr>
@@ -257,22 +265,24 @@ export default function RecoveryCasesList({ onCaseSelected }: RecoveryCasesListP
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200">
-              <span className="text-xs text-gray-600 font-medium">
+            <div className="flex justify-between items-center p-4 rounded-2xl border" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+              <span className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>
                 Showing page {currentPage} of {totalPages} ({totalCount} total cases)
               </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setOffset(Math.max(0, offset - limit))}
                   disabled={offset === 0}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold disabled:opacity-40"
+                  className="px-3.5 py-1.5 rounded-xl border text-xs font-bold font-display cursor-pointer disabled:opacity-30"
+                  style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setOffset(offset + limit)}
                   disabled={currentPage >= totalPages}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold disabled:opacity-40"
+                  className="px-3.5 py-1.5 rounded-xl border text-xs font-bold font-display cursor-pointer disabled:opacity-30"
+                  style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
                 >
                   Next
                 </button>

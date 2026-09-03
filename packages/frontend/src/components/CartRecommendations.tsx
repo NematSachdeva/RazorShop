@@ -73,7 +73,6 @@ export default function CartRecommendations({
         setProducts(data.products || []);
         setBundle(data.bundle || fetchedRecs[0]?.metadata?.bundle || null);
 
-        // Track shown event
         if (fetchedRecs.length > 0 && fetchedRecs[0].id) {
           fetch(getApiUrl(`/recommendations/${fetchedRecs[0].id}/events`), {
             method: 'POST',
@@ -137,8 +136,8 @@ export default function CartRecommendations({
 
   if (loading) {
     return (
-      <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 font-sans">
-        <div className="flex items-center justify-center py-3 text-xs text-gray-600 font-semibold">
+      <div className="p-4 rounded-xl font-sans" style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)' }}>
+        <div className="flex items-center justify-center py-3 text-xs font-semibold" style={{ color: 'var(--c-muted)' }}>
           <div className="animate-spin mr-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -153,41 +152,41 @@ export default function CartRecommendations({
 
   if (error) {
     return (
-      <div className="bg-gray-50 p-4 rounded-xl font-sans">
-        <p className="text-xs text-gray-500">Recommendations temporarily unavailable.</p>
+      <div className="p-4 rounded-xl font-sans" style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)' }}>
+        <p className="text-xs" style={{ color: 'var(--c-muted)' }}>Recommendations temporarily unavailable.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4 font-sans">
+    <div className="space-y-4 font-sans themed">
       {/* AI Bundle Deal */}
       {bundle && bundle.products && bundle.products.length > 0 && (
-        <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-200 shadow-xs space-y-3">
+        <div className="p-4 rounded-xl border shadow-xs space-y-3 themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
           <div className="flex justify-between items-center">
-            <h4 className="font-extrabold text-blue-900 text-xs flex items-center gap-1.5">
-              <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">BUNDLE DEAL</span>
+            <h4 className="font-extrabold text-xs flex items-center gap-1.5 font-display" style={{ color: 'var(--c-text)' }}>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase font-display" style={{ background: 'var(--c-gold)', color: '#0a0908' }}>BUNDLE DEAL</span>
               <span>Recommended Combo</span>
             </h4>
-            <span className="text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded font-display" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', border: '1px solid var(--c-border-soft)' }}>
               SAVE {formatPrice(bundle.savings_cents)}
             </span>
           </div>
 
           <div className="space-y-1.5">
             {bundle.products.map((item: any, idx: number) => (
-              <div key={item.id || idx} className="flex justify-between items-center text-xs bg-white p-2 rounded-lg border border-gray-100">
-                <span className="font-medium text-gray-800 truncate max-w-[180px]">{item.name}</span>
-                <span className="text-gray-600 font-bold shrink-0">{formatPrice(item.price_cents)}</span>
+              <div key={item.id || idx} className="flex justify-between items-center text-xs p-2 rounded-lg border themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border-soft)', color: 'var(--c-text)' }}>
+                <span className="font-medium truncate max-w-[180px] font-display" style={{ color: 'var(--c-text)' }}>{item.name}</span>
+                <span className="font-bold shrink-0 font-display" style={{ color: 'var(--c-text)' }}>{formatPrice(item.price_cents)}</span>
               </div>
             ))}
           </div>
 
-          <div className="flex items-center justify-between pt-2.5 border-t border-blue-200">
+          <div className="flex items-center justify-between pt-2.5 border-t" style={{ borderColor: 'var(--c-border-soft)' }}>
             <div>
-              <span className="text-[10px] text-gray-500 block">Combo Total:</span>
-              <span className="line-through text-gray-400 text-xs mr-1">{formatPrice(bundle.original_total_cents)}</span>
-              <span className="text-sm font-extrabold text-emerald-700">{formatPrice(bundle.final_total_cents)}</span>
+              <span className="text-[10px] block font-display" style={{ color: 'var(--c-muted)' }}>Combo Total:</span>
+              <span className="line-through text-xs mr-1" style={{ color: 'var(--c-muted)' }}>{formatPrice(bundle.original_total_cents)}</span>
+              <span className="text-sm font-extrabold font-display" style={{ color: 'var(--c-status-green-text)' }}>{formatPrice(bundle.final_total_cents)}</span>
             </div>
             <button
               onClick={(e) => {
@@ -198,7 +197,8 @@ export default function CartRecommendations({
                   bundle.products.forEach((p: any) => onAddToCart?.(p.id));
                 }
               }}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 flex items-center gap-1"
+              className="px-3.5 py-1.5 text-xs font-bold rounded-lg shadow-xs transition active:scale-95 flex items-center gap-1 font-display cursor-pointer"
+              style={{ background: 'var(--c-gold)', color: '#0a0908' }}
             >
               <IconTag className="w-3.5 h-3.5" />
               <span>Add Bundle</span>
@@ -209,8 +209,8 @@ export default function CartRecommendations({
 
       {products.length > 0 && (
         <>
-          <h3 className="text-xs font-semibold font-heading uppercase tracking-wider text-gray-900">
-            Complementary Items
+          <h3 className="text-xs font-bold font-display uppercase tracking-wider" style={{ color: 'var(--c-muted)' }}>
+            COMPLEMENTARY ITEMS
           </h3>
 
           <div className="space-y-2.5">
@@ -220,30 +220,33 @@ export default function CartRecommendations({
                 <div
                   key={product.id}
                   onClick={(e) => !alreadyInCart && handleViewProduct(product, e)}
-                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                    alreadyInCart
-                      ? 'bg-gray-100 border-gray-200 opacity-60'
-                      : 'bg-white border-gray-200 hover:border-blue-300 cursor-pointer'
-                  }`}
+                  className="flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer themed"
+                  style={{
+                    background: 'var(--c-surface2)',
+                    borderColor: 'var(--c-border)',
+                    opacity: alreadyInCart ? 0.6 : 1,
+                  }}
                 >
                   <div className="flex-1 min-w-0 pr-2">
-                    <h4 className={`font-semibold font-heading text-xs truncate ${alreadyInCart ? 'text-gray-500' : 'text-gray-900'}`}>
+                    <h4 className="font-bold font-display text-xs truncate" style={{ color: alreadyInCart ? 'var(--c-muted)' : 'var(--c-text)' }}>
                       {product.name}
                     </h4>
-                    <p className="text-[11px] font-bold font-price text-blue-600 mt-0.5">{formatPrice(product.price_cents)}</p>
+                    <p className="text-[11px] font-bold font-display mt-0.5" style={{ color: 'var(--c-gold)' }}>{formatPrice(product.price_cents)}</p>
                   </div>
 
                   {!alreadyInCart && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={(e) => handleViewProduct(product, e)}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg transition font-display cursor-pointer"
+                        style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
                       >
                         View
                       </button>
                       <button
                         onClick={(e) => handleAddToCart(product, recommendations[0]?.id || '', e)}
-                        className="px-3 py-1 text-[11px] font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-xs transition active:scale-95 flex items-center gap-1"
+                        className="px-3 py-1 text-[11px] font-bold rounded-lg shadow-xs transition active:scale-95 flex items-center gap-1 font-display cursor-pointer"
+                        style={{ background: 'var(--c-gold)', color: '#0a0908' }}
                       >
                         <IconPlus className="w-3 h-3" />
                         <span>Add</span>
@@ -258,8 +261,8 @@ export default function CartRecommendations({
       )}
 
       {recommendations[0]?.reasoning && (
-        <div className="text-[10px] text-gray-500 bg-white p-2.5 rounded-lg border border-gray-200">
-          <p className="font-bold text-gray-700 mb-0.5">Recommendation Insights:</p>
+        <div className="text-[10px] p-2.5 rounded-lg border font-sans themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-muted)' }}>
+          <p className="font-bold mb-0.5 font-display" style={{ color: 'var(--c-text-dim)' }}>Recommendation Insights:</p>
           <p className="italic">{recommendations[0].reasoning.explanation}</p>
         </div>
       )}

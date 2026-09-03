@@ -1,6 +1,7 @@
 /**
  * PaymentFailureReasons Component
  * Displays breakdown of payment failure reasons and recovery rates
+ * Redesigned using Figma design system tokens
  */
 
 interface FailureReason {
@@ -43,44 +44,59 @@ export default function PaymentFailureReasons({ reasons }: PaymentFailureReasons
     return icons[reason] || '❌';
   };
 
-  const getReasonColor = (rate: number) => {
-    if (rate >= 70) return 'bg-green-50 border-green-200';
-    if (rate >= 40) return 'bg-yellow-50 border-yellow-200';
-    return 'bg-red-50 border-red-200';
-  };
-
   return (
-    <div className="bg-white rounded shadow p-6 mb-8">
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Payment Failure Reasons</h2>
+    <div
+      className="rounded-2xl border p-6 mb-8 shadow-xs themed"
+      style={{
+        background: 'var(--c-surface)',
+        borderColor: 'var(--c-border)',
+        color: 'var(--c-text)',
+      }}
+    >
+      <h2 className="text-xl font-bold font-display mb-4" style={{ color: 'var(--c-text)' }}>
+        Payment Failure Reasons
+      </h2>
 
       {reasons.total_failures === 0 ? (
-        <p className="text-gray-500 py-4">No payment failures</p>
+        <p className="py-4 font-medium text-xs" style={{ color: 'var(--c-muted)' }}>No payment failures recorded</p>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b-2 border-gray-200">
-                  <th className="text-left py-3 px-2 font-semibold text-gray-700">Reason</th>
-                  <th className="text-right py-3 px-2 font-semibold text-gray-700">Count</th>
-                  <th className="text-right py-3 px-2 font-semibold text-gray-700">Amount</th>
-                  <th className="text-right py-3 px-2 font-semibold text-gray-700">Recovered</th>
-                  <th className="text-right py-3 px-2 font-semibold text-gray-700">Recovery Rate</th>
+          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--c-border)' }}>
+            <table className="w-full text-xs text-left">
+              <thead className="border-b font-bold font-display uppercase tracking-wider" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-gold)' }}>
+                <tr>
+                  <th className="py-3 px-4">Reason</th>
+                  <th className="py-3 px-4 text-right">Count</th>
+                  <th className="py-3 px-4 text-right">Amount</th>
+                  <th className="py-3 px-4 text-right">Recovered</th>
+                  <th className="py-3 px-4 text-right">Recovery Rate</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y" style={{ borderColor: 'var(--c-border-soft)' }}>
                 {reasons.reasons.map((reason, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-2 font-medium flex items-center gap-2">
+                  <tr key={idx} className="font-medium hover:bg-amber-500/5 transition">
+                    <td className="py-3 px-4 font-bold flex items-center gap-2" style={{ color: 'var(--c-text)' }}>
                       <span>{getReasonIcon(reason.reason)}</span>
                       {reason.reason.replace(/_/g, ' ').charAt(0).toUpperCase() + reason.reason.slice(1).replace(/_/g, ' ')}
                     </td>
-                    <td className="py-3 px-2 text-right text-gray-700 font-semibold">{reason.count}</td>
-                    <td className="py-3 px-2 text-right text-gray-700">{formatPrice(reason.total_amount_cents)}</td>
-                    <td className="py-3 px-2 text-right text-gray-700">{reason.recovery_count}</td>
-                    <td className="py-3 px-2 text-right">
+                    <td className="py-3 px-4 text-right font-bold" style={{ color: 'var(--c-text)' }}>{reason.count}</td>
+                    <td className="py-3 px-4 text-right" style={{ color: 'var(--c-text-dim)' }}>{formatPrice(reason.total_amount_cents)}</td>
+                    <td className="py-3 px-4 text-right" style={{ color: 'var(--c-text-dim)' }}>{reason.recovery_count}</td>
+                    <td className="py-3 px-4 text-right">
                       <span
-                        className={`inline-block px-2 py-1 rounded ${getReasonColor(reason.recovery_rate_percent)} font-semibold`}
+                        className="inline-block px-2 py-0.5 rounded font-extrabold font-display"
+                        style={{
+                          background: reason.recovery_rate_percent >= 70
+                            ? 'var(--c-status-green-bg)'
+                            : reason.recovery_rate_percent >= 40
+                            ? 'var(--c-status-amber-bg)'
+                            : 'var(--c-status-red-bg)',
+                          color: reason.recovery_rate_percent >= 70
+                            ? 'var(--c-status-green-text)'
+                            : reason.recovery_rate_percent >= 40
+                            ? 'var(--c-status-amber-text)'
+                            : 'var(--c-status-red-text)',
+                        }}
                       >
                         {reason.recovery_rate_percent}%
                       </span>
@@ -91,18 +107,18 @@ export default function PaymentFailureReasons({ reasons }: PaymentFailureReasons
             </table>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t">
-            <div className="bg-gray-50 p-4 rounded">
-              <p className="text-xs text-gray-600 mb-1">Total Failures</p>
-              <p className="text-2xl font-bold text-gray-900">{reasons.total_failures}</p>
+          <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t" style={{ borderColor: 'var(--c-border)' }}>
+            <div className="p-4 rounded-xl border" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+              <p className="text-xs font-bold uppercase tracking-wider mb-1 font-display" style={{ color: 'var(--c-muted)' }}>Total Failures</p>
+              <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>{reasons.total_failures}</p>
             </div>
-            <div className="bg-gray-50 p-4 rounded">
-              <p className="text-xs text-gray-600 mb-1">Total Amount</p>
-              <p className="text-2xl font-bold text-gray-900">{formatPrice(reasons.total_amount_cents)}</p>
+            <div className="p-4 rounded-xl border" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+              <p className="text-xs font-bold uppercase tracking-wider mb-1 font-display" style={{ color: 'var(--c-muted)' }}>Total Amount</p>
+              <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>{formatPrice(reasons.total_amount_cents)}</p>
             </div>
-            <div className="bg-gray-50 p-4 rounded">
-              <p className="text-xs text-gray-600 mb-1">Average Amount</p>
-              <p className="text-2xl font-bold text-gray-900">
+            <div className="p-4 rounded-xl border" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+              <p className="text-xs font-bold uppercase tracking-wider mb-1 font-display" style={{ color: 'var(--c-muted)' }}>Average Amount</p>
+              <p className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>
                 {formatPrice(reasons.total_failures > 0 ? reasons.total_amount_cents / reasons.total_failures : 0)}
               </p>
             </div>

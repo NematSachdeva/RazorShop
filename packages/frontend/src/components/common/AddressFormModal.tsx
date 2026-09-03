@@ -86,35 +86,47 @@ export const AddressFormModal: React.FC<AddressFormModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs transition-opacity font-sans"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs transition-opacity font-sans"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="w-full max-w-md bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl space-y-5"
+        className="w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5 themed"
         onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--c-surface)',
+          border: '1px solid var(--c-border)',
+          color: 'var(--c-text)',
+        }}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-          <h3 className="text-lg font-bold text-gray-900">{initialAddress ? 'Edit Delivery Address' : title}</h3>
+        <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--c-border-soft)' }}>
+          <h3 className="text-lg font-bold font-display" style={{ color: 'var(--c-text)' }}>
+            {initialAddress ? 'Edit Delivery Address' : title}
+          </h3>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-xl transition-colors cursor-pointer"
+            style={{
+              background: 'var(--c-surface2)',
+              border: '1px solid var(--c-border)',
+              color: 'var(--c-muted)',
+            }}
           >
             <IconClose className="w-5 h-5" />
           </button>
         </div>
 
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
+          <div className="p-3 rounded-xl text-xs flex items-center gap-2" style={{ background: 'var(--c-status-red-bg)', border: '1px solid var(--c-border-soft)', color: 'var(--c-status-red-text)' }}>
             <span>{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              Full Street Address <span className="text-red-500">*</span>
+            <label className="block text-xs font-bold mb-1 font-display" style={{ color: 'var(--c-text-dim)' }}>
+              Full Street Address <span style={{ color: 'var(--c-status-red-text)' }}>*</span>
             </label>
             <textarea
               value={fullAddress}
@@ -122,14 +134,19 @@ export const AddressFormModal: React.FC<AddressFormModalProps> = ({
               placeholder="House/Flat No., Street, Area, Landmark"
               rows={3}
               required
-              className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all resize-none font-medium"
+              className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all resize-none font-medium themed"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                State <span className="text-red-500">*</span>
+              <label className="block text-xs font-bold mb-1 font-display" style={{ color: 'var(--c-text-dim)' }}>
+                State <span style={{ color: 'var(--c-status-red-text)' }}>*</span>
               </label>
               <input
                 type="text"
@@ -137,12 +154,17 @@ export const AddressFormModal: React.FC<AddressFormModalProps> = ({
                 onChange={(e) => setState(e.target.value)}
                 placeholder="State (e.g. Maharashtra)"
                 required
-                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+                style={{
+                  background: 'var(--c-surface2)',
+                  border: '1px solid var(--c-border)',
+                  color: 'var(--c-text)',
+                }}
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                PIN Code <span className="text-red-500">*</span>
+              <label className="block text-xs font-bold mb-1 font-display" style={{ color: 'var(--c-text-dim)' }}>
+                PIN Code <span style={{ color: 'var(--c-status-red-text)' }}>*</span>
               </label>
               <input
                 type="text"
@@ -150,13 +172,18 @@ export const AddressFormModal: React.FC<AddressFormModalProps> = ({
                 onChange={(e) => setPinCode(e.target.value)}
                 placeholder="6-digit PIN code"
                 required
-                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+                style={{
+                  background: 'var(--c-surface2)',
+                  border: '1px solid var(--c-border)',
+                  color: 'var(--c-text)',
+                }}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
+            <label className="block text-xs font-bold mb-1 font-display" style={{ color: 'var(--c-text-dim)' }}>
               Contact Phone (Optional)
             </label>
             <input
@@ -164,7 +191,12 @@ export const AddressFormModal: React.FC<AddressFormModalProps> = ({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="10-digit Mobile Number"
-              className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
+              className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             />
           </div>
 
@@ -174,25 +206,28 @@ export const AddressFormModal: React.FC<AddressFormModalProps> = ({
               id="is_default"
               checked={isDefault}
               onChange={(e) => setIsDefault(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-4 h-4 rounded cursor-pointer"
+              style={{ accentColor: 'var(--c-gold)' }}
             />
-            <label htmlFor="is_default" className="text-xs text-gray-700 font-semibold cursor-pointer">
+            <label htmlFor="is_default" className="text-xs font-semibold cursor-pointer font-display" style={{ color: 'var(--c-text)' }}>
               Set as default delivery address
             </label>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+          <div className="flex justify-end gap-3 pt-3 border-t" style={{ borderColor: 'var(--c-border-soft)' }}>
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+              className="px-4 py-2 text-xs font-bold rounded-xl transition-colors font-display cursor-pointer"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+              className="px-5 py-2 text-xs font-bold rounded-xl shadow-sm transition-all font-display cursor-pointer"
+              style={{ background: 'var(--c-gold)', color: '#0a0908' }}
             >
               {isSubmitting ? 'Saving...' : initialAddress ? 'Save Changes' : 'Add Address'}
             </button>

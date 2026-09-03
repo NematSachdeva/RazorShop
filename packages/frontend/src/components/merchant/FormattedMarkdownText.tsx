@@ -24,7 +24,7 @@ export const FormattedMarkdownText: React.FC<FormattedMarkdownTextProps> = ({
   const blocks = parseMarkdownBlocks(cleaned);
 
   return (
-    <div className={`markdown-body space-y-2 text-xs leading-relaxed text-gray-800 font-sans ${className}`}>
+    <div className={`markdown-body space-y-2 text-xs leading-relaxed font-sans ${className}`}>
       {blocks.map((block, idx) => (
         <React.Fragment key={idx}>{renderBlock(block, idx)}</React.Fragment>
       ))}
@@ -196,12 +196,12 @@ function renderBlock(block: MarkdownBlock, key: number): React.ReactNode {
   switch (block.type) {
     case 'table':
       return (
-        <div key={key} className="overflow-x-auto my-2 rounded-lg border border-gray-200 shadow-2xs">
-          <table className="min-w-full text-xs font-sans border-collapse bg-white">
+        <div key={key} className="overflow-x-auto my-2 rounded-lg border shadow-2xs" style={{ borderColor: 'var(--c-border-soft)' }}>
+          <table className="min-w-full text-xs font-sans border-collapse">
             <thead>
-              <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold">
+              <tr className="border-b font-semibold" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border-soft)', color: 'var(--c-gold)' }}>
                 {block.headers.map((h, hIdx) => (
-                  <th key={hIdx} className="px-3 py-2 text-left font-bold text-gray-900 border-r last:border-r-0 border-gray-200">
+                  <th key={hIdx} className="px-3 py-2 text-left font-bold border-r last:border-r-0" style={{ borderColor: 'var(--c-border-soft)' }}>
                     {renderInlineMarkdown(h)}
                   </th>
                 ))}
@@ -209,9 +209,9 @@ function renderBlock(block: MarkdownBlock, key: number): React.ReactNode {
             </thead>
             <tbody>
               {block.rows.map((row, rIdx) => (
-                <tr key={rIdx} className="border-b last:border-b-0 border-gray-100 hover:bg-blue-50/40 transition">
+                <tr key={rIdx} className="border-b last:border-b-0 transition" style={{ borderColor: 'var(--c-border-soft)' }}>
                   {row.map((cell, cIdx) => (
-                    <td key={cIdx} className="px-3 py-1.5 border-r last:border-r-0 border-gray-100 text-gray-800">
+                    <td key={cIdx} className="px-3 py-1.5 border-r last:border-r-0" style={{ borderColor: 'var(--c-border-soft)' }}>
                       {renderInlineMarkdown(cell)}
                     </td>
                   ))}
@@ -246,7 +246,7 @@ function renderBlock(block: MarkdownBlock, key: number): React.ReactNode {
 
     case 'heading':
       return (
-        <h4 key={key} className="font-bold text-sm text-gray-900 mt-2 mb-1 font-sans">
+        <h4 key={key} className="font-bold text-sm mt-2 mb-1 font-sans" style={{ color: 'var(--c-gold)' }}>
           {renderInlineMarkdown(block.text)}
         </h4>
       );
@@ -276,7 +276,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       const inner = part.slice(2, -2);
       return (
-        <strong key={index} className="font-bold text-gray-900">
+        <strong key={index} className="font-bold" style={{ color: 'var(--c-text)' }}>
           {inner}
         </strong>
       );
@@ -285,7 +285,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
       const inner = part.slice(1, -1);
       return (
-        <em key={index} className="italic text-gray-800">
+        <em key={index} className="italic" style={{ color: 'var(--c-text-dim)' }}>
           {inner}
         </em>
       );
@@ -294,7 +294,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
       const inner = part.slice(1, -1);
       return (
-        <code key={index} className="bg-gray-100 text-blue-800 px-1 py-0.5 rounded font-mono text-[11px]">
+        <code key={index} className="px-1.5 py-0.5 rounded font-mono text-[11px]" style={{ background: 'var(--c-surface2)', color: 'var(--c-gold)', border: '1px solid var(--c-border-soft)' }}>
           {inner}
         </code>
       );

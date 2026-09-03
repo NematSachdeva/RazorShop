@@ -1,12 +1,11 @@
 /**
- * InsightsFeed Component (M8)
- * Displays daily AI-generated merchant insights with clean state replacement and error controls.
+ * InsightsFeed Component
+ * Displays AI-generated merchant insights matching reference screenshots 7 & 8
  */
 
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../../config/api';
 import { authService } from '../../services/authService';
-import { formatRupees, formatCentsToRupees } from '../../utils/currency';
 
 interface InsightRecommendation {
   title: string;
@@ -36,33 +35,22 @@ export default function InsightsFeed() {
   const [insights, setInsights] = useState<MerchantInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [insightTypeFilter, setInsightTypeFilter] = useState<string>('');
-
-  const insightTypes = [
-    { value: 'payment_failure_patterns', label: 'Payment Failures' },
-    { value: 'abandoned_cart_patterns', label: 'Abandoned Carts' },
-    { value: 'recovery_success_rates', label: 'Recovery Performance' },
-    { value: 'product_bundles', label: 'Product Bundles' },
-    { value: 'discount_strategy', label: 'Discount Strategy' },
-    { value: 'inventory_optimization', label: 'Inventory Optimization' },
-    { value: 'recovery_targeting', label: 'Recovery Targeting' },
-  ];
-
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
+
+  const categories = [
+    { id: 'all', label: 'All' },
+    { id: 'recovery', label: 'Recovery' },
+    { id: 'abandoned', label: 'Abandoned' },
+    { id: 'payment', label: 'Payment' },
+  ];
 
   const fetchInsights = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const query = new URLSearchParams();
-      if (insightTypeFilter) {
-        query.append('type', insightTypeFilter);
-      }
-      query.append('limit', '50');
-      query.append('offset', '0');
-
-      const response = await fetch(getApiUrl(`/merchant/insights?${query}`), {
+      const response = await fetch(getApiUrl(`/merchant/insights?limit=50&offset=0`), {
         headers: {
           ...authService.getAuthHeader(),
         },
@@ -73,8 +61,6 @@ export default function InsightsFeed() {
       }
 
       const data = await response.json();
-      
-      // Deduplicate insights cleanly by ID / Title
       const rawInsights: MerchantInsight[] = data.insights || [];
       const seen = new Set<string>();
       const uniqueInsights = rawInsights.filter((item) => {
@@ -84,7 +70,6 @@ export default function InsightsFeed() {
         return true;
       });
 
-      // ALWAYS replace insights state rather than appending
       setInsights(uniqueInsights);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI insights are temporarily unavailable');
@@ -110,7 +95,6 @@ export default function InsightsFeed() {
         throw new Error('Failed to recalculate insights');
       }
 
-      // Re-fetch after recalculating to respect active category filter
       await fetchInsights();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh AI insights');
@@ -121,93 +105,90 @@ export default function InsightsFeed() {
 
   useEffect(() => {
     fetchInsights();
-  }, [insightTypeFilter]);
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'bg-red-50 border-red-300 text-red-900';
-      case 'medium':
-        return 'bg-amber-50 border-amber-300 text-amber-900';
-      case 'low':
-        return 'bg-emerald-50 border-emerald-300 text-emerald-900';
-      default:
-        return 'bg-gray-50 border-gray-300 text-gray-900';
-    }
-  };
-
-  const getInsightTypeLabel = (type: string) => {
-    const typeObj = insightTypes.find((t) => t.value === type);
-    return typeObj ? typeObj.label : type;
-  };
+  }, []);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
       day: 'numeric',
+      month: 'short',
+      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
   };
 
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <span>🤖</span> AI Merchant Insights
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">Autonomous business optimization and revenue recovery recommendations</p>
-        </div>
-        <button
-          onClick={handleRefreshInsights}
-          disabled={refreshing || loading}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center gap-2"
-        >
-          {refreshing ? (
-            <>
-              <span className="animate-spin">🔄</span> Recalculating Analytics...
-            </>
-          ) : (
-            <>🔄 Refresh Insights</>
-          )}
-        </button>
-      </div>
+  const filteredInsights = insights.filter((item) => {
+    if (activeCategory === 'all') return true;
+    const typeStr = item.type.toLowerCase();
+    if (activeCategory === 'recovery') return typeStr.includes('recovery');
+    if (activeCategory === 'abandoned') return typeStr.includes('abandoned') || typeStr.includes('cart');
+    if (activeCategory === 'payment') return typeStr.includes('payment') || typeStr.includes('failure');
+    return true;
+  });
 
-      {/* Filters */}
-      <div className="mb-6 flex items-center gap-3">
-        <label className="text-xs font-semibold text-gray-700">Filter by Category:</label>
-        <select
-          value={insightTypeFilter}
-          onChange={(e) => setInsightTypeFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium bg-white"
-        >
-          <option value="">All Categories</option>
-          {insightTypes.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
+  return (
+    <div className="space-y-6 font-sans">
+      {/* Top Section */}
+      <div className="space-y-4">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-widest block font-display" style={{ color: 'var(--c-gold)' }}>
+            AI POWERED
+          </span>
+          <h2 className="text-3xl font-extrabold font-display tracking-tight mt-0.5" style={{ color: 'var(--c-text)' }}>
+            AI Merchant Insights.
+          </h2>
+          <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>
+            Autonomous business optimization and revenue recovery recommendations.
+          </p>
+        </div>
+
+        {/* Filter Pills Header */}
+        <div className="flex flex-wrap items-center gap-3 text-xs font-display">
+          <button
+            onClick={handleRefreshInsights}
+            disabled={refreshing || loading}
+            className="px-3.5 py-1.5 rounded-full border font-bold transition cursor-pointer"
+            style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-text)' }}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh Insights'}
+          </button>
+
+          <span className="text-xs font-medium ml-2" style={{ color: 'var(--c-muted)' }}>Filter by Category:</span>
+
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className="px-4 py-1.5 rounded-full font-bold transition cursor-pointer"
+              style={{
+                background: activeCategory === cat.id ? 'var(--c-gold)' : 'var(--c-surface2)',
+                color: activeCategory === cat.id ? '#0a0908' : 'var(--c-muted)',
+                border: activeCategory === cat.id ? 'none' : '1px solid var(--c-border-soft)',
+              }}
+            >
+              {cat.label}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* Loading State */}
       {loading && (
-        <div className="text-center py-12">
-          <p className="text-gray-600 font-medium">Analyzing merchant data and generating AI insights...</p>
+        <div className="text-center py-16 rounded-2xl border space-y-2 themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+          <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto" style={{ borderColor: 'var(--c-gold)' }} />
+          <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>Analyzing store data & generating AI insights...</p>
         </div>
       )}
 
       {/* Error State */}
       {error && !loading && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6 text-center">
-          <p className="text-amber-900 font-bold mb-1">AI insights are temporarily unavailable</p>
-          <p className="text-xs text-amber-700 mb-4">{error}</p>
+        <div className="rounded-2xl p-6 text-center border" style={{ background: 'var(--c-status-amber-bg)', borderColor: 'var(--c-border)', color: 'var(--c-status-amber-text)' }}>
+          <p className="font-bold text-sm mb-1 font-display">AI insights temporarily unavailable</p>
+          <p className="text-xs mb-4">{error}</p>
           <button
             onClick={fetchInsights}
-            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700"
+            className="px-4 py-2 rounded-xl text-xs font-bold font-display transition cursor-pointer"
+            style={{ background: 'var(--c-gold)', color: '#0a0908' }}
           >
             Retry Generation
           </button>
@@ -215,90 +196,136 @@ export default function InsightsFeed() {
       )}
 
       {/* Empty State */}
-      {!loading && !error && insights.length === 0 && (
-        <div className="bg-gray-50 rounded-xl p-12 text-center border border-gray-200">
-          <p className="text-gray-700 font-bold text-lg mb-1">No AI insights are available for this period</p>
-          <p className="text-xs text-gray-500">As customer transactions and recovery events process, AI recommendations will automatically generate here.</p>
+      {!loading && !error && filteredInsights.length === 0 && (
+        <div className="rounded-2xl p-12 text-center border space-y-1 themed" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
+          <p className="font-bold text-lg font-display" style={{ color: 'var(--c-text)' }}>No AI insights available</p>
+          <p className="text-xs" style={{ color: 'var(--c-muted)' }}>As customer transactions and recovery events process, AI recommendations will automatically generate here.</p>
         </div>
       )}
 
-      {/* Insights List */}
-      {!loading && insights.length > 0 && (
+      {/* Insights Cards Feed */}
+      {!loading && filteredInsights.length > 0 && (
         <div className="space-y-6">
-          {insights.map((insight) => (
-            <div key={insight.id} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition">
-              {/* Header */}
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-base">{getInsightTypeLabel(insight.type).split(' ')[0]}</span>
-                    <h3 className="text-lg font-bold text-gray-900">{insight.title}</h3>
+          {filteredInsights.map((insight) => {
+            const rec = insight.insights && insight.insights.length > 0 ? insight.insights[0] : null;
+
+            return (
+              <div
+                key={insight.id}
+                className="rounded-2xl border p-6 space-y-6 themed font-sans"
+                style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}
+              >
+                {/* Card Top Row */}
+                <div className="flex flex-wrap justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded font-display" style={{ background: 'var(--c-gold-dim)', color: 'var(--c-gold)' }}>
+                        {insight.type.replace(/_/g, ' ').toUpperCase()}
+                      </span>
+                      <span className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>
+                        {formatDate(insight.created_at)}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-bold font-display tracking-tight" style={{ color: 'var(--c-text)' }}>
+                      {insight.title}
+                    </h3>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--c-muted)' }}>
+                      {insight.summary}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 font-mono">{formatDate(insight.created_at)}</p>
-                </div>
-                <span className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs font-bold text-blue-800">
-                  {insight.confidence_percent}% confidence
-                </span>
-              </div>
 
-              {/* Summary */}
-              <p className="text-xs text-gray-700 mb-4 leading-relaxed">{insight.summary}</p>
-
-              {/* Data Summary */}
-              {insight.data_summary && Object.keys(insight.data_summary).length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-100">
-                  <p className="text-xs font-bold text-gray-700 mb-2">📊 Relevant Business Data Metrics:</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {Object.entries(insight.data_summary)
-                      .slice(0, 4)
-                      .map(([key, value]) => {
-                        const isMoney = typeof value === 'number' && (key.includes('rupees') || key.includes('revenue') || key.includes('amount') || key.includes('value') || key.includes('cents')) && !key.includes('count') && !key.includes('rate') && !key.includes('percent');
-                        let formattedVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                        if (typeof value === 'number') {
-                          if (key.includes('cents')) {
-                            formattedVal = formatCentsToRupees(value);
-                          } else if (isMoney) {
-                            formattedVal = formatRupees(value);
-                          }
-                        }
-                        const cleanKey = key.replace(/_rupees|_cents/g, '').replace(/_/g, ' ');
-                        return (
-                          <div key={key} className="text-xs text-gray-600">
-                            <span className="font-semibold text-gray-800 capitalize">{cleanKey}:</span>{' '}
-                            {formattedVal}
-                          </div>
-                        );
-                      })}
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold font-display block" style={{ color: 'var(--c-text)' }}>
+                      {insight.confidence_percent}%
+                    </span>
+                    <span className="text-[10px] font-medium" style={{ color: 'var(--c-muted)' }}>
+                      confidence
+                    </span>
                   </div>
                 </div>
-              )}
 
-              {/* Recommendations */}
-              {insight.insights && insight.insights.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-gray-700">🎯 Actionable Recommendations:</p>
-                  {insight.insights.map((rec, idx) => (
-                    <div
-                      key={idx}
-                      className={`border-l-4 p-4 rounded-r-lg text-xs ${getPriorityColor(rec.priority)}`}
-                    >
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="space-y-1">
-                          <p className="font-bold text-sm">{rec.title}</p>
-                          <p className="text-gray-700">{rec.description}</p>
-                          <p className="text-[11px] text-gray-500 italic mt-1">Reasoning: {rec.reasoning}</p>
-                          <p className="font-bold text-blue-900 mt-2">Next Step: {rec.action}</p>
-                        </div>
-                        <span className="px-2 py-0.5 bg-white bg-opacity-70 rounded text-[10px] font-bold uppercase">
-                          {rec.priority} priority
+                {/* Relevant Business Data Section */}
+                {insight.data_summary && Object.keys(insight.data_summary).length > 0 && (
+                  <div className="pt-4 border-t space-y-3" style={{ borderColor: 'var(--c-border-soft)' }}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest block font-display" style={{ color: 'var(--c-muted)' }}>
+                      RELEVANT BUSINESS DATA
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {Object.entries(insight.data_summary)
+                        .slice(0, 4)
+                        .map(([key, value]) => {
+                          const cleanKey = key.replace(/_rupees|_cents/g, '').replace(/_/g, ' ');
+                          return (
+                            <div key={key} className="space-y-0.5">
+                              <p className="text-xs font-medium capitalize" style={{ color: 'var(--c-muted)' }}>
+                                {cleanKey}
+                              </p>
+                              <p className="text-sm font-bold font-display" style={{ color: 'var(--c-text)' }}>
+                                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                              </p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actionable Recommendation Section */}
+                {rec && (
+                  <div className="pt-4 border-t space-y-4" style={{ borderColor: 'var(--c-border-soft)' }}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest block font-display" style={{ color: 'var(--c-muted)' }}>
+                      ACTIONABLE RECOMMENDATION
+                    </span>
+
+                    <div className="flex flex-wrap justify-between items-start gap-4">
+                      <div className="space-y-1">
+                        <h4 className="text-base font-bold font-display" style={{ color: 'var(--c-text)' }}>
+                          {rec.title}
+                        </h4>
+                        <p className="text-xs leading-relaxed" style={{ color: 'var(--c-muted)' }}>
+                          {rec.description}
+                        </p>
+                      </div>
+
+                      {rec.priority && (
+                        <span
+                          className="px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase font-display shrink-0"
+                          style={{
+                            background: rec.priority === 'high' ? 'var(--c-status-red-bg)' : 'var(--c-status-amber-bg)',
+                            color: rec.priority === 'high' ? 'var(--c-status-red-text)' : 'var(--c-status-amber-text)',
+                            border: '1px solid var(--c-border-soft)',
+                          }}
+                        >
+                          {rec.priority} PRIORITY
                         </span>
+                      )}
+                    </div>
+
+                    {/* Bottom Reasoning & Next Step Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 text-xs">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider block font-display" style={{ color: 'var(--c-muted)' }}>
+                          REASONING
+                        </span>
+                        <p style={{ color: 'var(--c-muted)' }}>
+                          {rec.reasoning}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider block font-display" style={{ color: 'var(--c-muted)' }}>
+                          NEXT STEP
+                        </span>
+                        <p className="font-medium" style={{ color: 'var(--c-status-green-text)' }}>
+                          {rec.action}
+                        </p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -141,7 +141,9 @@ export function createMerchantRouter(
       const allMerchantProducts: any[] = await productRepo
         .createQueryBuilder('p')
         .where('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
-        .andWhere("(p.category IS NULL OR p.category != 'archived')")
+        .andWhere("(p.category IS NULL OR (p.category != 'archived' AND p.category != 'test'))")
+        .andWhere("p.name NOT ILIKE 'Test Product%'")
+        .orderBy('p.created_at', 'DESC')
         .getMany();
 
       const inventoryRepo = dataSource.getRepository('Inventory');
@@ -606,7 +608,8 @@ export function createMerchantRouter(
 
       const products = await productRepo.createQueryBuilder('p')
         .where('(p.merchant_id = :merchantId OR p.merchant_id IS NULL)', { merchantId })
-        .andWhere('(p.category IS NULL OR p.category != :archivedCat)', { archivedCat: 'archived' })
+        .andWhere("(p.category IS NULL OR (p.category != 'archived' AND p.category != 'test'))")
+        .andWhere("p.name NOT ILIKE 'Test Product%'")
         .orderBy('p.created_at', 'DESC')
         .getMany();
 

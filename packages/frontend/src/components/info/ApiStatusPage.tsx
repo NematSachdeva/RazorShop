@@ -34,20 +34,20 @@ export function ApiStatusPage() {
   }, []);
 
   return (
-    <div className="w-full bg-gray-50 py-10 font-sans">
+    <div className="w-full py-10 font-sans themed" style={{ background: 'var(--c-bg)', color: 'var(--c-text)' }}>
       <div className="mx-auto max-w-4xl px-4 sm:px-6">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 sm:p-10 space-y-8">
+        <div className="rounded-2xl border p-6 sm:p-10 space-y-8 themed shadow-xl" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)' }}>
           {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 pb-6 border-b border-gray-100">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 pb-6 border-b" style={{ borderColor: 'var(--c-border)' }}>
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-gold)' }}>
                 <IconShield className="w-6 h-6" />
               </div>
               <div>
-                <span className="text-[11px] font-bold text-blue-600 uppercase tracking-widest block">
+                <span className="text-[11px] font-bold uppercase tracking-widest block font-display" style={{ color: 'var(--c-gold)' }}>
                   RazorShop Service Diagnostics
                 </span>
-                <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-0.5">
+                <h1 className="text-2xl sm:text-3xl font-bold font-display mt-0.5" style={{ color: 'var(--c-text)' }}>
                   RazorShop System Status
                 </h1>
               </div>
@@ -56,7 +56,8 @@ export function ApiStatusPage() {
             <button
               onClick={fetchHealthStatus}
               disabled={loading}
-              className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-2 self-start sm:self-auto"
+              className="px-4 py-2 font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-2 self-start sm:self-auto cursor-pointer font-display"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}
             >
               <IconRefresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               <span>Refresh Status</span>
@@ -64,15 +65,15 @@ export function ApiStatusPage() {
           </div>
 
           {loading && (
-            <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-xs text-gray-500 font-medium">Checking real-time service health...</p>
+            <div className="text-center py-12 rounded-2xl border" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+              <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-2" style={{ borderColor: 'var(--c-gold)', borderTopColor: 'transparent' }} />
+              <p className="text-xs font-medium" style={{ color: 'var(--c-muted)' }}>Checking real-time service health...</p>
             </div>
           )}
 
           {error && (
-            <div className="p-4 bg-rose-50 text-rose-800 rounded-2xl border border-rose-200 text-xs font-medium space-y-1">
-              <p className="font-bold text-sm">Service Health Alert</p>
+            <div className="p-4 rounded-2xl border text-xs font-medium space-y-1" style={{ background: 'var(--c-status-red-bg)', color: 'var(--c-status-red-text)', borderColor: 'var(--c-border)' }}>
+              <p className="font-bold text-sm font-display">Service Health Alert</p>
               <p>{error}</p>
             </div>
           )}
@@ -80,100 +81,59 @@ export function ApiStatusPage() {
           {!loading && statusData && (
             <div className="space-y-6">
               {/* Overall Banner */}
-              <div className="p-5 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex items-center justify-between">
+              <div className="p-5 rounded-2xl border flex items-center justify-between" style={{ background: 'var(--c-status-green-bg)', borderColor: 'var(--c-border)' }}>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--c-status-green-text)', color: '#0a0908' }}>
                     <IconCheck className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="text-base font-extrabold text-emerald-950">
+                    <h2 className="text-base font-bold font-display" style={{ color: 'var(--c-status-green-text)' }}>
                       All Systems Operational
                     </h2>
-                    <p className="text-xs text-emerald-800">
+                    <p className="text-xs font-medium" style={{ color: 'var(--c-text-dim)' }}>
                       Core backend services and database connections are healthy.
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-mono bg-white px-3 py-1 rounded-lg border border-emerald-200 font-bold text-emerald-900">
+                <span className="text-xs font-mono px-3 py-1 rounded-lg border font-bold font-display" style={{ background: 'var(--c-surface)', borderColor: 'var(--c-border)', color: 'var(--c-status-green-text)' }}>
                   {statusData.status.toUpperCase()}
                 </span>
               </div>
 
               {/* Service Health Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-gray-900 text-xs sm:text-sm block">Core API</span>
-                    <span className="text-[11px] text-gray-500">Express Application Server</span>
+                {[
+                  { name: 'Core API', desc: 'Express Application Server' },
+                  { name: 'Database', desc: `TypeORM PostgreSQL (${statusData.database})` },
+                  { name: 'Payment Gateway', desc: 'Razorpay API Integration' },
+                  { name: 'Email Dispatcher', desc: 'Transactional Email Service' },
+                  { name: 'Recommendations', desc: 'Catalog AI Engine' },
+                  { name: 'Seller Portal', desc: 'Seller Hub & Admin' },
+                ].map((item, idx) => (
+                  <div key={idx} className="p-4 rounded-xl border flex items-center justify-between" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+                    <div>
+                      <span className="font-bold text-xs sm:text-sm block font-display" style={{ color: 'var(--c-text)' }}>{item.name}</span>
+                      <span className="text-[11px]" style={{ color: 'var(--c-muted)' }}>{item.desc}</span>
+                    </div>
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-md border flex items-center gap-1 font-display" style={{ background: 'var(--c-status-green-bg)', color: 'var(--c-status-green-text)', borderColor: 'var(--c-border)' }}>
+                      <IconCheck className="w-3.5 h-3.5" /> Operational
+                    </span>
                   </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
-                    <IconCheck className="w-3.5 h-3.5" /> Operational
-                  </span>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-gray-900 text-xs sm:text-sm block">Database</span>
-                    <span className="text-[11px] text-gray-500">TypeORM PostgreSQL</span>
-                  </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
-                    <IconCheck className="w-3.5 h-3.5" /> {statusData.database === 'connected' ? 'Connected' : statusData.database}
-                  </span>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-gray-900 text-xs sm:text-sm block">Payment Gateway</span>
-                    <span className="text-[11px] text-gray-500">Razorpay API Integration</span>
-                  </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
-                    <IconCheck className="w-3.5 h-3.5" /> Operational
-                  </span>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-gray-900 text-xs sm:text-sm block">Email Dispatcher</span>
-                    <span className="text-[11px] text-gray-500">Transactional Email Service</span>
-                  </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
-                    <IconCheck className="w-3.5 h-3.5" /> Operational
-                  </span>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-gray-900 text-xs sm:text-sm block">Recommendations</span>
-                    <span className="text-[11px] text-gray-500">Catalog AI Engine</span>
-                  </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
-                    <IconCheck className="w-3.5 h-3.5" /> Operational
-                  </span>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-gray-900 text-xs sm:text-sm block">Merchant Portal</span>
-                    <span className="text-[11px] text-gray-500">Merchant Hub & Admin</span>
-                  </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
-                    <IconCheck className="w-3.5 h-3.5" /> Operational
-                  </span>
-                </div>
+                ))}
               </div>
 
               {/* Timestamp Card */}
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 text-xs text-gray-500 font-mono flex justify-between items-center">
+              <div className="p-4 rounded-xl border text-xs font-mono flex justify-between items-center" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-muted)' }}>
                 <span>Last Diagnostic Sync:</span>
-                <span className="font-bold text-gray-900">{new Date(statusData.timestamp).toLocaleString()}</span>
+                <span className="font-bold" style={{ color: 'var(--c-text)' }}>{new Date(statusData.timestamp).toLocaleString()}</span>
               </div>
             </div>
           )}
 
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 text-xs text-gray-600 flex items-start gap-2.5">
-            <IconInfo className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-xl border text-xs flex items-start gap-2.5" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)', color: 'var(--c-muted)' }}>
+            <IconInfo className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
             <p>
-              System health is polled continuously. If you encounter any unexpected error, please contact customer support at <strong className="text-gray-900">nnnnsachdeva@gmail.com</strong>.
+              System health is polled continuously. If you encounter any unexpected error, please contact customer support at <strong style={{ color: 'var(--c-text)' }}>nnnnsachdeva@gmail.com</strong>.
             </p>
           </div>
         </div>
