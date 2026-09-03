@@ -156,7 +156,8 @@ export default function App() {
       const response = await fetch(getApiUrl('/products/categories'));
       if (response.ok) {
         const data = await response.json();
-        setCategories(data.categories || []);
+        const rawCategories: string[] = data.categories || [];
+        setCategories(rawCategories.filter((cat) => cat.toLowerCase() !== 'archived'));
       }
     } catch (err) {
       console.error('Failed to load categories', err);
