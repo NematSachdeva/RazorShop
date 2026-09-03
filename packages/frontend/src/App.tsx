@@ -1277,10 +1277,7 @@ export default function App() {
                                     <p className="font-display" style={{ fontSize: '0.65rem', fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--c-gold)' }}>{product.category || 'General'}</p>
                                     <h3 className="font-display" style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--c-text)', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{product.name}</h3>
                                     <p style={{ fontSize: '0.78rem', color: 'var(--c-muted)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{product.description || 'No description available.'}</p>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-                                      <span style={{ color: 'var(--c-gold)', fontSize: '0.75rem' }}>★★★★★</span>
-                                      <span style={{ fontSize: '0.72rem', color: 'var(--c-muted)' }}>4.7 · 312</span>
-                                    </div>
+
                                     <div style={{ marginTop: 'auto', paddingTop: '0.5rem' }}>
                                       <p className="font-display" style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--c-text)', lineHeight: 1 }}>{formatPrice(product.price_cents)}</p>
                                       <p style={{ fontSize: '0.7rem', color: 'var(--c-muted)', marginTop: '2px' }}>by {merchantName}</p>
