@@ -304,15 +304,30 @@ export default function MerchantHelper() {
       setIsTranscribing(true);
       setVoiceError(null);
 
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'speech.webm');
+      // Convert blob to base64 for the /helper/transcribe endpoint (expects JSON, not FormData)
+      const audioBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Strip the data-URI prefix (data:<mime>;base64,) — send only the raw base64 payload
+          const base64 = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Failed to read audio data'));
+        reader.readAsDataURL(audioBlob);
+      });
 
-      const response = await fetch(getApiUrl('/merchant/helper/stt'), {
+      const response = await fetch(getApiUrl('/merchant/helper/transcribe'), {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           ...authService.getAuthHeader(),
         },
-        body: formData,
+        body: JSON.stringify({
+          audio: audioBase64,
+          mimeType: audioBlob.type || 'audio/webm',
+          filename: 'speech.webm',
+        }),
       });
 
       if (!response.ok) {
