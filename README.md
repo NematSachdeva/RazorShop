@@ -2,463 +2,530 @@
 
 **RazorShop** is an enterprise-grade e-commerce platform and AI-powered revenue recovery manager designed for modern online merchants. It combines a high-converting customer storefront, an embedded Razorpay checkout pipeline, automated payment failure recovery workflows, order cancellation & return logistics management, voice-enabled AI merchant assistance, and comprehensive analytics.
 
-- **Production URL**: [https://razorshop.app](https://razorshop.app)
+- **Production Site**: [https://razorshop.app](https://razorshop.app)
 - **GitHub Repository**: [https://github.com/NematSachdeva/RazorShop](https://github.com/NematSachdeva/RazorShop)
 
 ---
 
-## 1. Project Overview
+## Overview
 
-### Problem Statement
-E-commerce businesses lose significant potential revenue to:
-1. **Payment Failures**: Transient network drops, card declines, insufficient funds, and authentication timeouts during checkout.
-2. **Abandoned Carts**: High-intent shoppers dropping off before payment completion.
-3. **Complex Return/Cancellation Workflows**: Friction and lack of visibility when managing customer order returns, inventory restocks, and refund processing.
-4. **Merchant Operational Bottlenecks**: Manual effort required to analyze revenue risk, run recovery campaigns, and perform catalog or order management.
+E-commerce businesses lose a significant portion of their revenue due to transient payment failures, abandoned checkout carts, manual return/refund friction, and operational delays in seller workflows. 
 
-### Platform Solution & Purpose
-RazorShop resolves these pain points through an end-to-end architecture:
-- **Customer Storefront & Checkout**: Seamless browsing, filtering, cart recommendations, and payment processing.
-- **Automated Payment Failure & Cart Recovery Engine**: Real-time detection, AI failure diagnosis, automated recovery campaigns, and promise-to-pay tracking.
-- **Merchant Helper AI Assistant**: Natural language text and voice interaction for merchant tasks (stock updates, deal creation, order processing, return approvals, and store insights).
-- **Comprehensive Merchant Analytics**: Real-time dashboards tracking revenue, revenue at risk, recovered revenue, failure breakdown, and customer response trends.
-
-### User Roles & Portals
-1. **Customer Portal**: End-consumer storefront for browsing products, managing cart items, checking out via Razorpay, tracking order status, submitting feedback, and requesting cancellations or returns.
-2. **Merchant Portal**: Store owner dashboard for managing products, inventory, orders, returns/refunds, recovery cases, merchant configuration guardrails, and conversing with the AI Merchant Helper.
-3. **Admin Portal**: Platform administrator interface for reviewing, approving, or rejecting new merchant applications and viewing system-wide application metrics.
+RazorShop addresses these challenges by uniting a full-featured online marketplace with intelligent automation:
+1. **High-Converting Customer Storefront**: A responsive, fast, and accessible customer portal with product discovery, category filtering, cart management, and seamless Razorpay checkout.
+2. **Automated Revenue Recovery Engine**: Real-time detection of failed payment attempts and abandoned carts, generating AI-driven recovery cases, personalized communication, and customer promise-to-pay tracking.
+3. **Multi-Modal AI Merchant Helper**: A natural language AI assistant supporting text and voice commands (via Groq Whisper V3 Speech-to-Text and Sarvam AI Bulbul V3 Text-to-Speech) for catalog updates, stock adjustments, deal creation, order cancellations, and refunds.
+4. **End-to-End Fulfillment & Return Logistics**: Full order status tracking from placement to delivery, including a 5-stage return logistics pipeline with automatic stock restoration upon return completion.
+5. **Multi-Tenant Merchant & Admin Portals**: Dedicated seller workspaces for inventory and order operations, alongside an administrator portal for merchant application review, approval provisioning, and audit trails.
 
 ---
 
-## 2. Key Features
+## Key Features
 
-### Customer Portal
-- **Product Browsing**: Dynamic grid view displaying active product deals, original vs. discounted pricing, ratings, and stock indicators.
-- **Category Navigation**: Category tabs and sidebar filter (Archived categories are automatically filtered out from customer view).
-- **Price Range Filtering**: Min and max price filters with real-time application.
-- **In-Stock Filtering**: Instant toggle to show only items with available inventory.
-- **Product Search**: Real-time text search across product names and descriptions.
-- **Sorting**: Sort products by Newest, Price (Low to High / High to Low), and Name (A–Z / Z–A).
-- **Pagination**: Server-side paginated product lists.
-- **Product Details Modal**: Full product details view, image gallery, inventory check, and AI product recommendations.
-- **Sliding Cart Drawer**: Interactive cart with quantity controls, item removal, bundle offer banners, and automatic total calculations.
-- **Checkout & Payment Flow**: Embedded Razorpay payment gateway integration, shipping address management, and instant order creation.
-- **Order Tracking & History**: Customer order history with visual timeline (`Pending` → `Confirmed` → `Dispatched` → `Shipped` → `Delivered`), return/cancellation status tracking, and receipt views.
-- **Order Feedback System**: Post-order 1–5 star rating and category feedback submission.
-- **Delivery Address Management**: Customer address book supporting multiple addresses, default address setting, creation, editing, and deletion.
-- **Light / Dark Mode**: Theme toggle with preference persistence in `localStorage`.
-- **UI Animations**: Smooth CSS transitions, dynamic slide-over drawers, and responsive layouts.
+### Customer Features
+- **Storefront & Catalog Browsing**: Dynamic grid view with deal badges (`POPULAR`, `ONLY X LEFT`), original vs. discounted pricing, ratings, and stock status.
+- **Search & Filtering**: Real-time search across product names and descriptions, category selection, price range (`Min`/`Max`), and `In Stock Only` filters.
+- **Sorting & Pagination**: Sort by Newest/Recommended, Price (Low to High / High to Low), and Name (A–Z / Z–A) with server-side pagination.
+- **Product Details & Recommendations**: Rich modal view with high-resolution imagery, inventory checks, product overview, and AI-driven cross-sell recommendations.
+- **Sliding Cart Drawer**: Real-time cart drawer with quantity controls, item removal, bundle offer banners, and dynamic total calculations.
+- **Delivery Address Book**: Multi-address management allowing default selection, creation, editing, and deletion.
+- **Razorpay Checkout**: Seamless payment modal integration supporting card, UPI, and net banking options.
+- **Customer Order Tracking**: Dedicated order history page with interactive 4-stage delivery timeline (`Pending` → `Confirmed` → `Dispatched` → `Shipped` → `Delivered`), order receipts, and return status tracking.
+- **Order Cancellation & Return Requests**: Self-service cancellation before dispatch and structured return requests.
+- **Order Feedback**: Post-delivery rating (1–5 stars) and category feedback submission.
+- **Light / Dark Mode**: Theme switcher with persistent preferences stored in `localStorage`.
 
-### Merchant / Seller Portal
-- **Real-Time Dashboard**: Comprehensive metrics for total revenue, revenue at risk, recovered revenue, failed payments, abandoned carts, cancellation/return rates, and daily revenue timeline.
-- **Orders & Fulfillment Management**: Filterable order tables with status controls (`Dispatched`, `Shipped`, `Delivered`, `Cancelled`).
-- **Cancellation & Return/Refund Lifecycle**:
-  - Customer pre-dispatch cancellation processing.
-  - Return request management (`Approve Return`, `Reject Return` with mandatory reason).
-  - 5-stage return logistics pipeline (`Pickup Scheduled` → `Picked Up` → `In Transit` → `Returned to Seller` → `Refund Initiated`).
-  - Idempotent stock restoration executed strictly upon return arrival to seller.
+### Merchant Features
+- **Real-Time Dashboard & Analytics**: Live tracking of Total Revenue, Revenue at Risk, Recovered Revenue, Failed Payments Count, Abandoned Carts Count, and Cancellation/Return metrics.
+- **Catalog & Inventory Management**: Interactive catalog manager supporting product creation, catalog editing, deal creation (discount percentage and expiration timer), image uploads, and soft-deletion/archiving.
+- **Stock Inventory Adjustment**: Inline stock editor supporting `Add Stock`, `Remove Stock`, and `Set Exact` operations on hand and available quantities.
+- **Order Fulfillment & Shipping Controls**: Filterable order tables with status transition actions (`Dispatch`, `Ship`, `Deliver`).
+- **Cancellation & Return Logistics Management**:
+  - Review and approve/reject customer return requests.
+  - Track 5-stage return logistics: `Pickup Scheduled` → `Picked Up` → `In Transit` → `Returned to Seller` → `Refund Initiated`.
+  - Automated stock restoration triggered strictly upon return arrival to seller (`Returned to Seller`).
   - Manual merchant refund initiation with payment verification audit trail.
-- **Products & Stock Management**: Product catalog management, inline stock editor, deal creation (discount percentage and expiration timer), image uploads, and soft-deletion/archiving.
-- **Recovery Cases Management**: Active recovery case table, status filtering (`Open`, `In Progress`, `Resolved`, `Abandoned`, `Customer Declined`), manual email triggers, agent decision history, and opt-out tracking.
-- **Merchant Helper (AI Assistant)**:
-  - **Text & Voice Commands**: Dual-mode natural language interface.
-  - **Voice Transcription**: Groq Whisper Large v3 voice-to-text with auto-script verification and targeted Hindi retry logic.
-  - **Text-to-Speech (TTS)**: Sarvam AI Bulbul v3 TTS speech synthesis (speaker: `shubh`) for audio responses.
-  - **Interactive Action Proposals**: Structured action proposals requiring merchant confirmation prior to executing deals, price changes, stock adjustments, refunds, or cancellations.
-- **Merchant Guardrails Configuration**: Max recovery attempts, max discount percentages, allowed communication channels, promise-to-pay limits, and AI feature toggles.
-- **Merchant Application Status View**: Real-time status display and decision timeline for pending/approved/rejected merchant onboarding applications.
+- **Recovery Cases Hub**: Table of active recovery cases filtered by status (`Open`, `In Progress`, `Resolved`, `Abandoned`, `Customer Declined`), manual recovery email triggers, and timeline histories.
+- **Merchant Helper (AI Assistant)**: Text and voice interaction interface for executing stock updates, deal creation, order queries, and return approvals.
+- **Merchant Guardrails Configuration**: Editable business parameters including max recovery attempts, max discount percentages, allowed communication channels, promise-to-pay limits, and AI feature toggles.
+- **Merchant Application Status View**: Real-time status tracker for onboarding applications (`pending`, `approved`, `rejected`).
 
-### Admin Portal
-- **Merchant Application Management**: List and inspect submitted merchant onboarding applications.
-- **Application Review Workflow**: Approve applications (automatically provisioning merchant records and updating customer roles) or Reject applications with mandatory feedback.
-- **Application Metrics Summary**: Overview of total, pending, approved, and rejected merchant applications.
+### Admin Features
+- **Merchant Onboarding Applications**: Portal for inspecting seller registration requests.
+- **Application Review Workflow**: Approve applications (automatically provisioning seller credentials and upgrading user roles) or Reject applications with mandatory feedback.
+- **Application Metrics & Audit Trail**: Overview of total, pending, approved, and rejected applications alongside detailed timeline audit logs.
 
----
+### Platform & Backend Features
+- **RESTful API**: Clean Express route structure for auth, catalog, cart, checkout, payments, orders, merchant operations, admin workflows, and recovery.
+- **TypeORM Entity Layer**: Strongly typed PostgreSQL database models and migrations.
+- **Idempotent Webhook Processing**: Secure Razorpay webhook handler with raw body HMAC-SHA256 signature verification.
+- **Background Scheduler**: Automated background cron runner for recovering abandoned carts, checking payment timeouts, and expiring active deals.
+- **Multi-Tenant Isolation**: Merchant routes scoped strictly to seller-owned products, orders, and configuration.
 
-## 3. Authentication & Authorization
-
-### Authentication Architecture
-- **JWT (JSON Web Tokens)**: Stateless token-based authentication. Tokens are signed using `JWT_SECRET` with a 7-day expiration.
-- **Password Security**: Passwords hashed using `bcryptjs` (salt rounds = 10). Public administrator registration is strictly prohibited.
-- **Client Storage**: Tokens and authenticated user objects stored in `localStorage` and sent via `Authorization: Bearer <token>` headers.
-
-### Available Roles
-1. `customer`: Default role for store shoppers. Can manage personal cart, delivery addresses, place orders, view order history, submit feedback, and cancel/return orders.
-2. `merchant`: Approved seller role. Grants access to the merchant dashboard, product catalog management, order fulfillment, return logistics, recovery cases, and the AI Merchant Helper.
-3. `admin`: Platform administrator role. Access restricted to application review and merchant provisioning routes (`/api/admin/*`).
-
-### Protected Routes & Access Control Middleware
-- `createAuthenticate`: Validates JWT token and attaches user payload to `req.user`.
-- `requireCustomer`: Restricts route to authenticated customers.
-- `requireMerchant`: Restricts route to users with merchant credentials.
-- `createRequireApprovedMerchant`: Ensures the merchant's application status is `approved` before granting dashboard access.
-- `requireAdmin`: Restricts route to system administrators.
+### AI & Automation Features
+- **AI Cart & Product Recommendations**: Groq LLM-driven recommendation engine suggesting complementary products and bundle discounts.
+- **AI Recovery Email Generator**: Groq LLM-generated personalized recovery emails tailored to failure reasons.
+- **Voice Transcription (STT)**: Groq Whisper Large v3 voice-to-text with auto-script verification and targeted Hindi retry logic.
+- **Text-to-Speech (TTS)**: Sarvam AI Bulbul v3 TTS speech synthesis (`speaker: shubh`) for audio voice responses.
 
 ---
 
-## 4. Product Management
+## Platform Architecture
 
-### Product Data Structure
-Products are represented by the `Product` TypeORM entity:
-- `id` (UUID), `name`, `description`, `category`, `image_url`
-- `price_cents` (BigInt in cents, e.g., 299900 = ₹2,999.00)
+```
+                                [ Client Web Browser ]
+                                          │
+                                          ▼
+                                 [ Nginx Reverse Proxy ]
+                              (Port 443 / SSL Terminated)
+                               /                       \
+                  Static Assets                         /api Proxy
+                       │                                    │
+                       ▼                                    ▼
+             [ React / Vite Frontend ]            [ Express Node.js Backend ]
+            (Dist Assets in /var/www)               (PM2 Daemon / Port 7070)
+                                                   /           │          \
+                                                  /            │           \
+                                                 ▼             ▼            ▼
+                                          [ AWS RDS ]     [ Razorpay ]  [ Groq AI ]
+                                         (PostgreSQL)      (Payments)   (LLM & STT)
+```
+
+---
+
+## User Roles
+
+| Role | Access Level & Responsibilities |
+| :--- | :--- |
+| `customer` | Default public/registered user role. Can browse catalog, manage cart, save shipping addresses, place orders, complete payments, track delivery timelines, submit feedback, and initiate cancellations/returns. |
+| `merchant` | Approved seller role. Grants access to the Merchant Portal for managing product catalog, inventory stock, order fulfillment, return logistics, recovery cases, merchant configuration guardrails, and AI Merchant Helper. |
+| `admin` | System administrator role. Access restricted to Admin Portal routes (`/api/admin/*`) for reviewing merchant applications, approving/rejecting seller onboarding, and inspecting audit trails. |
+
+---
+
+## Customer Portal
+
+The Customer Portal provides a modern, fast shopping experience:
+- **Navigation & Routing**: HTML5 History API routing supporting `/`, `/orders`, `/privacy`, `/terms`, `/support`, `/status`.
+- **Search & Filter Bar**: Real-time text search, price sliders, in-stock filters, category chips, and sort selectors.
+- **Product Details & Recommendations**: Interactive product detail dialog featuring stock badges, full descriptions, pricing, and AI recommendations.
+- **Sliding Cart Drawer**: Right-side drawer for quick cart adjustments, bundle discount triggers, and checkout initiation.
+- **Delivery Address Management**: Customer address modal to create, edit, select default, or delete delivery addresses.
+- **Checkout Modal**: Summarizes selected shipping address, cart line items, discounts, and total payable amount before launching payment.
+- **Payment Page Modal**: Intermediate payment gateway loading screen handling Razorpay Checkout modal launch and payment verification.
+- **Order Tracking Page**: Displays customer order history with real-time status badges, line items, breakdown, address details, and cancellation/return request triggers.
+
+---
+
+## Merchant Portal
+
+The Merchant Portal equips store owners with operational tools:
+- **Overview Dashboard**: High-level KPI summary cards and daily revenue performance charts.
+- **Products & Stock Tab**: Data table listing all merchant products, stock counts (On Hand, Reserved, Available, Sold), quick inline stock editor, product creator/editor modal, and archiving controls.
+- **Orders & Fulfillment Tab**: Filterable order manager for changing fulfillment status (`Dispatched`, `Shipped`, `Delivered`) and processing return requests through 5 logistics stages.
+- **Recovery Cases Tab**: Management table for open and in-progress recovery cases with manual email dispatch options and case decision logs.
+- **Merchant Helper**: Interactive text/voice AI chat drawer for natural-language store management.
+- **Merchant Configuration Modal**: Control guardrail limits for discounts, recovery attempts, communication channels, and promise-to-pay rules.
+
+---
+
+## Admin Portal
+
+The Admin Portal handles platform governance:
+- **Application Queue**: Overview of pending, approved, and rejected seller applications.
+- **Application Review Modal**: Detailed inspection of seller application metadata (business name, tax ID, store description, contact info).
+- **Approval & Provisioning**: Approving an application automatically provisions a `Merchant` database entity and upgrades the applicant's user account role to `merchant`.
+- **Rejection Workflow**: Rejecting an application records a mandatory rejection reason and updates timeline logs.
+- **Audit Logs**: Full timeline history of administrator actions and status changes.
+
+---
+
+## Authentication & Authorization
+
+- **JWT Tokens**: Authentication uses JSON Web Tokens signed with `JWT_SECRET` (7-day validity). Tokens are stored in `localStorage` and passed in the `Authorization: Bearer <token>` HTTP header.
+- **Password Protection**: User passwords are encrypted using `bcryptjs` with salt rounds of 10.
+- **Role-Based Access Control (RBAC)**: Middleware functions enforce strict authorization:
+  - `createAuthenticate`: Decodes JWT token and attaches user payload to `req.user`.
+  - `requireCustomer`: Restricts route to authenticated customers.
+  - `requireMerchant`: Restricts route to authenticated merchants.
+  - `createRequireApprovedMerchant`: Ensures merchant's application status is `approved`.
+  - `requireAdmin`: Restricts route to system administrators.
+
+---
+
+## Product & Inventory Management
+
+### Product Schema (`products` table)
+- `id` (UUID primary key)
+- `name`, `category`, `description`, `image_url`
+- `price_cents` (BigInt in cents, e.g. `299900` = ₹2,999.00)
 - `original_price_cents`, `discount_percent`
 - `deal_active` (Boolean), `deal_expires_at` (Timestamp)
-- `merchant_id` (UUID foreign key linking product to seller)
+- `merchant_id` (Foreign key linking product to seller)
 
-### Inventory Architecture
-Inventory is maintained in a separate `Inventory` entity:
-- `quantity_on_hand`: Physical stock available in warehouse.
-- `reserved`: Stock reserved in active customer carts/orders.
+### Inventory Schema (`inventory` table)
+- `quantity_on_hand`: Physical stock quantity present in warehouse.
+- `reserved`: Quantity currently held in active customer carts/orders.
 - `available`: Calculated as `max(0, quantity_on_hand - reserved)`.
 
-### Pricing & Deals
-Merchants or the AI Merchant Helper can activate deals on products or carts. Active deals specify a discount percentage and an expiration timestamp. When a deal expires, prices automatically revert to original values.
-
-### Product Status & Archived Category Behavior
-Products can be archived when deleted by a merchant if historical order records exist. Archived products retain category `'archived'` to preserve historical analytics, but the Customer Portal automatically filters out the `'archived'` category from top category tabs and sidebar filter lists.
+### Inventory Lifecycle Logic
+1. **Item Added to Cart**: Increments `reserved` count by item quantity.
+2. **Item Removed / Cart Expired**: Decrements `reserved` count by item quantity.
+3. **Order Confirmed**: Deducts item quantity from `quantity_on_hand` and clears `reserved`.
+4. **Order Cancelled / Returned**: Restores `quantity_on_hand` upon cancellation or when return arrives back to seller (`Returned to Seller`).
 
 ---
 
-## 5. Cart, Order & Payment Flow
+## Order & Fulfillment Lifecycle
 
-```mermaid
-flowchart TD
-    A[Customer browses catalog] --> B[Add item to Cart]
-    B --> C[Cart Recommendation / Bundle Offer]
-    C --> D[Initiate Checkout & Select Address]
-    D --> E[Create Order in 'pending' state]
-    E --> F[Create Razorpay Payment Attempt]
-    F --> G{Payment Status}
-    G -- Success --> H[Verify HMAC Signature]
-    H --> I[Update Order to 'confirmed']
-    I --> J[Merchant Dispatches Order]
-    J --> K[Order Delivered]
-    G -- Failed --> L[Trigger PaymentFailure & Recovery Pipeline]
-    L --> M[Create RecoveryCase & Trigger AI Campaign]
+```
+Customer Checkout ──► Order Created ('pending')
+                            │
+                            ├── Payment Successful ──► Order Confirmed ('confirmed')
+                            │                               │
+                            │                               ├── Merchant Dispatches ──► 'dispatched'
+                            │                               │                               │
+                            │                               │                               ▼
+                            │                               │                          'shipped'
+                            │                               │                               │
+                            │                               │                               ▼
+                            │                               │                          'delivered'
+                            │                               │                               │
+                            │                               │                               ▼
+                            │                               │                     Return Requested ('return_requested')
+                            │                               │                               │
+                            │                               │                               ├── Return Approved ('return_approved')
+                            │                               │                               │           │
+                            │                               │                               │           ▼
+                            │                               │                               │    'pickup_scheduled' ──► 'order_picked_up'
+                            │                               │                               │                                │
+                            │                               │                               │                                ▼
+                            │                               │                               │                      'return_in_transit'
+                            │                               │                               │                                │
+                            │                               │                               │                                ▼
+                            │                               │                               │                   'order_returned_to_seller'
+                            │                               │                               │                     (Stock Restored)
+                            │                               │                               │                                │
+                            │                               │                               │                                ▼
+                            │                               │                               │                     'refund_initiated'
+                            │                               │                               │
+                            │                               │                               └── Return Rejected ('return_rejected')
+                            │                               │
+                            │                               └── Pre-Dispatch Cancel ──► Order Cancelled ('cancelled')
+                            │
+                            └── Payment Failed ──► Trigger Payment Failure & Recovery Engine
 ```
 
-1. **Cart Creation**: Customer creates or retrieves an active cart. Items are added with stock verification.
-2. **Order Initiation**: Order is created from the cart, converting cart items into `OrderItem` records, setting initial status to `pending`, and calculating subtotal, tax, discount, and total cents.
-3. **Payment Initiation**: `PaymentService` creates a `PaymentAttempt` row in PostgreSQL and generates a Razorpay Order ID.
-4. **Payment Verification**: When payment completes on client, backend verifies the HMAC-SHA256 signature (`razorpay_payment_id` + `razorpay_order_id`). Upon verification, payment status becomes `captured` and order status updates to `confirmed`.
-5. **Payment Failure**: If payment fails or is cancelled, backend records a `PaymentFailure` entry with error context and triggers the recovery pipeline.
+---
+
+## Payment Integration
+
+RazorShop uses **Razorpay Payment Gateway** for customer transactions:
+1. **Payment Creation**: Frontend calls `POST /api/payments/create` with `order_id`. Backend creates a Razorpay Order via Razorpay API and records a `PaymentAttempt` row.
+2. **Razorpay Modal**: Frontend launches Razorpay Checkout dialog using the generated `razorpay_order_id` and public `RAZORPAY_KEY_ID`.
+3. **Payment Verification**: Upon completion, frontend sends `razorpay_payment_id`, `razorpay_order_id`, and `razorpay_signature` to `POST /api/payments/verify`. Backend verifies the HMAC-SHA256 signature using `RAZORPAY_KEY_SECRET`.
+4. **Webhook Handling**: `POST /api/webhooks/razorpay` receives raw webhook payloads, verifies HMAC-SHA256 signature against `RAZORPAY_WEBHOOK_SECRET`, and processes payment events asynchronously.
 
 ---
 
-## 6. Revenue Recovery System
+## Revenue Recovery
 
-### Concept & Trigger Events
-Revenue recovery captures lost sales from:
-1. **Failed Payment Transactions**: Card declines, network errors, insufficient funds, 3DS authentication failures.
-2. **Abandoned Carts**: High-value active carts that did not convert within threshold windows.
+### Trigger Events
+- **Payment Failure**: When a payment attempt fails or errors out, backend registers a `PaymentFailure` entry and initializes a `RecoveryCase`.
+- **Abandoned Cart**: Background scheduler identifies active carts untouched past threshold windows and initializes recovery workflows.
 
-### Recovery Case Lifecycle
-```
-[Payment Failure / Abandoned Cart]
-              │
-              ▼
-         RecoveryCase ('open')
-              │
-              ├──► AI Diagnosis & Strategy Selection
-              │
-              ▼
-    RecoveryCase ('in_progress') ◄──► Customer Communication (Email / Direct Link)
-              │
-              ├── Customer Pays ──────────────► RecoveryCase ('resolved')
-              ├── Max Attempts Reached ────────► RecoveryCase ('abandoned')
-              └── Customer Opts Out ──────────► RecoveryCase ('customer_declined')
-```
-
-### Customer Interaction & Promise-to-Pay (M6)
-Customers responding to recovery communications can express intents:
-- `accepted`: Customer agrees to retry payment.
-- `refused`: Customer declines; case marked `customer_declined`.
-- `promised`: Customer commits to pay by a specific date. System creates a `PromiseToPay` record with `promised_deadline` and `promised_amount_cents`.
-- `unclear`: System schedules automated follow-up.
-
-### Merchant Guardrails
-Merchants configure recovery rules in `MerchantConfig`:
-- `max_recovery_attempts` (default: 3)
-- `max_discount_percent` (default: 30%)
-- `allowed_channels` (`["email", "sms"]`)
-- `customer_opt_outs` (List of opted-out customer UUIDs)
+### Recovery Workflow
+1. **Case Creation**: A `RecoveryCase` is created in `open` status.
+2. **AI Failure Diagnosis**: `GroqEmailGenerator` analyzes failure context (e.g. card decline, timeout, insufficient funds) and generates personalized recovery emails.
+3. **Communication Dispatch**: `EmailService` sends recovery emails containing single-click payment recovery URLs (`EMAIL_DELIVERY_MODE` supports `mock` or `live` via Resend API).
+4. **Customer Response Tracking**: Customers can accept recovery, promise to pay later (`PromiseToPay` entry), or opt out (`customer_declined`).
+5. **Resolution**: Successful recovery updates `RecoveryCase` status to `resolved` and tracks recovered revenue metrics.
 
 ---
 
-## 7. Merchant Helper / AI Assistant
+## Merchant Helper / AI
 
-### Functionality & Capabilities
-The Merchant Helper (`MerchantHelperService`) is a store management assistant supporting text and voice queries:
-- **Sales & Performance**: "What were my total sales this week?", "Show revenue breakdown."
-- **Inventory Control**: "Update stock for product X to 50", "Which items are low in stock?"
-- **Deal Management**: "Give a 15% discount on abandoned cart 2 for 2 hours", "Create a deal on Headphones."
-- **Fulfillment & Returns**: "Cancel order #ORD-1002", "Approve return for order #ORD-1005", "Initiate refund for order #ORD-1008".
-
-### Multi-Modal Architecture (Voice & Audio)
-- **Voice Transcription (STT)**: Accepts base64 audio recordings (`webm`, `wav`, `m4a`). Transcribes using **Groq Whisper Large V3**. Features automatic script validation to detect improper script output and re-runs transcription forcing Hindi (`hi`) language setting if necessary.
-- **Text-to-Speech (TTS)**: Synthesizes audio responses using **Sarvam AI Bulbul v3** (`speaker: shubh`). Cleans visual Markdown tags before voice synthesis and selects appropriate language tags (`hi-IN` or `en-IN`).
-
-### Human-in-the-Loop Confirmation
-For actions modifying store state (deals, price edits, stock updates, refunds, cancellations), the assistant generates a structured `proposal`. Execution is paused until the merchant confirms via `POST /api/merchant/helper/action/confirm`.
+The Merchant Helper is a multi-modal AI copilot:
+- **Capabilities**: Query store analytics, update stock levels, create promotional deals, process refunds, approve returns, and cancel orders.
+- **Groq LLM Integration**: Uses Groq API for natural language understanding, intent extraction, and response generation.
+- **Voice Input (STT)**: Transcribes recorded user audio (`webm`, `wav`, `m4a`) using Groq Whisper Large v3 with fallback script validation.
+- **Voice Output (TTS)**: Converts text responses into spoken audio using Sarvam AI Bulbul v3 (`speaker: shubh`).
+- **Interactive Action Confirmations**: High-impact actions (price modifications, stock changes, refunds, cancellations) return structured action proposal cards requiring explicit merchant confirmation before execution.
 
 ---
 
-## 8. Analytics & Metrics
+## Analytics
 
-| Metric Name | DB Source / Calculation | Description |
-| :--- | :--- | :--- |
-| **Total Revenue** (`total_revenue_cents`) | Sum of `total_cents` for `confirmed`/`delivered` orders | Overall settled store revenue in period |
-| **Revenue at Risk** (`revenue_at_risk_cents`) | Sum of `total_cents` for open/in-progress `RecoveryCase`s & abandoned carts | Revenue linked to uncompleted checkout attempts |
-| **Revenue Recovered** (`revenue_recovered_cents`) | Sum of `total_cents` for orders with resolved `RecoveryCase`s | Revenue successfully recaptured by recovery campaigns |
-| **Failed Payments Count** (`failed_payments_count`) | Count of `PaymentFailure` records | Total failed checkout attempts |
-| **Abandoned Carts Count** (`abandoned_carts_count`) | Count of inactive unconverted `Cart` records | Number of abandoned cart instances |
-| **Recovery Rate** (`recovery_rate_percent`) | `(resolved_cases / total_cases) * 100` | Percentage of failed cases successfully recovered |
-| **Cancelled Orders** (`orders_cancelled_count`) | Count of orders with status `cancelled` | Total order cancellations |
-| **Returned Orders** (`orders_returned_count`) | Count of orders with status `order_returned_to_seller` or `refund_initiated` | Total order returns |
+The Merchant Analytics engine calculates real-time metrics:
+- **Total Revenue**: Sum of all confirmed/delivered order amounts.
+- **Revenue at Risk**: Total value of open recovery cases and abandoned carts.
+- **Recovered Revenue**: Total value of orders successfully converted via recovery workflows.
+- **Payment Failure Reasons**: Categorized breakdown of card failures, network timeouts, authentication issues, and user cancellations.
+- **Daily Revenue Timeline**: Chronological time-series of sales revenue and recovered amounts.
+- **Customer Response Breakdown**: Distribution of customer recovery responses (Accepted, Promised, Opted Out, No Response).
 
 ---
 
-## 9. API Documentation
+## API Documentation
 
 ### Health
-- `GET /api/health` — Public system health check. Returns database connection status and server timestamp.
+- `GET /api/health` - Server and database health check status.
 
 ### Authentication (`/api/auth`)
-- `POST /api/auth/register` — Register customer or submit merchant application. Body: `{ email, password, name, role, business_name, phone, reason }`.
-- `POST /api/auth/login` — Authenticate user. Body: `{ email, password }`. Returns JWT token and user profile.
-- `GET /api/auth/me` — [Auth Required] Retrieve current authenticated user session.
+- `POST /api/auth/register` - Customer account registration.
+- `POST /api/auth/login` - Customer account login.
+- `GET /api/auth/me` - Retrieve current authenticated user profile.
+- `POST /api/auth/merchant/register` - Submit merchant onboarding application.
+- `POST /api/auth/merchant/login` - Merchant account login.
+- `POST /api/auth/admin/login` - Administrator login.
 
 ### Products (`/api/products`)
-- `GET /api/products` — List active catalog products. Query: `page`, `limit`, `category`, `search`, `minPrice`, `maxPrice`, `sort`.
-- `GET /api/products/categories` — List distinct product categories.
-- `GET /api/products/:id` — Retrieve detailed product information by UUID.
+- `GET /api/products` - List products with category, search, price range, in-stock filter, sorting, and pagination.
+- `GET /api/products/categories` - List active product categories.
+- `GET /api/products/:id` - Retrieve single product details.
 
-### Delivery Addresses (`/api/addresses`)
-- `GET /api/addresses` — [Customer] List customer's saved addresses.
-- `GET /api/addresses/default` — [Customer] Get customer's default delivery address.
-- `POST /api/addresses` — [Customer] Create delivery address.
-- `PUT /api/addresses/:id` — [Customer] Update delivery address.
-- `PUT /api/addresses/:id/default` — [Customer] Set address as default.
-- `DELETE /api/addresses/:id` — [Customer] Delete delivery address.
+### Carts (`/api/carts`)
+- `GET /api/carts` - Retrieve active cart for current user.
+- `POST /api/carts` - Create or retrieve cart.
+- `POST /api/carts/items` - Add item to cart.
+- `PUT /api/carts/items/:id` - Update cart item quantity.
+- `DELETE /api/carts/items/:id` - Remove item from cart.
+- `POST /api/carts/apply-bundle` - Apply promotional bundle discount.
 
-### Cart Management (`/api/carts`)
-- `POST /api/carts` — [Customer] Create or retrieve active cart.
-- `GET /api/carts/:id` — [Customer] Get cart contents by UUID.
-- `POST /api/carts/:id/items` — [Customer] Add product to cart. Body: `{ product_id, quantity }`.
-- `PUT` / `PATCH /api/carts/:id/items/:productId` — [Customer] Update item quantity.
-- `DELETE /api/carts/:id/items/:productId` — [Customer] Remove item from cart.
-- `DELETE /api/carts/:id` — [Customer] Clear all cart items.
-- `POST /api/carts/:id/bundle` — [Customer] Apply recommended product bundle deal to cart.
+### Shipping Addresses (`/api/addresses`)
+- `GET /api/addresses` - List customer saved addresses.
+- `POST /api/addresses` - Add new delivery address.
+- `PUT /api/addresses/:id` - Edit saved address.
+- `DELETE /api/addresses/:id` - Remove saved address.
+- `PUT /api/addresses/:id/default` - Set default delivery address.
 
 ### Recommendations (`/api/recommendations`)
-- `GET /api/recommendations/products/:id` — Get product-level recommendations and bundle offers.
-- `GET /api/recommendations/carts/:id` — Get cross-sell recommendations for active cart.
-- `POST /api/recommendations/:id/events` — Track recommendation events (`shown`, `clicked`, `added_to_cart`, `purchased`, `ignored`).
-- `POST /api/recommendations/:id/purchase-attribution` — Attribute order purchase to recommendation.
-- `GET /api/recommendations/:id/metrics` — View conversion metrics for a recommendation.
+- `GET /api/recommendations/product/:id` - Get AI recommendations for product detail page.
+- `GET /api/recommendations/cart/:id` - Get AI cross-sell recommendations for cart drawer.
 
 ### Orders (`/api/orders`)
-- `POST /api/orders` — Create order from active cart. Body: `{ cart_id, customer_id, shipping_address }`.
-- `GET /api/orders` — List customer orders with pagination. Query: `customer_id`, `page`, `limit`.
-- `GET /api/orders/:id` — Get order details by UUID.
-- `GET /api/orders/:id/timeline` — View order event timeline history.
-- `POST /api/orders/:id/feedback` — [Customer] Submit or update 1–5 star rating and comment feedback.
-- `GET /api/orders/:id/feedback` — [Customer] Retrieve feedback for order.
-- `POST /api/orders/:id/cancel` — [Customer] Cancel pre-dispatch order. Body: `{ reason, customer_id }`.
-- `POST /api/orders/:id/return` — [Customer] Request return for delivered order. Body: `{ reason, customer_id }`.
+- `POST /api/orders` - Create order from cart items.
+- `GET /api/orders` - List customer orders.
+- `GET /api/orders/:id` - Retrieve order details and delivery timeline.
+- `POST /api/orders/:id/cancel` - Request order cancellation before dispatch.
+- `POST /api/orders/:id/return` - Request order return after delivery.
 
 ### Payments (`/api/payments`)
-- `POST /api/payments/create` — Initiate Razorpay payment attempt. Query: `?demo=failure_network` (Optional demo failure mode).
-- `POST /api/payments/fail` — Record payment failure and trigger recovery pipeline. Body: `{ order_id, reason, error_context }`.
-- `POST /api/payments/verify` — Verify Razorpay signature and capture payment. Body: `{ order_id, razorpay_payment_id, razorpay_signature }`.
-- `GET /api/payments/:orderId` — Fetch payment records for an order.
+- `POST /api/payments/create` - Create Razorpay order attempt.
+- `POST /api/payments/verify` - Verify Razorpay payment HMAC signature.
+- `POST /api/payments/fail` - Record payment failure details.
 
-### Webhooks (`/api/webhooks`)
-- `POST /api/webhooks/razorpay` — Webhook endpoint for Razorpay asynchronous payment events. Header: `X-Razorpay-Signature`.
+### Recovery (`/api/recovery`)
+- `GET /api/recovery/cases` - List recovery cases.
+- `GET /api/recovery/cases/:id` - Get recovery case details.
+- `POST /api/recovery/cases/:id/send-email` - Manually trigger recovery email.
 
-### Recovery Management (`/api/recovery`)
-- `GET /api/recovery/cases/:id` — Get recovery case details.
-- `GET /api/recovery/cases/:id/decisions` — Get AI agent decision history for case.
-- `POST /api/recovery/cases/:id/analyze` — Manually trigger AI analysis and strategy generation.
-- `POST /api/recovery/cases/:id/opt-out` — Opt customer out of recovery communications.
-- `GET /api/recovery/config/:merchantId` — Retrieve merchant recovery guardrails.
-- `PUT /api/recovery/config/:merchantId` — Update merchant recovery guardrails.
-- `POST /api/recovery/respond` — Record customer recovery response (`accepted`, `refused`, `promised`, `unclear`).
-
-### Merchant Operations (`/api/merchant`)
-- `GET /api/merchant/application-status` — Get merchant applicant status and review timeline.
-- `GET /api/merchant/dashboard` — [Approved Merchant] Comprehensive merchant analytics dashboard.
-- `GET /api/merchant/feedback` — [Approved Merchant] Customer feedback list and ratings summary.
-- `GET /api/merchant/recovery-cases` — [Approved Merchant] List store recovery cases.
-- `GET /api/merchant/recovery-cases/:id` — [Approved Merchant] Get recovery case details.
-- `POST /api/merchant/recovery-cases/:id/trigger-email` — [Approved Merchant] Manually send recovery email.
-- `GET /api/merchant/insights` — [Approved Merchant] View AI-generated store insights.
-- `POST /api/merchant/insights/refresh` — [Approved Merchant] Refresh daily AI insights.
-- `GET /api/merchant/config` — [Approved Merchant] Get merchant config.
-- `PUT /api/merchant/config` — [Approved Merchant] Update merchant config.
-- `GET /api/merchant/products` — [Approved Merchant] List store product catalog.
-- `POST /api/merchant/upload-image` — [Approved Merchant] Upload product image.
-- `POST /api/merchant/products` — [Approved Merchant] Create new product.
-- `PUT /api/merchant/products/:id` — [Approved Merchant] Update product details.
-- `PUT /api/merchant/products/:id/inventory` — [Approved Merchant] Update product stock levels.
-- `DELETE /api/merchant/products/:id` — [Approved Merchant] Delete/archive product.
-- `GET /api/merchant/orders` — [Approved Merchant] List store orders with status filtering.
-- `GET /api/merchant/orders/:id` — [Approved Merchant] Get detailed order info.
-- `POST /api/merchant/orders/:id/approve-return` — [Approved Merchant] Approve customer return request.
-- `POST /api/merchant/orders/:id/reject-return` — [Approved Merchant] Reject customer return request. Body: `{ rejection_reason }`.
-- `PATCH /api/merchant/orders/:id/return-logistics` — [Approved Merchant] Advance return logistics stage.
-- `POST /api/merchant/orders/:id/initiate-refund` — [Approved Merchant] Mark refund initiated for returned order.
-- `PATCH /api/merchant/orders/:id/status` — [Approved Merchant] Update order fulfillment status.
-- `POST /api/merchant/helper/chat` — [Approved Merchant] Natural language chat query to AI Helper.
-- `POST /api/merchant/helper/action/confirm` — [Approved Merchant] Confirm execution of AI proposal.
-- `POST /api/merchant/helper/transcribe` — [Approved Merchant] Transcribe voice audio to text (STT).
-- `POST /api/merchant/helper/tts` — [Approved Merchant] Synthesize text response to audio (TTS).
+### Merchant (`/api/merchant`)
+- `GET /api/merchant/dashboard` - Retrieve merchant dashboard KPIs.
+- `GET /api/merchant/analytics` - Retrieve analytics metrics & timelines.
+- `GET /api/merchant/products` - List seller catalog products.
+- `POST /api/merchant/products` - Create new catalog product.
+- `PUT /api/merchant/products/:id` - Update catalog product details.
+- `DELETE /api/merchant/products/:id` - Archive seller product.
+- `PUT /api/merchant/products/:id/inventory` - Adjust product inventory stock.
+- `GET /api/merchant/orders` - List seller orders with status filters.
+- `PUT /api/merchant/orders/:id/status` - Update order status / return logistics state.
+- `POST /api/merchant/upload-image` - Upload product image asset.
+- `POST /api/merchant/helper/query` - Send query to AI Merchant Helper.
+- `POST /api/merchant/helper/transcribe` - Transcribe voice audio to text (Groq Whisper).
+- `POST /api/merchant/helper/tts` - Synthesize text response to audio (Sarvam AI).
 
 ### Admin (`/api/admin`)
-- `GET /api/admin/summary` — [Admin] Application summary statistics.
-- `GET /api/admin/applications` — [Admin] List merchant onboarding applications.
-- `GET /api/admin/applications/:id` — [Admin] View application details and review history.
-- `POST /api/admin/applications/:id/approve` — [Admin] Approve merchant application.
-- `POST /api/admin/applications/:id/reject` — [Admin] Reject merchant application. Body: `{ rejection_reason }`.
+- `GET /api/admin/applications` - List merchant onboarding applications.
+- `POST /api/admin/applications/:id/approve` - Approve application & provision merchant.
+- `POST /api/admin/applications/:id/reject` - Reject application with feedback.
+- `GET /api/admin/audit-logs` - Retrieve system audit trail logs.
+
+### Webhooks (`/api/webhooks`)
+- `POST /api/webhooks/razorpay` - Receive and process Razorpay webhooks.
 
 ---
 
-## 10. Database / Data Models
+## Database
 
-### Database Technology
-- **Database Engine**: PostgreSQL 16 (AWS RDS PostgreSQL in production).
-- **ORM**: TypeORM with TypeScript entity mappings.
+RazorShop uses **PostgreSQL** configured via **TypeORM**.
 
-### Major Entities & Relationships
+### Core Entities & Relationships
+
 ```mermaid
 erDiagram
-    Customer ||--o{ Order : places
     Customer ||--o{ Cart : owns
-    Customer ||--o{ CustomerAddress : manages
+    Customer ||--o{ CustomerAddress : has
+    Customer ||--o{ Order : places
     Merchant ||--o{ Product : owns
-    Merchant ||--o{ MerchantConfig : has
-    Product ||--o| Inventory : tracks
+    Merchant ||--o{ MerchantConfig : configures
+    Merchant ||--o{ MerchantApplication : submits
+    Product ||--|| Inventory : has
     Cart ||--o{ CartItem : contains
+    Product ||--o{ CartItem : included_in
     Order ||--o{ OrderItem : contains
+    Product ||--o{ OrderItem : included_in
+    Order ||--o{ OrderTimeline : tracks
     Order ||--o{ Payment : has
-    Order ||--o{ OrderTimeline : records
     Payment ||--o{ PaymentFailure : logs
-    PaymentFailure ||--o{ RecoveryCase : creates
+    PaymentFailure ||--o| RecoveryCase : triggers
     RecoveryCase ||--o{ RecoveryAction : logs
-    RecoveryCase ||--o{ AgentDecision : records
-    RecoveryCase ||--o{ CustomerInteraction : receives
-    RecoveryCase ||--o{ PromiseToPay : binds
 ```
 
-1. **`Customer`**: User credentials (`email`, `password_hash`), phone, name, role (`customer`, `merchant`, `admin`).
-2. **`CustomerAddress`**: Saved shipping addresses (`full_address`, `state`, `pin_code`, `is_default`).
-3. **`Merchant`**: Business profile (`business_name`, `email`, `phone`, status).
-4. **`MerchantApplication`**: Applicant request details and review status (`pending`, `approved`, `rejected`).
-5. **`MerchantConfig`**: Operational parameters (`max_recovery_attempts`, `max_discount_percent`, `customer_opt_outs`).
-6. **`Product`**: Catalog item details, pricing in cents, active deal flags, and `merchant_id`.
-7. **`Inventory`**: Stock tracking (`quantity_on_hand`, `reserved`).
-8. **`Cart` & `CartItem`**: Active user carts, item quantities, and deal discounts.
-9. **`Order` & `OrderItem`**: Order snapshots, totals, shipping address snapshot, fulfillment status, return/cancellation timestamps.
-10. **`Payment` & `PaymentAttempt`**: Payment states (`initiated`, `pending`, `captured`, `failed`, `refunded`) and Razorpay IDs.
-11. **`PaymentFailure` & `RecoveryCase`**: Failed payment records, root cause classification, and recovery case tracking.
-12. **`CustomerInteraction` & `PromiseToPay`**: Logged customer responses and promised payment deadlines.
-13. **`Recommendation` & `RecommendationEvent`**: AI recommendation pairings and impression/click tracking events.
+### Key Tables
+- `users` / `customers`: Store authentication credentials, names, emails, roles (`customer`, `merchant`, `admin`).
+- `merchants`: Merchant profiles linked to user accounts.
+- `merchant_applications`: Seller onboarding applications reviewed by admins.
+- `products`: Catalog items with prices, categories, and deal statuses.
+- `inventory`: Warehouse stock counts (`quantity_on_hand`, `reserved`).
+- `carts` & `cart_items`: Active customer shopping carts.
+- `orders` & `order_items`: Customer orders, line totals, and delivery statuses.
+- `order_timelines`: Audit trail of order status transitions.
+- `customer_addresses`: Saved delivery addresses.
+- `payments` & `payment_failures`: Payment records and failure logs.
+- `recovery_cases` & `recovery_actions`: Recovery pipeline cases and campaign logs.
+- `merchant_configs`: Seller-defined recovery guardrails.
 
 ---
 
-## 11. Tech Stack
+## Tech Stack
 
 ### Frontend
-- **Framework**: React 18.2.0
-- **Build Tool**: Vite 5.0.8
-- **Language**: TypeScript 5.3.3
-- **Styling**: Vanilla CSS with CSS Variables (`var(--c-gold)`, `var(--c-surface)`), Tailwind CSS 3.4.1, PostCSS 8.4.32, Autoprefixer 10.4.17
-- **HTTP Client**: Axios 1.6.5 & Native Fetch API
+- **Framework**: React 18 + TypeScript + Vite
+- **Styling**: Vanilla CSS tokens (`index.css`) + TailwindCSS
+- **Icons**: Custom SVG component library (`Icons.tsx`)
+- **HTTP Client**: Native `fetch` API
 
 ### Backend
-- **Runtime**: Node.js 20
-- **Framework**: Express 4.18.2
-- **Language**: TypeScript 5.3.3 (run via `ts-node` in dev)
-- **Database ORM**: TypeORM 0.3.17 & `pg` 8.11.3
-- **Authentication**: `jsonwebtoken` 8.5.1, `bcryptjs` 2.4.3
-- **Scheduler**: `node-cron` 3.0.2
+- **Runtime**: Node.js 20 (ES Modules)
+- **Framework**: Express.js
+- **ORM / Database Driver**: TypeORM + `pg` (PostgreSQL driver)
+- **Authentication**: `jsonwebtoken` (JWT) + `bcryptjs`
+- **Validation & Parsing**: Custom middleware + TypeORM validation
 
-### External APIs & Integrations
-- **Payment Gateway**: Razorpay Node SDK (`razorpay` 2.9.8)
-- **Email Delivery**: Resend SDK (`resend` 3.0.0)
-- **AI Services**:
-  - Groq API (`whisper-large-v3` for STT, `openai/gpt-oss-120b` for emails, `llama3-70b-8192` for recommendations)
-  - Sarvam AI API (`bulbul:v3` model for TTS speech synthesis)
+### AI & Speech Services
+- **Groq API**: Groq LLaMA 3 / Mixtral for recommendations, recovery emails, and Merchant Helper chat queries.
+- **Groq Whisper Large v3**: Base64 audio speech-to-text transcription.
+- **Sarvam AI Bulbul v3**: Text-to-speech audio synthesis (`speaker: shubh`).
 
-### Testing & Infrastructure
-- **Test Framework**: Jest 29.7.0, `ts-jest` 29.1.1, Supertest 7.2.2
-- **Containerization**: Docker & Docker Compose (`postgres:16-alpine`)
-- **Process Management**: PM2 (`razor-backend`)
-- **Web Server**: Nginx (Reverse Proxy & SSL termination)
+### Payment Gateway
+- **Razorpay Node SDK** & **Razorpay Checkout JS**: Order creation, HMAC-SHA256 signature verification, and webhook handling.
+
+### Infrastructure & Deployment
+- **Cloud Provider**: Amazon Web Services (AWS)
+- **Compute**: AWS EC2 Instance (Ubuntu 22.04 LTS)
+- **Database**: AWS RDS PostgreSQL
+- **Process Manager**: PM2
+- **Web Server / Reverse Proxy**: Nginx (SSL/TLS via Certbot / Let's Encrypt)
+- **CI/CD Pipeline**: GitHub Actions with AWS OIDC authentication & AWS SSM (Systems Manager) deployment execution script (`scripts/deploy-production.sh`)
+- **Local Dev Database**: Docker & Docker Compose (`postgres:16-alpine`)
 
 ---
 
-## 12. Project Structure
+## Project Structure
 
 ```
-Razor/
-├── package.json                 # Monorepo root workspace configuration
-├── docker-compose.yml           # Local PostgreSQL database container configuration
-├── .env.example                 # Template for environment configuration
-├── scripts/
-│   └── deploy-production.sh     # EC2 deployment and rollback script
-├── docs/
-│   ├── architecture.md          # Technical infrastructure documentation
-│   ├── cicd.md                  # CI/CD pipeline specification
-│   └── project-history.md       # Development history and milestone tracking
+RazorShop/
 ├── .github/
 │   └── workflows/
-│       └── ci-cd.yml            # GitHub Actions CI/CD workflow
-└── packages/
-    ├── shared/                  # Shared TypeScript models and API DTOs
-    │   └── src/
-    │       └── types/index.ts   # Core interface definitions
-    ├── backend/                 # Node.js / Express backend service
-    │   ├── src/
-    │   │   ├── app.ts           # Express app builder with middleware & routes
-    │   │   ├── index.ts         # Server entry point
-    │   │   ├── migration.ts     # Migration execution script
-    │   │   ├── seed.ts          # Database seed script
-    │   │   ├── config/          # Database connection & env validation
-    │   │   ├── middleware/      # Authentication, CORS, logging, error handling
-    │   │   ├── models/          # 29 TypeORM database entities
-    │   │   ├── routes/          # Express API route modules and tests
-    │   │   └── services/        # Business services (Order, Payment, AI, Recs)
-    │   └── package.json
-    └── frontend/                # React 18 / Vite SPA storefront
-        ├── src/
-        │   ├── main.tsx         # React app entry point
-        │   ├── App.tsx          # Storefront SPA router & main component
-        │   ├── components/      # UI components (Cart, Merchant, Orders, Modals)
-        │   ├── services/        # Client auth & address services
-        │   └── config/          # API endpoint URL helper
-        └── package.json
+│       └── ci-cd.yml             # GitHub Actions CI/CD workflow definition
+├── docs/
+│   ├── architecture.md           # System deployment topology and architecture guide
+│   └── cicd.md                   # Production CI/CD pipeline, SSM, and rollback guide
+├── packages/
+│   ├── backend/                  # Node.js / Express API application
+│   │   ├── src/
+│   │   │   ├── config/           # Database, environment, and app configuration
+│   │   │   ├── middleware/       # Auth, error handling, and logger middleware
+│   │   │   ├── migrations/       # TypeORM database migration files
+│   │   │   ├── models/           # TypeORM database entities
+│   │   │   ├── routes/           # Express API route definitions
+│   │   │   ├── services/         # Core business logic services
+│   │   │   ├── app.ts            # Express application factory
+│   │   │   ├── index.ts          # Server entry point
+│   │   │   └── seed.ts           # Database seeding script
+│   │   └── package.json
+│   ├── frontend/                 # React / Vite SPA application
+│   │   ├── src/
+│   │   │   ├── components/       # UI components (Storefront, Portals, Modals)
+│   │   │   │   ├── analytics/    # Analytics charts & breakdown widgets
+│   │   │   │   ├── common/       # Shared UI elements (Address modals, Icons, Popover)
+│   │   │   │   ├── info/         # Static policy & status pages
+│   │   │   │   └── merchant/     # Merchant catalog, inventory, order, helper views
+│   │   │   ├── config/           # API configuration
+│   │   │   ├── services/         # Auth & Address frontend services
+│   │   │   ├── App.tsx           # Main Application component & router
+│   │   │   ├── index.css         # Design system CSS variables & tokens
+│   │   │   └── main.tsx          # React application root entry
+│   │   └── package.json
+│   └── shared/                   # Shared TypeScript DTOs & API contract interfaces
+│       └── src/
+│           └── types/
+│               └── index.ts      # DTOs, interfaces, and status types
+├── scripts/
+│   └── deploy-production.sh      # Production deployment & automated rollback script
+├── .env.example                  # Template environment variables
+├── docker-compose.yml            # Local PostgreSQL Docker configuration
+├── package.json                  # Workspace root npm package configuration
+└── README.md                     # Project documentation
 ```
 
 ---
 
-## 13. Setup & Installation
+## Environment Variables
+
+Copy `.env.example` to `.env` in the root directory before running the application:
+
+```bash
+# Server Configuration
+NODE_ENV=development
+PORT=3000
+FRONTEND_URL=http://localhost:5173
+
+# Database Connection (PostgreSQL)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/razor
+
+# Razorpay Payment Gateway (Test Credentials)
+RAZORPAY_KEY_ID=rzp_test_your_key_id
+RAZORPAY_KEY_SECRET=your_key_secret
+RAZORPAY_WEBHOOK_SECRET=your_webhook_secret
+
+# Groq AI API
+GROQ_API_KEY=your_groq_api_key
+AI_MODE=mock # 'mock' for local development without API keys, 'live' for real Groq API calls
+
+# Authentication
+JWT_SECRET=your_jwt_secret
+
+# Email Service (Resend)
+EMAIL_DELIVERY_MODE=mock # 'mock' suppresses external network calls, 'live' uses Resend API
+RESEND_API_KEY=your_resend_api_key
+RESEND_FROM_EMAIL=nemat@razorshop.app
+
+# Background Scheduler Control
+SCHEDULER_ENABLED=false # Set to 'true' in production or background processing test environments
+```
+
+> **Security Note**: Never commit actual secret keys or credentials to repository tracking. Always manage production environment secrets securely on AWS server instances or GitHub Environment Secrets.
+
+---
+
+## Local Development Setup
 
 ### Prerequisites
-- Node.js `v20.x` or higher
-- npm `v9.x` or higher
-- Docker & Docker Compose (for running local PostgreSQL database)
+- **Node.js**: v20.x or higher
+- **npm**: v10.x or higher
+- **Docker & Docker Compose** (Optional, for running local PostgreSQL)
 
-### Installation Steps
+### Step-by-Step Instructions
 
-1. **Clone the Repository**:
+1. **Clone the repository**:
    ```bash
    git clone https://github.com/NematSachdeva/RazorShop.git
    cd RazorShop
    ```
 
-2. **Install Workspace Dependencies**:
+2. **Install workspace dependencies**:
    ```bash
    npm install
    ```
@@ -473,245 +540,138 @@ Razor/
    docker-compose up -d
    ```
 
-5. **Run Database Migrations & Seed Data**:
+5. **Execute Database Migrations & Seed Data**:
    ```bash
+   # Run TypeORM schema migrations
    npm run db:migrate
+
+   # Seed database with demo products, merchants, and categories
    npm run db:seed
    ```
 
-6. **Start Development Servers**:
+6. **Start Development Application**:
    ```bash
    npm run dev
    ```
-   - Frontend SPA will run at: `http://localhost:5173`
-   - Backend API will run at: `http://localhost:3000`
+   - **Frontend URL**: `http://localhost:5173`
+   - **Backend API URL**: `http://localhost:3000/api`
 
 ---
 
-## 14. Environment Variables
+## Running / Building
 
-Below are the configurable environment variables declared in `.env.example`:
-
-| Variable | Description | Example / Default Value |
-| :--- | :--- | :--- |
-| `NODE_ENV` | Application runtime mode | `development` |
-| `PORT` | Internal backend server port | `3000` |
-| `FRONTEND_URL` | Allowed CORS frontend URL | `http://localhost:5173` |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/razor` |
-| `RAZORPAY_KEY_ID` | Razorpay API Key ID | `rzp_test_your_key_id` |
-| `RAZORPAY_KEY_SECRET` | Razorpay API Key Secret | `your_key_secret` |
-| `RAZORPAY_WEBHOOK_SECRET` | Razorpay Webhook HMAC Secret | `your_webhook_secret` |
-| `GROQ_API_KEY` | Groq AI Platform API Key | `your_groq_api_key` |
-| `SARVAM_API_KEY` | Sarvam AI Platform API Key (TTS) | `your_sarvam_api_key` |
-| `JWT_SECRET` | Secret key for signing JWT tokens | `your_jwt_secret` |
-| `EMAIL_DELIVERY_MODE` | Email delivery architecture (`mock` or `live`) | `mock` |
-| `RESEND_API_KEY` | Resend Email API Key | `your_resend_api_key` |
-| `RESEND_FROM_EMAIL` | Sender email address for Resend API | `nemat@razorshop.app` |
-| `AI_MODE` | AI service operating mode (`mock` or `live`) | `mock` |
-| `SCHEDULER_ENABLED` | Cron background scheduler toggle (`true`/`false`) | `false` |
-
-> **Security Note**: Never commit actual production credentials or API keys to repository source control.
-
----
-
-## 15. Deployment Architecture
-
-### Infrastructure Overview
-Production infrastructure is hosted on AWS:
-- **Web Server & Reverse Proxy**: Nginx running on AWS EC2 listening on port 443 with SSL termination.
-- **Frontend SPA**: Static build deployed to `/var/www/razorshop`.
-- **Backend Application**: Node.js Express service running under PM2 process manager (`razor-backend`) bound to `127.0.0.1:7070`.
-- **Managed Database**: AWS RDS PostgreSQL instance connected via encrypted internal network.
-
-```mermaid
-flowchart LR
-    User[Client Browser] -->|HTTPS 443| Nginx[Nginx Web Server]
-    Nginx -->|Static Files| Static[/var/www/razorshop SPA/]
-    Nginx -->|Proxy /api/*| PM2[Node.js Express / PM2 Port 7070]
-    PM2 -->|TypeORM| RDS[(AWS RDS PostgreSQL)]
-    PM2 -->|API Calls| Groq[Groq AI API]
-    PM2 -->|API Calls| Sarvam[Sarvam AI API]
-    PM2 -->|API Calls| Razorpay[Razorpay Gateway]
-    PM2 -->|API Calls| Resend[Resend Email API]
-```
-
-### CI/CD Automated Pipeline
-Depoloyments are automated via GitHub Actions (`.github/workflows/ci-cd.yml`):
-1. **CI Phase**: Executes TypeScript typechecks for backend/frontend, initializes CI Postgres database schema, runs backend unit tests (`npm run test:unit`), builds production bundles, and verifies no local hardcoded URLs exist in the build output.
-2. **CD Phase**: Uses AWS OIDC credentials to trigger AWS Systems Manager (SSM) on the EC2 instance, running `scripts/deploy-production.sh`.
-3. **Automated Rollback**: If migration, build, or health-check steps fail, the deployment script automatically reverts Git commits, rebuilds the previous version, restarts PM2, and restores Nginx static files.
-
----
-
-## 16. Testing
-
-### Test Suite Structure
-Razor includes unit and integration tests using Jest and Supertest:
-- **Backend Integration Tests**: Located in `packages/backend/src/routes/*.test.ts` and `packages/backend/src/services/*.test.ts`.
-- **Coverage Areas**: Auth lifecycle, order cancellation & return workflows, cart bundles, payment failure scenarios, Razorpay webhook signature verification, email delivery modes, merchant helper commands, transcription script validation, and TTS language detection.
-
-### Running Tests
+### Workspace Build Commands
 
 ```bash
-# Run all backend test suites with automated DB migrations
-npm test
+# Typecheck backend & frontend packages
+npm run typecheck
 
-# Run isolated unit tests
+# Build production workspace bundles (shared -> backend -> frontend)
+npm run build
+
+# Reset local database
+npm run db:reset
+```
+
+### Production Execution
+
+To run the production backend server locally:
+```bash
+cd packages/backend
+npm run start
+```
+
+---
+
+## Testing
+
+RazorShop includes unit, integration, and flow regression test suites in `packages/backend/src`:
+
+```bash
+# Execute backend test suite
+npm run test --workspace=packages/backend
+
+# Execute isolated unit tests (bypassing pre-migration hooks)
 npm run test:unit --workspace=packages/backend
-
-# Run a specific test suite
-npx jest src/routes/cancellation_and_return_workflow.test.ts --workspace=packages/backend
 ```
 
----
-
-## 17. Development Scripts
-
-Root `package.json` scripts:
-- `npm run dev`: Starts all workspace development servers in parallel (`backend` on `:3000`, `frontend` on `:5173`).
-- `npm run build`: Compiles TypeScript across all workspace packages and builds Vite production assets.
-- `npm run test`: Executes test suites across workspaces.
-- `npm run lint`: Runs ESLint across all workspaces.
-- `npm run typecheck`: Runs `tsc --noEmit` to validate TypeScript types across workspaces.
-- `npm run db:migrate`: Executes database migrations in `packages/backend`.
-- `npm run db:seed`: Populates initial test merchants, customers, products, and inventory.
-- `npm run db:reset`: Runs database migrations and seeds fresh data.
+The test suites validate:
+- Authentication & JWT token security
+- Catalog search, category filtering, and AI recommendations
+- Cart items, bundle calculations, and inventory reservations
+- Order creation, Razorpay checkout verification, and payment failures
+- Cancellation workflows & 5-stage return logistics
+- Merchant onboarding application lifecycle
+- Merchant Helper AI query parsing, transcription fallback, and TTS formatting
 
 ---
 
-## 18. UI / UX Design System
+## AWS Deployment
 
-- **Design Aesthetic**: Premium dark mode theme by default with gold accents (`--c-gold: #e5c158`, `--c-surface: #141312`), dark glassmorphism modals, polished typography, and clean contrast ratios.
-- **Theme Support**: Seamless Light/Dark theme toggling dynamically updating CSS root variables.
-- **Responsive Layout**: Mobile-first responsive layouts with sticky navigation headers, slide-out cart drawers, and responsive product grids.
-- **Micro-Interactions**: Hover states, active tabs, loading spinners, state transition animations, and toast feedback alerts.
+RazorShop is deployed in production on **Amazon Web Services (AWS)** at [https://razorshop.app](https://razorshop.app).
 
----
+### Production Deployment Topology
+- **AWS EC2**: Hosted on an Ubuntu 22.04 LTS EC2 instance.
+- **AWS RDS**: Production database managed on AWS RDS PostgreSQL.
+- **Nginx Reverse Proxy**: Listens on port 443 with SSL/TLS termination via Certbot/Let's Encrypt. Serves static frontend assets from `/var/www/razorshop` and proxies `/api/*` requests to port `7070`.
+- **PM2 Daemon**: Manages the Node.js Express backend process (`razor-backend`) on internal port `7070` with automatic restarts and log rotation.
 
-## 19. Error Handling & Resilience
-
-- **Express Global Error Middleware**: Centralized `errorHandler` catches unhandled exceptions, logs errors, and returns structured JSON error responses (`ErrorResponse`).
-- **Webhook Security**: `verifyWebhookSignature` uses timing-safe HMAC comparison (`crypto.timingSafeEqual`) to prevent timing attacks.
-- **AI Graceful Fallbacks**: If external Groq or Sarvam AI endpoints experience rate limits or downtime, AI recommendations revert to catalog fallbacks and emails log locally without interrupting primary checkout/order flows.
-- **Voice Transcription Validation**: If Whisper STT outputs Urdu/Arabic script for spoken Hindi input, `TranscriptionService` automatically triggers a Hindi-forced retry.
-
----
-
-## 20. End-to-End Business Flow
-
-```
-Customer browses catalog & adds items to Cart
-                 │
-                 ▼
-Customer completes Razorpay Payment at Checkout
-                 │
-      ┌──────────┴──────────┐
-      ▼                     ▼
-[Payment Succeeds]   [Payment Fails]
-      │                     │
-      ▼                     ▼
-Order Confirmed       PaymentFailure logged & RecoveryCase created
-      │                     │
-      ▼                     ▼
-Merchant Dispatches   AI Customer Recovery Campaign sent (Email/Link)
-      │                     │
-      ▼                     ├─► Customer Pays ──► Order Confirmed
-Order Delivered             └─► Customer Promises ──► PromiseToPay tracked
-      │
-      ▼
-Customer requests Return (if applicable)
-      │
-      ▼
-Merchant Approves Return
-      │
-      ▼
-5-Stage Logistics Pipeline (Pickup → Picked Up → In Transit → Returned to Seller)
-      │
-      ▼
-Item returned to seller (Inventory automatically restored) & Merchant Initiates Refund
-```
+### Continuous Deployment (CI/CD Pipeline)
+1. **GitHub Actions CI**: On push to `master`, GitHub Actions validates backend/frontend typechecking, executes unit tests, builds production bundles, and verifies zero hardcoded local endpoints (`localhost:3000`, `127.0.0.1:7070`) in `dist/`.
+2. **AWS OIDC Authentication**: Authenticates securely with AWS using OpenID Connect (`aws-actions/configure-aws-credentials@v4`) without static AWS access keys.
+3. **AWS Systems Manager (SSM)**: Triggers deployment script `scripts/deploy-production.sh` remotely on the target EC2 instance.
+4. **Production Script Execution**:
+   - Fetches target commit cleanly.
+   - Preserves EC2 instance `/home/ubuntu/razor/.env` file.
+   - Executes database migrations against AWS RDS (`npm run db:migrate`).
+   - Syncs static frontend assets to `/var/www/razorshop`.
+   - Restarts `razor-backend` under PM2.
+   - Conducts health checks against local (`http://127.0.0.1:7070/health`) and public (`https://razorshop.app/api/health`) endpoints.
+5. **Automated Rollback**: If asset compilation, PM2 restart, or health verification fails, `deploy-production.sh` automatically restores code to the previous Git commit (`PREV_COMMIT`), rebuilds assets, restarts PM2, and reports failure to GitHub Actions.
 
 ---
 
-## 21. System Architecture Diagram
+## Security Considerations
 
-```mermaid
-graph TB
-    subgraph Client Layer
-        SPA[React 18 / Vite SPA Storefront]
-    end
-
-    subgraph API Layer
-        Express[Express API Gateway]
-        AuthMW[Auth Middleware - JWT]
-        LoggerMW[Request Logger]
-    end
-
-    subgraph Business Logic Layer
-        OrderSvc[Order Service]
-        PaySvc[Payment Service]
-        RecSvc[Recommendation Service]
-        RecovSvc[Recovery Service]
-        HelperSvc[Merchant Helper AI Service]
-    end
-
-    subgraph Data Layer
-        DB[(AWS RDS PostgreSQL)]
-    end
-
-    subgraph External Integrations
-        Razorpay[Razorpay Gateway]
-        Groq[Groq AI Platform]
-        Sarvam[Sarvam AI Platform]
-        Resend[Resend Email API]
-    end
-
-    SPA -->|HTTP / JSON| Express
-    Express --> AuthMW --> LoggerMW
-    LoggerMW --> OrderSvc & PaySvc & RecSvc & RecovSvc & HelperSvc
-    OrderSvc & PaySvc & RecSvc & RecovSvc & HelperSvc --> DB
-    PaySvc --> Razorpay
-    RecSvc & HelperSvc --> Groq
-    HelperSvc --> Sarvam
-    RecovSvc & HelperSvc --> Resend
-```
+- **OIDC Authentication for CI/CD**: GitHub Actions deployment authenticates via AWS IAM OIDC roles, eliminating hardcoded long-lived cloud credentials.
+- **JWT Authentication & RBAC**: API endpoints enforce role checks (`customer`, `merchant`, `admin`), preventing unauthorized access to seller or administrator routes.
+- **HMAC Signature Verification**: Razorpay payment completions and webhooks are validated using HMAC-SHA256 signatures (`RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`) to prevent payment spoofing.
+- **Password Hashing**: Passwords encrypted using `bcryptjs` with salt factor of 10.
+- **Raw Body Webhook Parsing**: Express captures raw unparsed buffers for Razorpay webhooks to guarantee cryptographically accurate HMAC verification.
+- **Environment Secret Isolation**: Production database credentials and secret keys are stored exclusively in `/home/ubuntu/razor/.env` on the EC2 instance.
 
 ---
 
-## 22. Project Status & Limitations
+## Error Handling & Reliability
 
-### Implemented Functionality
-- Full customer storefront, cart, Razorpay payment verification, order history, addresses, cancellations, returns, and ratings.
-- Merchant dashboard, order fulfillment, return logistics pipeline, stock management, and recovery cases.
-- AI Merchant Helper with voice (STT & TTS), deal creation, stock updates, refunds, and order cancellations.
-- Admin portal for reviewing and approving/rejecting merchant onboarding applications.
-
-### Mock & Demonstration Modes
-- `EMAIL_DELIVERY_MODE=mock`: Logs email payloads locally during development/testing without calling external Resend API.
-- `AI_MODE=mock`: Returns mock recommendations and transcriptions when external AI API keys are not provided.
-- `PaymentSimulator`: Supports injecting demo failure scenarios (`?demo=failure_network`) to test recovery workflows.
+- **Global Express Error Middleware**: Centralized error handler returning structured JSON error objects with appropriate HTTP status codes.
+- **Database Transaction Safety**: TypeORM query runner transactions ensure atomic updates during checkout, inventory reservation, order cancellations, and refunds.
+- **AI Fallback & Mock Modes**: Supports `AI_MODE=mock` and `EMAIL_DELIVERY_MODE=mock` for testing environments without external network dependencies.
+- **Automated Deployment Rollback**: Server-side deployment scripts automatically roll back application code and restart PM2 processes if deployment health checks fail.
 
 ---
 
-## 23. Security Practices
+## UI/UX Design System
 
-- **Password Hashing**: `bcryptjs` hashing with salt rounds = 10.
-- **JWT Session Protection**: Signed tokens with 7-day expiration.
-- **CORS Configuration**: Restricts origin requests and permits safe HTTP headers.
-- **Parameterized SQL Queries**: All database operations execute through TypeORM query builder / repositories, preventing SQL injection vulnerabilities.
-- **Timing-Safe HMAC Verification**: Webhook signatures verified using `crypto.timingSafeEqual`.
-- **Input Validation**: Robust validation of UUID formats, page/limit parameters, and numeric ranges.
+- **Dual Theme Support**: Full Light Mode and Dark Mode support implemented across Customer, Merchant, and Admin Portals using unified CSS variable tokens (`var(--c-surface)`, `var(--c-bg)`, `var(--c-text)`, `var(--c-gold)`, `var(--c-border)`).
+- **Responsive Layout**: Designed for mobile, tablet, and desktop viewports with responsive navigation headers, sliding drawers, and fluid product grids.
+- **Micro-Animations**: Smooth CSS keyframe transitions (`animate-fadeIn`, `animate-fadeUp`, `animate-scrollBounce`), scroll-reveal observers (`.reveal.in-view`), and interactive hover states.
 
 ---
 
-## 24. Contributing & Development Guidelines
+## Important Business Workflows
 
-1. **Code Conventions**: Write TypeScript with strict typing. Ensure all API DTO changes are updated in `packages/shared/src/types/index.ts`.
-2. **Database Schema Changes**: Create typeORM migration files in `packages/backend/src/migrations/` rather than modifying raw database tables directly.
-3. **Pre-Commit Verification**: Run `npm run typecheck` and `npm test` before pushing changes to ensure zero compilation or test errors.
+### Customer Workflow
+`Browse Catalog` ──► `Select Product` ──► `Add to Cart / View Bundle` ──► `Select Shipping Address` ──► `Checkout & Pay via Razorpay` ──► `Order Confirmation` ──► `Track Delivery Timeline` ──► `Submit Review / Request Return`
+
+### Merchant Workflow
+`Login / Register Application` ──► `Admin Approval` ──► `Access Merchant Dashboard` ──► `Manage Products & Stock` ──► `Fulfill Orders (Dispatch/Ship/Deliver)` ──► `Process Return Logistics & Refunds` ──► `Inspect Recovery Cases` ──► `Use AI Merchant Helper`
+
+### Admin Workflow
+`Login to Admin Portal` ──► `View Pending Merchant Applications` ──► `Inspect Business Application Metadata` ──► `Approve / Reject Application` ──► `Review Audit Trail Logs`
 
 ---
 
-## 25. License
+## License
 
-RazorShop is currently an unreleased private repository. All rights reserved. Refer to repository header or contact repository owner for license inquiries.
+This project is proprietary and maintained for **RazorShop**. All rights reserved.
