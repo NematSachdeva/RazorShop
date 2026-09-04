@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApiUrl, getImageUrl } from '../../config/api';
 import { authService } from '../../services/authService';
+import { IconClose } from '../common/Icons';
 
 interface ProductData {
   id?: string;
@@ -189,35 +190,54 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
+      className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-5 sm:p-6 relative my-auto max-h-[90vh] overflow-y-auto border border-gray-100"
+        className="w-full max-w-lg rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 relative my-auto max-h-[90vh] overflow-y-auto border themed"
+        style={{
+          background: 'var(--c-surface)',
+          borderColor: 'var(--c-border)',
+          color: 'var(--c-text)',
+        }}
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-lg p-1 rounded-full hover:bg-gray-100 transition"
-        >
-          ✕
-        </button>
-
-        <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-6">
-          {isEditing ? '✏️ Edit Catalog Product' : '➕ Add New Catalog Product'}
-        </h2>
+        <div className="flex justify-between items-center pb-3 border-b" style={{ borderColor: 'var(--c-border-soft)' }}>
+          <h2 className="text-xl sm:text-2xl font-bold font-heading tracking-tight" style={{ color: 'var(--c-text)' }}>
+            {isEditing ? '✏️ Edit Catalog Product' : '➕ Add New Catalog Product'}
+          </h2>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1.5 rounded-xl transition-colors cursor-pointer"
+            style={{
+              background: 'var(--c-surface2)',
+              border: '1px solid var(--c-border)',
+              color: 'var(--c-muted)',
+            }}
+            aria-label="Close product modal"
+          >
+            <IconClose className="w-5 h-5" />
+          </button>
+        </div>
 
         {error && (
-          <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-xl text-xs font-semibold">
+          <div
+            className="p-3.5 rounded-xl text-xs font-semibold"
+            style={{
+              background: 'var(--c-status-red-bg)',
+              border: '1px solid var(--c-border-soft)',
+              color: 'var(--c-status-red-text)',
+            }}
+          >
             ⚠️ {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           <div>
-            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Product Name *
             </label>
             <input
@@ -226,13 +246,18 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Ergonomic Wireless Keyboard"
-              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+              <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
                 Category
               </label>
               <input
@@ -240,11 +265,16 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="e.g. Electronics"
-                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+                style={{
+                  background: 'var(--c-surface2)',
+                  border: '1px solid var(--c-border)',
+                  color: 'var(--c-text)',
+                }}
               />
             </div>
             <div>
-              <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+              <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
                 Price (INR ₹) *
               </label>
               <input
@@ -255,14 +285,19 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                 value={priceInr}
                 onChange={(e) => setPriceInr(e.target.value)}
                 placeholder="2999.00"
-                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+                style={{
+                  background: 'var(--c-surface2)',
+                  border: '1px solid var(--c-border)',
+                  color: 'var(--c-text)',
+                }}
               />
             </div>
           </div>
 
           {!isEditing && (
             <div>
-              <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+              <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
                 Initial Stock Inventory *
               </label>
               <input
@@ -272,20 +307,43 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                 value={initialQuantity}
                 onChange={(e) => setInitialQuantity(e.target.value)}
                 placeholder="50"
-                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+                style={{
+                  background: 'var(--c-surface2)',
+                  border: '1px solid var(--c-border)',
+                  color: 'var(--c-text)',
+                }}
               />
             </div>
           )}
 
           {/* Product Image Section */}
-          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
-            <label className="block font-bold text-gray-800 uppercase tracking-wider text-[11px]">
+          <div
+            className="p-4 rounded-xl border space-y-3 themed"
+            style={{
+              background: 'var(--c-surface2)',
+              borderColor: 'var(--c-border)',
+            }}
+          >
+            <label className="block font-bold uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-gold)' }}>
               🖼️ Product Image (URL or Upload)
             </label>
 
             {imageUrl.trim() && (
-              <div className="flex items-center gap-3 bg-white p-2.5 rounded-lg border border-gray-200">
-                <div className="w-14 h-14 rounded-md border border-gray-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+              <div
+                className="flex items-center gap-3 p-2.5 rounded-xl border themed"
+                style={{
+                  background: 'var(--c-surface)',
+                  borderColor: 'var(--c-border)',
+                }}
+              >
+                <div
+                  className="w-14 h-14 rounded-lg border flex items-center justify-center overflow-hidden shrink-0"
+                  style={{
+                    background: 'var(--c-surface2)',
+                    borderColor: 'var(--c-border)',
+                  }}
+                >
                   <img
                     src={getImageUrl(imageUrl) || imageUrl}
                     alt="Product preview"
@@ -296,11 +354,11 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                   />
                 </div>
                 <div className="flex-1 truncate">
-                  <p className="text-[11px] font-semibold text-gray-700 truncate">{imageUrl}</p>
+                  <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--c-text)' }}>{imageUrl}</p>
                   {imageLoadError ? (
-                    <span className="text-[10px] text-rose-600 font-bold block">⚠️ Image failed to load</span>
+                    <span className="text-[10px] font-bold block" style={{ color: 'var(--c-status-red-text)' }}>⚠️ Image failed to load</span>
                   ) : (
-                    <span className="text-[10px] text-emerald-600 font-bold block">✓ Image preview verified</span>
+                    <span className="text-[10px] font-bold block" style={{ color: 'var(--c-status-green-text)' }}>✓ Image preview verified</span>
                   )}
                 </div>
                 <button
@@ -309,7 +367,12 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                     setImageUrl('');
                     setImageLoadError(false);
                   }}
-                  className="text-rose-600 hover:text-rose-800 text-xs font-bold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded transition cursor-pointer"
+                  className="text-xs font-bold px-2 py-1 rounded transition cursor-pointer font-display"
+                  style={{
+                    background: 'var(--c-status-red-bg)',
+                    border: '1px solid var(--c-border-soft)',
+                    color: 'var(--c-status-red-text)',
+                  }}
                 >
                   Remove
                 </button>
@@ -317,7 +380,7 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
             )}
 
             <div>
-              <label className="block text-[10px] font-semibold text-gray-500 mb-1">
+              <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--c-muted)' }}>
                 Enter Image URL:
               </label>
               <input
@@ -328,13 +391,25 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
                   setImageLoadError(false);
                 }}
                 placeholder="https://example.com/product-image.jpg"
-                className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 text-xs rounded-lg focus:outline-none transition-all font-medium themed"
+                style={{
+                  background: 'var(--c-surface)',
+                  border: '1px solid var(--c-border)',
+                  color: 'var(--c-text)',
+                }}
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-gray-400">OR</span>
-              <label className="flex-1 bg-white hover:bg-blue-50 border border-dashed border-gray-300 hover:border-blue-400 text-gray-700 text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer text-center transition flex items-center justify-center gap-1.5">
+              <span className="text-[11px] font-bold" style={{ color: 'var(--c-muted)' }}>OR</span>
+              <label
+                className="flex-1 border border-dashed text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer text-center transition flex items-center justify-center gap-1.5 font-display"
+                style={{
+                  background: 'var(--c-surface)',
+                  borderColor: 'var(--c-border)',
+                  color: 'var(--c-text-dim)',
+                }}
+              >
                 <span>{uploadingImage ? 'Uploading Image...' : '📁 Upload Image File'}</span>
                 <input
                   type="file"
@@ -348,7 +423,7 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
           </div>
 
           <div>
-            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Description
             </label>
             <textarea
@@ -356,25 +431,32 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Product features and specifications..."
-              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all resize-none font-medium themed"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <div className="flex justify-end gap-3 pt-4 border-t" style={{ borderColor: 'var(--c-border-soft)' }}>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onClose();
               }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs transition"
+              className="px-4 py-2.5 text-xs font-bold rounded-xl transition font-display cursor-pointer"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || uploadingImage}
-              className="px-5 py-2.5 bg-blue-600 text-white font-extrabold text-xs rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow transition active:scale-98"
+              className="px-5 py-2.5 font-extrabold text-xs rounded-xl shadow-md transition disabled:opacity-50 active:scale-98 font-display cursor-pointer"
+              style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
             >
               {loading ? 'Saving...' : isEditing ? 'Update Product' : 'Create Product'}
             </button>
@@ -384,3 +466,4 @@ export default function MerchantProductForm({ product, onClose, onSuccess }: Pro
     </div>
   );
 }
+

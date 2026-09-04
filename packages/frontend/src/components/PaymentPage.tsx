@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { getApiUrl } from '../config/api';
 import PaymentStatus from './PaymentStatus';
+import { IconClose } from './common/Icons';
 
 interface PaymentPageProps {
   orderId: string;
@@ -291,24 +292,36 @@ export default function PaymentPage({
     return (
       <div
         onClick={onCancel}
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-gray-100"
+          className="w-full max-w-md rounded-2xl p-6 sm:p-8 text-center border space-y-4 themed relative my-auto max-h-[90vh] overflow-y-auto shadow-2xl"
+          style={{
+            background: 'var(--c-surface)',
+            borderColor: 'var(--c-border)',
+            color: 'var(--c-text)',
+          }}
         >
-          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-4">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-2"
+            style={{
+              background: 'var(--c-status-green-bg)',
+              color: 'var(--c-status-green-text)',
+            }}
+          >
             ✓
           </div>
-          <h2 className="text-2xl font-black text-green-700 mb-2">Payment Successful!</h2>
-          <p className="text-xs text-gray-600 mb-4">Your order has been confirmed.</p>
-          <p className="text-xs text-gray-400 font-mono mb-6 truncate">Order ID: {orderId}</p>
+          <h2 className="text-2xl font-bold font-display" style={{ color: 'var(--c-status-green-text)' }}>Payment Successful!</h2>
+          <p className="text-xs" style={{ color: 'var(--c-text-dim)' }}>Your order has been confirmed.</p>
+          <p className="text-xs font-mono truncate" style={{ color: 'var(--c-muted)' }}>Order ID: {orderId}</p>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onPaymentComplete('success');
             }}
-            className="w-full py-3.5 px-6 bg-green-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-green-700 shadow-md transition"
+            className="w-full py-3.5 px-6 font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition font-display cursor-pointer"
+            style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
           >
             Continue to Order
           </button>
@@ -321,31 +334,44 @@ export default function PaymentPage({
     return (
       <div
         onClick={handleDismissBackdrop}
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-gray-100"
+          className="w-full max-w-md rounded-2xl p-6 sm:p-8 text-center border space-y-4 themed relative my-auto max-h-[90vh] overflow-y-auto shadow-2xl"
+          style={{
+            background: 'var(--c-surface)',
+            borderColor: 'var(--c-border)',
+            color: 'var(--c-text)',
+          }}
         >
-          <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-4">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-2"
+            style={{
+              background: 'var(--c-status-red-bg)',
+              color: 'var(--c-status-red-text)',
+            }}
+          >
             ✕
           </div>
-          <h2 className="text-2xl font-black text-rose-600 mb-2">Payment Failed</h2>
-          <p className="text-xs text-gray-600 mb-4 break-words">{error || 'An error occurred during payment.'}</p>
-          <p className="text-xs text-gray-400 font-mono mb-6 truncate">Order ID: {orderId.slice(0, 12)}...</p>
-          <div className="flex gap-3">
+          <h2 className="text-2xl font-bold font-display" style={{ color: 'var(--c-status-red-text)' }}>Payment Failed</h2>
+          <p className="text-xs break-words" style={{ color: 'var(--c-text-dim)' }}>{error || 'An error occurred during payment.'}</p>
+          <p className="text-xs font-mono truncate" style={{ color: 'var(--c-muted)' }}>Order ID: {orderId.slice(0, 12)}...</p>
+          <div className="flex gap-3 pt-2">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onCancel();
               }}
-              className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-gray-200 transition"
+              className="flex-1 py-3 px-4 font-bold text-xs sm:text-sm rounded-xl transition font-display cursor-pointer"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               Back to Orders
             </button>
             <button
               onClick={handleRetryPayment}
-              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-md transition"
+              className="flex-1 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition font-display cursor-pointer"
+              style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
             >
               Retry Payment
             </button>
@@ -359,30 +385,43 @@ export default function PaymentPage({
     return (
       <div
         onClick={handleDismissBackdrop}
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-gray-100"
+          className="w-full max-w-md rounded-2xl p-6 sm:p-8 text-center border space-y-4 themed relative my-auto max-h-[90vh] overflow-y-auto shadow-2xl"
+          style={{
+            background: 'var(--c-surface)',
+            borderColor: 'var(--c-border)',
+            color: 'var(--c-text)',
+          }}
         >
-          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-4">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-2"
+            style={{
+              background: 'var(--c-status-amber-bg)',
+              color: 'var(--c-status-amber-text)',
+            }}
+          >
             ⏸
           </div>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">Payment Cancelled</h2>
-          <p className="text-xs text-gray-600 mb-6 break-words">{error || 'Your order is saved and remains pending.'}</p>
-          <div className="flex gap-3">
+          <h2 className="text-2xl font-bold font-display" style={{ color: 'var(--c-text)' }}>Payment Cancelled</h2>
+          <p className="text-xs break-words" style={{ color: 'var(--c-text-dim)' }}>{error || 'Your order is saved and remains pending.'}</p>
+          <div className="flex gap-3 pt-2">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onCancel();
               }}
-              className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-gray-200 transition"
+              className="flex-1 py-3 px-4 font-bold text-xs sm:text-sm rounded-xl transition font-display cursor-pointer"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               View Orders
             </button>
             <button
               onClick={handleRetryPayment}
-              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-md transition"
+              className="flex-1 py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition font-display cursor-pointer"
+              style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
             >
               Continue Payment
             </button>
@@ -395,36 +434,47 @@ export default function PaymentPage({
   return (
     <div
       onClick={handleDismissBackdrop}
-      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-fadeIn"
+      className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 relative border border-gray-100"
+        className="w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 relative my-auto max-h-[90vh] overflow-y-auto border themed"
+        style={{
+          background: 'var(--c-surface)',
+          borderColor: 'var(--c-border)',
+          color: 'var(--c-text)',
+        }}
       >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-black text-gray-900">Payment Gateway</h2>
+        <div className="flex justify-between items-center pb-3 border-b" style={{ borderColor: 'var(--c-border-soft)' }}>
+          <h2 className="text-xl sm:text-2xl font-bold font-heading tracking-tight" style={{ color: 'var(--c-text)' }}>Payment Gateway</h2>
           {paymentStatus !== 'processing' && paymentStatus !== 'verifying' && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onCancel();
               }}
-              className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1 rounded-full hover:bg-gray-100 transition"
+              className="p-1.5 rounded-xl transition-colors cursor-pointer"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-muted)',
+              }}
+              aria-label="Close payment gateway"
             >
-              ✕
+              <IconClose className="w-5 h-5" />
             </button>
           )}
         </div>
 
         {/* Payment Summary */}
-        <div className="bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100 text-xs sm:text-sm space-y-2">
+        <div className="p-4 rounded-xl border text-xs sm:text-sm space-y-2 themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
           <div className="flex justify-between">
-            <p className="text-gray-500 font-medium">Order Amount:</p>
-            <p className="font-extrabold text-gray-900">{formatPrice(amountCents)}</p>
+            <p className="font-medium" style={{ color: 'var(--c-muted)' }}>Order Amount:</p>
+            <p className="font-extrabold font-price" style={{ color: 'var(--c-text)' }}>{formatPrice(amountCents)}</p>
           </div>
           <div className="flex justify-between">
-            <p className="text-gray-500 font-medium">Order ID:</p>
-            <p className="font-mono text-xs text-gray-700 truncate max-w-[180px]">{orderId}</p>
+            <p className="font-medium" style={{ color: 'var(--c-muted)' }}>Order ID:</p>
+            <p className="font-mono text-xs truncate max-w-[180px]" style={{ color: 'var(--c-text-dim)' }}>{orderId}</p>
           </div>
         </div>
 
@@ -433,26 +483,27 @@ export default function PaymentPage({
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold">
+          <div className="p-3.5 rounded-xl text-xs font-semibold" style={{ background: 'var(--c-status-red-bg)', border: '1px solid var(--c-border-soft)', color: 'var(--c-status-red-text)' }}>
             ⚠️ {error}
           </div>
         )}
 
         {/* Security Info */}
-        <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 mb-6 text-xs text-blue-900">
-          <p className="font-bold mb-0.5">🔒 Secure Checkout:</p>
-          <p className="text-blue-800">Your payment will be processed securely through Razorpay SSL encryption.</p>
+        <div className="border rounded-xl p-3.5 text-xs space-y-0.5 themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
+          <p className="font-bold flex items-center gap-1 font-display" style={{ color: 'var(--c-gold)' }}>🔒 Secure Checkout:</p>
+          <p style={{ color: 'var(--c-muted)' }}>Your payment will be processed securely through Razorpay SSL encryption.</p>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="flex gap-3 pt-2">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onCancel();
             }}
             disabled={paymentStatus === 'processing' || paymentStatus === 'verifying'}
-            className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-gray-200 transition disabled:opacity-50"
+            className="flex-1 py-3 px-4 font-bold rounded-xl text-xs sm:text-sm transition disabled:opacity-50 font-display cursor-pointer"
+            style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
           >
             Cancel
           </button>
@@ -463,7 +514,8 @@ export default function PaymentPage({
                 handleOpenRazorpay();
               }}
               disabled={!scriptLoaded}
-              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-md transition disabled:opacity-50 active:scale-98"
+              className="flex-1 py-3 px-4 font-extrabold rounded-xl text-xs sm:text-sm shadow-md transition disabled:opacity-50 active:scale-98 font-display cursor-pointer"
+              style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
             >
               Pay Now
             </button>
@@ -473,3 +525,4 @@ export default function PaymentPage({
     </div>
   );
 }
+

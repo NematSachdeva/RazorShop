@@ -556,7 +556,8 @@ export default function App() {
         intersectionObserver.disconnect();
       }
     };
-  }, [filteredProducts, selectedCategory, activeTab, currentPage, sortOption, minPrice, maxPrice, searchTerm, products, loading]);
+  }, [filteredProducts, selectedCategory, activeTab, currentPage, sortOption, minPrice, maxPrice, searchTerm, products, loading, isAuthenticated, user]);
+
 
   // Detect scroll past hero for sticky header & smooth scroll-linked hero animation
   useEffect(() => {

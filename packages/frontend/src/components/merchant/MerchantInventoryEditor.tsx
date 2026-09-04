@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../../config/api';
 import { authService } from '../../services/authService';
+import { IconClose } from '../common/Icons';
 
 interface ProductItem {
   id: string;
@@ -93,83 +94,113 @@ export default function MerchantInventoryEditor({ product, onClose, onSuccess }:
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
+      className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 relative my-auto max-h-[90vh] overflow-y-auto border border-gray-100"
+        className="w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 relative my-auto max-h-[90vh] overflow-y-auto border themed"
+        style={{
+          background: 'var(--c-surface)',
+          borderColor: 'var(--c-border)',
+          color: 'var(--c-text)',
+        }}
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-lg p-1 rounded-full hover:bg-gray-100 transition"
-        >
-          ✕
-        </button>
-
-        <h2 className="text-xl font-extrabold text-gray-900 mb-1">📦 Manage Stock Inventory</h2>
-        <p className="text-xs font-bold text-blue-800 mb-4 break-words">{product.name}</p>
+        <div className="flex justify-between items-center pb-3 border-b" style={{ borderColor: 'var(--c-border-soft)' }}>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold font-heading tracking-tight" style={{ color: 'var(--c-text)' }}>📦 Manage Stock Inventory</h2>
+            <p className="text-xs font-bold font-display break-words mt-0.5" style={{ color: 'var(--c-gold)' }}>{product.name}</p>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1.5 rounded-xl transition-colors cursor-pointer shrink-0"
+            style={{
+              background: 'var(--c-surface2)',
+              border: '1px solid var(--c-border)',
+              color: 'var(--c-muted)',
+            }}
+            aria-label="Close inventory modal"
+          >
+            <IconClose className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Current Inventory Summary Card */}
-        <div className="bg-gray-50 border border-gray-200/80 rounded-xl p-4 mb-5 grid grid-cols-3 text-center gap-2">
+        <div
+          className="p-4 rounded-xl border grid grid-cols-3 text-center gap-2 themed"
+          style={{
+            background: 'var(--c-surface2)',
+            borderColor: 'var(--c-border)',
+          }}
+        >
           <div>
-            <span className="block text-[11px] text-gray-500 font-medium">On Hand</span>
-            <span className="text-lg font-black text-gray-900">{currentOnHand}</span>
+            <span className="block text-[11px] font-medium font-display mb-0.5" style={{ color: 'var(--c-muted)' }}>On Hand</span>
+            <span className="text-lg font-black font-display" style={{ color: 'var(--c-text)' }}>{currentOnHand}</span>
           </div>
           <div>
-            <span className="block text-[11px] text-gray-500 font-medium">Reserved</span>
-            <span className="text-lg font-black text-amber-600">{reserved}</span>
+            <span className="block text-[11px] font-medium font-display mb-0.5" style={{ color: 'var(--c-muted)' }}>Reserved</span>
+            <span className="text-lg font-black font-display" style={{ color: 'var(--c-status-amber-text)' }}>{reserved}</span>
           </div>
           <div>
-            <span className="block text-[11px] text-gray-500 font-medium">Available</span>
-            <span className="text-lg font-black text-emerald-600">{product.inventory.available}</span>
+            <span className="block text-[11px] font-medium font-display mb-0.5" style={{ color: 'var(--c-muted)' }}>Available</span>
+            <span className="text-lg font-black font-display" style={{ color: 'var(--c-status-green-text)' }}>{product.inventory.available}</span>
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-xl text-xs font-semibold">
+          <div
+            className="p-3.5 rounded-xl text-xs font-semibold"
+            style={{
+              background: 'var(--c-status-red-bg)',
+              border: '1px solid var(--c-border-soft)',
+              color: 'var(--c-status-red-text)',
+            }}
+          >
             ⚠️ {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           <div>
-            <label className="block font-bold text-gray-700 mb-2 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-2 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Select Adjustment Action
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setAction('add')}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
-                  action === 'add'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
+                className="py-2 px-3 rounded-xl text-xs font-bold transition font-display cursor-pointer"
+                style={{
+                  background: action === 'add' ? 'var(--c-status-green-bg)' : 'var(--c-surface2)',
+                  color: action === 'add' ? 'var(--c-status-green-text)' : 'var(--c-text-dim)',
+                  border: `1px solid ${action === 'add' ? 'var(--c-status-green-text)' : 'var(--c-border)'}`,
+                }}
               >
                 ➕ Add Stock
               </button>
               <button
                 type="button"
                 onClick={() => setAction('remove')}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
-                  action === 'remove'
-                    ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
+                className="py-2 px-3 rounded-xl text-xs font-bold transition font-display cursor-pointer"
+                style={{
+                  background: action === 'remove' ? 'var(--c-status-amber-bg)' : 'var(--c-surface2)',
+                  color: action === 'remove' ? 'var(--c-status-amber-text)' : 'var(--c-text-dim)',
+                  border: `1px solid ${action === 'remove' ? 'var(--c-status-amber-text)' : 'var(--c-border)'}`,
+                }}
               >
                 ➖ Remove
               </button>
               <button
                 type="button"
                 onClick={() => setAction('set')}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
-                  action === 'set'
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
+                className="py-2 px-3 rounded-xl text-xs font-bold transition font-display cursor-pointer"
+                style={{
+                  background: action === 'set' ? 'var(--c-status-blue-bg)' : 'var(--c-surface2)',
+                  color: action === 'set' ? 'var(--c-status-blue-text)' : 'var(--c-text-dim)',
+                  border: `1px solid ${action === 'set' ? 'var(--c-status-blue-text)' : 'var(--c-border)'}`,
+                }}
               >
                 ✏️ Set Exact
               </button>
@@ -177,7 +208,7 @@ export default function MerchantInventoryEditor({ product, onClose, onSuccess }:
           </div>
 
           <div>
-            <label className="block font-bold text-gray-700 mb-1 uppercase tracking-wider text-[11px]">
+            <label className="block font-bold mb-1 uppercase tracking-wider text-[11px] font-display" style={{ color: 'var(--c-text-dim)' }}>
               Quantity to {action === 'add' ? 'Add' : action === 'remove' ? 'Remove' : 'Set'} *
             </label>
             <input
@@ -186,25 +217,32 @@ export default function MerchantInventoryEditor({ product, onClose, onSuccess }:
               required
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none transition-all font-medium themed"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-text)',
+              }}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <div className="flex justify-end gap-3 pt-4 border-t" style={{ borderColor: 'var(--c-border-soft)' }}>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onClose();
               }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs transition"
+              className="px-4 py-2.5 text-xs font-bold rounded-xl transition font-display cursor-pointer"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 bg-blue-600 text-white font-extrabold text-xs rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow transition active:scale-98"
+              className="px-5 py-2.5 font-extrabold text-xs rounded-xl shadow-md transition disabled:opacity-50 active:scale-98 font-display cursor-pointer"
+              style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
             >
               {loading ? 'Updating...' : 'Save Stock Adjustment'}
             </button>

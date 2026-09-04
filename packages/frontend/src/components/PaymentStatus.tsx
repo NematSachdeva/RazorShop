@@ -24,24 +24,40 @@ export default function PaymentStatus({ status }: PaymentStatusProps) {
     }
   };
 
-  const getStatusColor = () => {
+  const getStatusTheme = () => {
     switch (status) {
       case 'loading':
-        return 'text-blue-600';
       case 'ready':
-        return 'text-blue-600';
+        return {
+          bg: 'var(--c-status-blue-bg)',
+          text: 'var(--c-status-blue-text)',
+        };
       case 'processing':
-        return 'text-yellow-600';
       case 'verifying':
-        return 'text-yellow-600';
+        return {
+          bg: 'var(--c-status-amber-bg)',
+          text: 'var(--c-status-amber-text)',
+        };
       case 'complete':
-        return 'text-green-600';
+        return {
+          bg: 'var(--c-status-green-bg)',
+          text: 'var(--c-status-green-text)',
+        };
       case 'cancelled':
-        return 'text-amber-600';
+        return {
+          bg: 'var(--c-status-amber-bg)',
+          text: 'var(--c-status-amber-text)',
+        };
       case 'failed':
-        return 'text-red-600';
+        return {
+          bg: 'var(--c-status-red-bg)',
+          text: 'var(--c-status-red-text)',
+        };
       default:
-        return 'text-gray-600';
+        return {
+          bg: 'var(--c-surface2)',
+          text: 'var(--c-muted)',
+        };
     }
   };
 
@@ -59,12 +75,22 @@ export default function PaymentStatus({ status }: PaymentStatusProps) {
     return null;
   };
 
+  const theme = getStatusTheme();
+
   return (
-    <div className={`p-4 rounded-lg border mb-6 text-center ${getStatusColor()} border-current border-opacity-20`}>
-      <div className={`${getStatusColor()} font-medium flex items-center justify-center gap-2`}>
+    <div
+      className="p-4 rounded-xl border text-center font-display text-xs sm:text-sm font-semibold transition-all themed"
+      style={{
+        background: theme.bg,
+        color: theme.text,
+        borderColor: 'var(--c-border-soft)',
+      }}
+    >
+      <div className="flex items-center justify-center gap-2">
         {getSpinner()}
         <span>{getStatusMessage()}</span>
       </div>
     </div>
   );
 }
+

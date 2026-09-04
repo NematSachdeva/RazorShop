@@ -3,6 +3,7 @@ import { CartDTO } from '@razor/shared';
 import { getApiUrl } from '../config/api';
 import { CustomerAddress, frontendAddressService } from '../services/addressService';
 import { AddressFormModal } from './common/AddressFormModal';
+import { IconClose } from './common/Icons';
 
 interface CheckoutProps {
   cart: CartDTO;
@@ -115,49 +116,62 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
     <>
       <div
         onClick={onCancel}
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 overflow-y-auto font-sans animate-fadeIn"
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 relative my-auto max-h-[90vh] overflow-y-auto border border-gray-100 space-y-5"
+          className="w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 relative my-auto max-h-[90vh] overflow-y-auto border themed"
+          style={{
+            background: 'var(--c-surface)',
+            borderColor: 'var(--c-border)',
+            color: 'var(--c-text)',
+          }}
         >
-          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-            <h2 className="text-xl sm:text-2xl font-bold font-heading tracking-tight text-gray-900">Checkout</h2>
+          <div className="flex justify-between items-center pb-3 border-b" style={{ borderColor: 'var(--c-border-soft)' }}>
+            <h2 className="text-xl sm:text-2xl font-bold font-heading tracking-tight" style={{ color: 'var(--c-text)' }}>Checkout</h2>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onCancel();
               }}
-              className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1 rounded-full hover:bg-gray-100 transition"
+              className="p-1.5 rounded-xl transition-colors cursor-pointer"
+              style={{
+                background: 'var(--c-surface2)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-muted)',
+              }}
+              aria-label="Close checkout modal"
             >
-              ✕
+              <IconClose className="w-5 h-5" />
             </button>
           </div>
 
           {/* Delivery Address Selection */}
-          <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-3">
+          <div className="p-4 rounded-xl border space-y-3 themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
             <div className="flex justify-between items-center">
-              <span className="font-extrabold text-xs text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 font-display" style={{ color: 'var(--c-gold)' }}>
                 <span>📍</span> Delivery Address
               </span>
               <button
                 onClick={() => setIsAddressModalOpen(true)}
-                className="text-xs font-bold text-blue-600 hover:text-blue-800 underline"
+                className="text-xs font-bold underline font-display cursor-pointer"
+                style={{ color: 'var(--c-gold)' }}
               >
                 + Add New
               </button>
             </div>
 
             {loadingAddresses ? (
-              <p className="text-xs text-gray-500 py-1">Loading saved addresses...</p>
+              <p className="text-xs py-1 font-medium" style={{ color: 'var(--c-muted)' }}>Loading saved addresses...</p>
             ) : addresses.length === 0 ? (
               <div className="text-center py-2 space-y-2">
-                <p className="text-xs text-amber-800 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200">
+                <p className="text-xs font-medium p-2.5 rounded-xl border font-display" style={{ background: 'var(--c-status-amber-bg)', borderColor: 'var(--c-border-soft)', color: 'var(--c-status-amber-text)' }}>
                   No saved delivery address found. Please add one to continue.
                 </p>
                 <button
                   onClick={() => setIsAddressModalOpen(true)}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                  className="w-full py-2 font-bold text-xs rounded-xl shadow-sm transition font-display cursor-pointer"
+                  style={{ background: 'var(--c-gold)', color: '#0a0908' }}
                 >
                   + Add Delivery Address
                 </button>
@@ -167,32 +181,33 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
                 {addresses.map((addr) => (
                   <label
                     key={addr.id}
-                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${
-                      selectedAddress?.id === addr.id
-                        ? 'bg-white border-blue-500 shadow-sm ring-1 ring-blue-500'
-                        : 'bg-white/60 border-gray-200 hover:border-gray-300'
-                    }`}
+                    className="flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition themed"
+                    style={{
+                      background: selectedAddress?.id === addr.id ? 'var(--c-gold-dim)' : 'var(--c-surface)',
+                      borderColor: selectedAddress?.id === addr.id ? 'var(--c-gold)' : 'var(--c-border)',
+                    }}
                   >
                     <input
                       type="radio"
                       name="delivery_address"
                       checked={selectedAddress?.id === addr.id}
                       onChange={() => setSelectedAddress(addr)}
-                      className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                      className="mt-0.5 cursor-pointer"
+                      style={{ accentColor: 'var(--c-gold)' }}
                     />
                     <div className="text-xs flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-gray-900">{addr.full_address}</span>
+                        <span className="font-bold font-display" style={{ color: 'var(--c-text)' }}>{addr.full_address}</span>
                         {addr.is_default && (
-                          <span className="px-1.5 py-0.2 text-[9px] font-extrabold uppercase bg-blue-100 text-blue-800 rounded">
+                          <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded font-display" style={{ background: 'var(--c-gold-dim)', color: 'var(--c-gold)', border: '1px solid var(--c-gold)' }}>
                             Default
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-600 mt-0.5">
+                      <p className="mt-0.5 font-medium" style={{ color: 'var(--c-text-dim)' }}>
                         {addr.state} — {addr.pin_code}
                       </p>
-                      {addr.phone && <p className="text-gray-500 text-[11px]">📞 {addr.phone}</p>}
+                      {addr.phone && <p className="text-[11px] font-medium mt-0.5" style={{ color: 'var(--c-muted)' }}>📞 {addr.phone}</p>}
                     </div>
                   </label>
                 ))}
@@ -202,43 +217,43 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
 
           {/* Order Details */}
           <div>
-            <span className="font-bold text-xs text-gray-500 uppercase tracking-wider block mb-2">Order Items</span>
-            <div className="bg-gray-50 p-3.5 rounded-xl max-h-48 overflow-y-auto border border-gray-100 space-y-2.5">
+            <span className="font-bold text-xs uppercase tracking-wider block mb-2 font-display" style={{ color: 'var(--c-muted)' }}>Order Items</span>
+            <div className="p-3.5 rounded-xl max-h-48 overflow-y-auto border space-y-2.5 themed" style={{ background: 'var(--c-surface2)', borderColor: 'var(--c-border)' }}>
               {cart.items.map((item) => (
                 <div key={item.product_id} className="flex justify-between items-start text-xs">
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-gray-900 truncate">{item.product.name}</p>
-                    <p className="text-gray-500 font-medium">Qty: {item.quantity}</p>
+                    <p className="font-bold truncate font-display" style={{ color: 'var(--c-text)' }}>{item.product.name}</p>
+                    <p className="font-medium" style={{ color: 'var(--c-muted)' }}>Qty: {item.quantity}</p>
                   </div>
-                  <p className="font-bold font-price text-gray-900 shrink-0">{formatPrice(item.line_total_cents)}</p>
+                  <p className="font-bold font-price shrink-0" style={{ color: 'var(--c-text)' }}>{formatPrice(item.line_total_cents)}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Totals */}
-          <div className="border-t border-gray-100 pt-3 space-y-2 text-xs sm:text-sm">
-            <div className="flex justify-between text-gray-600">
+          <div className="border-t pt-3 space-y-2 text-xs sm:text-sm" style={{ borderColor: 'var(--c-border-soft)' }}>
+            <div className="flex justify-between" style={{ color: 'var(--c-muted)' }}>
               <p>Subtotal:</p>
-              <p className="font-semibold font-price">{formatPrice(cart.subtotal_cents || cart.total_cents)}</p>
+              <p className="font-semibold font-price" style={{ color: 'var(--c-text)' }}>{formatPrice(cart.subtotal_cents || cart.total_cents)}</p>
             </div>
 
             {((cart.discount_cents && cart.discount_cents > 0) || (cart.discount_percent && cart.discount_percent > 0)) && (
-              <div className="flex justify-between text-xs text-green-700 bg-green-50 p-2.5 rounded-xl border border-green-200 font-medium">
+              <div className="flex justify-between text-xs p-2.5 rounded-xl border font-medium" style={{ background: 'var(--c-status-green-bg)', borderColor: 'var(--c-border-soft)', color: 'var(--c-status-green-text)' }}>
                 <p>🎁 Combo Discount ({cart.discount_percent}% OFF):</p>
                 <p className="font-bold font-price">-{formatPrice(cart.discount_cents || 0)}</p>
               </div>
             )}
 
-            <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t border-gray-100">
+            <div className="flex justify-between text-base font-black pt-2 border-t" style={{ borderColor: 'var(--c-border-soft)', color: 'var(--c-text)' }}>
               <p>Total Amount:</p>
-              <p className="text-blue-700 font-price font-bold">{formatPrice(cart.total_cents)}</p>
+              <p className="font-price font-bold" style={{ color: 'var(--c-gold)' }}>{formatPrice(cart.total_cents)}</p>
             </div>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold">
+            <div className="p-3.5 rounded-xl text-xs font-semibold" style={{ background: 'var(--c-status-red-bg)', border: '1px solid var(--c-border-soft)', color: 'var(--c-status-red-text)' }}>
               ⚠️ {error}
             </div>
           )}
@@ -251,20 +266,22 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
                 onCancel();
               }}
               disabled={loading}
-              className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs sm:text-sm transition disabled:opacity-50"
+              className="flex-1 py-3 px-4 font-bold rounded-xl text-xs sm:text-sm transition disabled:opacity-50 font-display cursor-pointer"
+              style={{ background: 'var(--c-surface2)', border: '1px solid var(--c-border)', color: 'var(--c-text-dim)' }}
             >
               Cancel
             </button>
             <button
               onClick={handleCreateOrder}
               disabled={loading || !selectedAddress}
-              className="flex-1 py-3 px-4 bg-blue-600 text-white font-extrabold rounded-xl hover:bg-blue-700 text-xs sm:text-sm shadow-md transition disabled:opacity-50 active:scale-98"
+              className="flex-1 py-3 px-4 font-extrabold rounded-xl text-xs sm:text-sm shadow-md transition disabled:opacity-50 active:scale-98 font-display cursor-pointer"
+              style={{ background: 'var(--c-cta-bg)', color: 'var(--c-cta-text)' }}
             >
               {loading ? 'Creating Order...' : 'Proceed to Payment'}
             </button>
           </div>
 
-          <p className="text-[11px] text-gray-500 text-center">
+          <p className="text-[11px] text-center font-medium" style={{ color: 'var(--c-muted)' }}>
             🔒 Secure payment via Razorpay.
           </p>
         </div>
@@ -281,3 +298,4 @@ export default function Checkout({ cart, customerId, onOrderCreated, onCancel }:
     </>
   );
 }
+
